@@ -1358,6 +1358,7 @@ export function registerInteractiveHandlers(bot: Telegraf): void {
     if (busReminderDate) {
       const completed = await completeBusReminder(bot, busReminderDate);
       await ctx.answerCbQuery(completed ? '已记录下车' : '这次提醒已经处理');
+      if (completed) await ctx.deleteMessage();
       return;
     }
 
