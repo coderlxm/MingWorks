@@ -94,6 +94,9 @@ async function runScheduledStartggFastWatch(bot: Telegraf, eventSlugs: string[])
 
 async function runScheduledStartggWatch(bot: Telegraf): Promise<void> {
   clearStartggFastWatch();
+  console.log('Mode: start.gg Watch');
+  const summary = await runStartggWatchNow(bot);
+  console.log(`start.gg watch finished. events=${summary.checkedEvents} players=${summary.checkedPlayers} changed=${summary.changed} active=${summary.activeSetCount}`);
   const subscribedEvents = listActiveStartggWatchEvents();
   const now = dayjs();
   const closedByDeadline = subscribedEvents.filter((event) =>
@@ -101,11 +104,10 @@ async function runScheduledStartggWatch(bot: Telegraf): Promise<void> {
     && event.tournament_end_at !== null
     && !now.isBefore(dayjs(event.tournament_end_at).add(STARTGG_TOURNAMENT_CLOSE_GRACE_HOURS, 'hour')),
   );
-  const allEventsClosed = subscribedEvents.length > 0
-    && subscribedEvents.every((event) =>
-      event.event_state === 'COMPLETED'
-      || closedByDeadline.includes(event),
-    );
+  const allEventsClosed = subscribedEvents.every((event) =>
+    event.event_state === 'COMPLETED'
+    || closedByDeadline.includes(event),
+  );
   if (allEventsClosed) {
     disableStartggPolling();
     await bot.telegram.sendMessage(
@@ -117,9 +119,6 @@ async function runScheduledStartggWatch(bot: Telegraf): Promise<void> {
     return;
   }
 
-  console.log('Mode: start.gg Watch');
-  const summary = await runStartggWatchNow(bot);
-  console.log(`start.gg watch finished. events=${summary.checkedEvents} players=${summary.checkedPlayers} changed=${summary.changed} active=${summary.activeSetCount}`);
   updateStartggFastWatch(bot, summary.activeEventSlugs);
 }
 

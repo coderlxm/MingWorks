@@ -1531,23 +1531,27 @@ export function registerInteractiveHandlers(bot: Telegraf): void {
       }
 
       await ctx.answerCbQuery();
-      if (interestAction.action === 'follow') {
-        followStartggVideogame(
-          pending.videogame_id,
-          pending.videogame_name,
-        );
-        deleteStartggPendingEventsByVideogame(pending.videogame_id);
+      if (interestAction.action === 'follow' || interestAction.action === 'event') {
+        if (interestAction.action === 'follow') {
+          followStartggVideogame(pending.videogame_id, pending.videogame_name);
+        } else {
+          addStartggEventInterestOverride(pending.event_slug, pending.tournament_end_at);
+        }
+        const summary = await runStartggGo(bot, '', pending.event_slug);
+        if (summary.status !== 'started') {
+          throw new Error('所选赛事未启动监控。');
+        }
+        updateStartggFastWatch(bot, summary.activeEventSlugs);
         enableStartggPolling(bot, false);
+        if (interestAction.action === 'follow') {
+          deleteStartggPendingEventsByVideogame(pending.videogame_id);
+        } else {
+          deleteStartggPendingEvent(pending.id);
+        }
         await ctx.editMessageText(
-          `已长期关注游戏：${escapeHtml(pending.videogame_name)}\n本届赛事已开始监控。`,
-          { parse_mode: 'HTML' },
-        );
-      } else if (interestAction.action === 'event') {
-        addStartggEventInterestOverride(pending.event_slug, pending.tournament_end_at);
-        deleteStartggPendingEvent(pending.id);
-        enableStartggPolling(bot, false);
-        await ctx.editMessageText(
-          `仅关注本届赛事：${escapeHtml(pending.tournament_name)}`,
+          interestAction.action === 'follow'
+            ? `已长期关注游戏：${escapeHtml(pending.videogame_name)}\n本届赛事已开始监控。`
+            : `仅关注本届赛事：${escapeHtml(pending.tournament_name)}\n本届赛事已开始监控。`,
           { parse_mode: 'HTML' },
         );
       } else {

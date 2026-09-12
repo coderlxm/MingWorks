@@ -372,7 +372,7 @@ function matchesStartggGoKeyword(candidate: StartggGoTournamentCandidate, keywor
     || compactStartggGoSearchText(candidate.tournamentSlug).includes(compactQuery);
 }
 
-export async function runStartggGo(bot: Telegraf | undefined, keyword: string): Promise<StartggGoResult> {
+export async function runStartggGo(bot: Telegraf | undefined, keyword: string, requiredEventSlug?: string): Promise<StartggGoResult> {
   const syncedPlayers = await syncStartggPresetPlayers();
   const players = listEnabledStartggWatchPlayers();
   if (players.length === 0) {
@@ -387,6 +387,9 @@ export async function runStartggGo(bot: Telegraf | undefined, keyword: string): 
   const trimmedKeyword = keyword.trim();
   if (!trimmedKeyword) {
     const { allowedEvents, pendingProjects } = await filterDiscoveredEventsByInterest(bot, events, players);
+    if (requiredEventSlug && !allowedEvents.some((event) => event.eventSlug === requiredEventSlug)) {
+      throw new Error('所选赛事已不在当前可监控赛事中。');
+    }
     if (allowedEvents.length === 0) {
       if (pendingProjects === 0) {
         return {
