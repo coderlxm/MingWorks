@@ -66,8 +66,11 @@ import {
   buildStartggSeedsButtons,
   formatStartggSeedsList,
   buildStartggSeedsListButtons,
+  formatStartggInterestPrompt,
+  buildStartggInterestPromptButtons,
 } from '../formatters/startggFormatter.js';
 import {
+  describeStartggError,
   fetchEventMeta,
   listEventEntrantPlayers,
   resolveUserToPlayer,
@@ -91,6 +94,7 @@ import {
   type StartggFeaturedSeedCount,
 } from '../services/startggRepository.js';
 import { runStartggGo, runStartggWatchNow, syncStartggPresetPlayers, resyncFeaturedEntrantsForActiveEvents } from '../services/startggPresetSync.js';
+import { runStartggTask } from '../services/startgg/taskQueue.js';
 import {
   addStartggEventInterestOverride,
   deleteStartggPendingEvent,
@@ -309,9 +313,11 @@ function formatAvSubscriptionList(targets: TrackedTarget[]): string {
 
 export function registerInteractiveHandlers(bot: Telegraf): void {
   async function applyFeaturedSeedCount(count: StartggFeaturedSeedCount): Promise<void> {
-    await resyncFeaturedEntrantsForActiveEvents(count);
-    setFeaturedSeedCount(count);
-    const summary = await runStartggWatchOnce(bot);
+    const summary = await runStartggTask(async () => {
+      await resyncFeaturedEntrantsForActiveEvents(count);
+      setFeaturedSeedCount(count);
+      return runStartggWatchOnce(bot);
+    });
     updateStartggFastWatch(bot, summary.activeEventSlugs);
   }
 
@@ -556,7 +562,7 @@ export function registerInteractiveHandlers(bot: Telegraf): void {
     if (!isAuthorized(ctx)) return;
     await ctx.reply('开始手动检查 start.gg 选手状态...', { parse_mode: 'HTML' });
     try {
-      const summary = await runStartggWatchNow(bot);
+      const summary = await runStartggTask(() => runStartggWatchNow(bot));
       updateStartggFastWatch(bot, summary.activeEventSlugs);
       await ctx.reply(
         `检查完成：本次检查项目 ${summary.checkedEvents} 个，选手 ${summary.checkedPlayers} 个，状态变化 ${summary.changed} 条，进行中 ${summary.activeSetCount} 条。`,
@@ -578,7 +584,7 @@ export function registerInteractiveHandlers(bot: Telegraf): void {
     const startMessageResult = await ctx.reply(startMessage, { parse_mode: 'HTML' });
 
     try {
-      const summary = await runStartggGo(bot, keyword);
+      const summary = await runStartggTask(() => runStartggGo(bot, keyword));
       if (summary.status === 'candidates') {
         await ctx.telegram.editMessageText(
           String(ctx.chat!.id),
@@ -1537,7 +1543,24 @@ export function registerInteractiveHandlers(bot: Telegraf): void {
         } else {
           addStartggEventInterestOverride(pending.event_slug, pending.tournament_end_at);
         }
-        const summary = await runStartggGo(bot, '', pending.event_slug);
+        let summary: Awaited<ReturnType<typeof runStartggGo>>;
+        try {
+          summary = await runStartggTask(() => runStartggGo(bot, '', pending.event_slug));
+        } catch (error) {
+          const message = describeStartggError(error);
+          await ctx.editMessageText(
+            `${formatStartggInterestPrompt({
+              playerNames: JSON.parse(pending.player_names) as string[],
+              videogameName: pending.videogame_name,
+              tournamentName: pending.tournament_name,
+            })}\n\n启动监控失败：${escapeHtml(message)}`,
+            {
+              parse_mode: 'HTML',
+              ...buildStartggInterestPromptButtons(pending.id),
+            },
+          );
+          return;
+        }
         if (summary.status !== 'started') {
           throw new Error('所选赛事未启动监控。');
         }

@@ -33,6 +33,7 @@ import { runAvFetchOnce } from '../services/avTracker.js';
 import { bufferHolidayV2exTopics, pushBufferedV2exIfNeeded } from '../services/v2exBufferedPush.js';
 import { isVitaminEatenToday, triggerVitaminReminder } from '../services/vitaminReminder.js';
 import { runStartggWatchNow } from '../services/startggPresetSync.js';
+import { runStartggTask } from '../services/startgg/taskQueue.js';
 import {
   formatXLikedVideoStatusMessage,
   readXLikedVideoStatus,
@@ -182,7 +183,7 @@ export async function runMode(mode: PushMode, chinaDayOfWeek: number, bot?: Tele
 
   if (mode === 'startgg_watch') {
     console.log('Mode: start.gg Watch');
-    const summary = await runStartggWatchNow(bot);
+    const summary = await runStartggTask(() => runStartggWatchNow(bot));
     console.log(`start.gg watch finished. events=${summary.checkedEvents} players=${summary.checkedPlayers} changed=${summary.changed} active=${summary.activeSetCount}`);
     return;
   }

@@ -406,7 +406,9 @@ export async function runStartggGo(bot: Telegraf | undefined, keyword: string, r
     replaceActiveStartggWatchEvents(allowedEvents.map(toWatchEventInput), 'auto');
     await syncFeaturedEntrantsForActiveEvents();
     const watchSummary = await runStartggWatchOnce(bot, {
-      eventSlugs: allowedEvents.map((event) => event.eventSlug),
+      eventSlugs: requiredEventSlug
+        ? [requiredEventSlug]
+        : allowedEvents.map((event) => event.eventSlug),
     });
     return {
       status: 'started',

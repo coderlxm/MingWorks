@@ -1,4 +1,5 @@
-import { GraphQLClient } from 'graphql-request';
+import { ClientError, GraphQLClient } from 'graphql-request';
+import pLimit from 'p-limit';
 import { config } from '../../config/index.js';
 import {
   type EventTrackingHeaderResponse,
@@ -48,6 +49,7 @@ const PLAYER_RECENT_SETS_PER_PAGE = 100;
 const TOURNAMENT_CANDIDATES_PER_PAGE = 200;
 const TOURNAMENT_IDENTITY_BATCH_SIZE = 20;
 const TOURNAMENT_IDENTITY_PARTICIPANTS_PER_PAGE = 10;
+const startggRequestLimit = pLimit(1);
 
 const startggClient = new GraphQLClient(STARTGG_GRAPHQL_ENDPOINT, {
   requestMiddleware: (request) => {
@@ -60,11 +62,21 @@ export async function queryStartgg<TData>(query: string, variables: Record<strin
   if (!config.startggApiToken) {
     throw new Error('STARTGG_API_TOKEN is not set.');
   }
-  return startggClient.request<TData, Record<string, unknown>>({
+  return startggRequestLimit(() => startggClient.request<TData, Record<string, unknown>>({
     document: query,
     variables,
     signal: AbortSignal.timeout(STARTGG_REQUEST_TIMEOUT_MS),
-  });
+  }));
+}
+
+export function describeStartggError(error: unknown): string {
+  if (error instanceof ClientError) {
+    if (error.response.status === 429) {
+      return 'start.gg API 请求过于频繁（HTTP 429），请稍后再次选择。';
+    }
+    return `start.gg API 请求失败（HTTP ${error.response.status}）。`;
+  }
+  return error instanceof Error ? error.message : String(error);
 }
 
 function normalizeTotalPages(totalPages: number | null | undefined): number {
