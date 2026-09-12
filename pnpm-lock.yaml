@@ -86,6 +86,12 @@ importers:
       element-plus:
         specifier: ^2.14.3
         version: 2.14.3(vue@3.5.41(typescript@6.0.3))
+      eventsource-encoder:
+        specifier: 1.0.2
+        version: 1.0.2
+      eventsource-parser:
+        specifier: 4.1.0
+        version: 4.1.0
       fastify:
         specifier: ^5.12.1
         version: 5.12.1
@@ -2068,6 +2074,14 @@ packages:
   event-target-shim@5.0.1:
     resolution: {integrity: sha512-i/2XbnSz/uxRCU6+NdVJgKWDTM427+MqYbkQzD321DuCQJUqOuJKIA0IM2+W2xtYHdKOmZ4dR6fExsd4SXL+WQ==}
     engines: {node: '>=6'}
+
+  eventsource-encoder@1.0.2:
+    resolution: {integrity: sha512-iG7mY5LhweLKpgxQ+YdW7Y6YjBgRzGMrKlXzeUpm0VtJpdeag32Q/DMQ11HAT7kO9Jx8dreUL5SHGl6KAGJ9Lg==}
+    engines: {node: '>=18.0.0'}
+
+  eventsource-parser@4.1.0:
+    resolution: {integrity: sha512-+DHvQ1wLO//MK+1OZgcuXCbZFKgu3YjKPJt7n98rxX8vezL0ni+7s3ZQiM8bJkUEOk7MsuCycrPLj0FzUNf7Og==}
+    engines: {node: '>=22.12'}
 
   exsolve@1.1.0:
     resolution: {integrity: sha512-D+42+T12DdIlJM3uepa55qGiL3sYdLBOxIl2ifQCzCHz4c7eiolaHsi3BIqEr7JxBzxv2pYZQX9kw16ziMcEmw==}
@@ -5276,6 +5290,10 @@ snapshots:
   esutils@2.0.3: {}
 
   event-target-shim@5.0.1: {}
+
+  eventsource-encoder@1.0.2: {}
+
+  eventsource-parser@4.1.0: {}
 
   exsolve@1.1.0: {}
 

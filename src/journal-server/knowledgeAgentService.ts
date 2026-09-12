@@ -8,10 +8,12 @@ import { createJournalRichTextExtensions } from '../shared/journalRichText.js';
 import {
   type JournalAiMessage,
   type JournalAiSource,
+  type JournalAiStreamEvent,
   type JournalRichDocument,
 } from '../shared/journalProtocol.js';
 import type { JournalArticleService } from './articleService.js';
 import {
+  type JournalAiExchange,
   type JournalKnowledgeRepository,
   type KnowledgeReadResult,
 } from './knowledgeRepository.js';
@@ -27,7 +29,7 @@ export class JournalKnowledgeError extends Error {
   }
 }
 
-type DeepSeekCompletionRequest = OpenAI.ChatCompletionCreateParamsNonStreaming & {
+type DeepSeekStreamRequest = OpenAI.ChatCompletionCreateParamsStreaming & {
   thinking: { type: 'disabled' };
 };
 
@@ -142,9 +144,20 @@ interface TrackedSource {
   text: string;
 }
 
-interface GeneratedAnswer {
-  content: string;
-  sources: JournalAiSource[];
+interface ToolCallAccumulator {
+  id: string;
+  type: 'function' | 'custom';
+  name: string;
+  arguments: string;
+}
+
+interface ActiveExecution {
+  sessionId: number;
+  assistantMessageId: number;
+  abortController: AbortController;
+  interruptReason: string | null;
+  visibleText: string;
+  settled: boolean;
 }
 
 function currentShanghaiDate(): string {
@@ -222,7 +235,7 @@ function markdownToRichDocument(markdown: string): JournalRichDocument {
 
 export class JournalKnowledgeAgentService {
   private readonly client: OpenAI;
-  private readonly activeSessions = new Set<number>();
+  private readonly activeExecutions = new Map<number, ActiveExecution>();
 
   constructor(
     private readonly repository: JournalKnowledgeRepository,
@@ -253,44 +266,63 @@ export class JournalKnowledgeAgentService {
     return this.repository.deleteSession(id);
   }
 
-  async sendMessage(sessionId: number, content: string) {
-    if (this.activeSessions.has(sessionId)) {
+  startMessage(sessionId: number, content: string) {
+    if (this.activeExecutions.has(sessionId)) {
       throw new JournalKnowledgeError(409, '这个会话仍在生成上一条回答。');
     }
     const exchange = this.repository.startExchange(sessionId, content);
     if (exchange === null) {
       throw new JournalKnowledgeError(404, 'AI 会话不存在。');
     }
+    const abortController = new AbortController();
+    const execution: ActiveExecution = {
+      sessionId,
+      assistantMessageId: exchange.assistantMessage.id,
+      abortController,
+      interruptReason: null,
+      visibleText: '',
+      settled: false,
+    };
+    this.activeExecutions.set(sessionId, execution);
+    return {
+      userMessage: exchange.userMessage,
+      assistantMessage: exchange.assistantMessage,
+      events: this.generateStream(exchange, execution),
+    };
+  }
 
-    this.activeSessions.add(sessionId);
-    try {
-      const history = this.repository.listContextMessages(
-        sessionId,
-        exchange.userMessage.position,
-        20,
-      );
-      const answer = await this.generateAnswer(history, content);
-      const completed = this.repository.completeMessage(
-        exchange.assistantMessage.id,
-        answer.content,
-        answer.sources,
-      );
-      if (completed === null) {
-        throw new Error('AI 回答写入失败。');
-      }
-      return {
-        userMessage: exchange.userMessage,
-        assistantMessage: completed,
-      };
+  async stopMessage(sessionId: number, messageId: number): Promise<JournalAiMessage | null> {
+    return await this.abortMessage(sessionId, messageId, '用户停止了本次生成。');
+  }
+
+  async cancelMessage(sessionId: number, messageId: number): Promise<JournalAiMessage | null> {
+    return await this.abortMessage(sessionId, messageId, '连接已断开，本轮未完成。');
+  }
+
+  private releaseExecution(execution: ActiveExecution): void {
+    const current = this.activeExecutions.get(execution.sessionId);
+    if (current === execution) {
+      this.activeExecutions.delete(execution.sessionId);
     }
-    catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.repository.failMessage(exchange.assistantMessage.id, message);
-      throw error;
+  }
+
+  private async abortMessage(
+    sessionId: number,
+    messageId: number,
+    reason: string,
+  ): Promise<JournalAiMessage | null> {
+    const execution = this.activeExecutions.get(sessionId);
+    if (execution === undefined || execution.assistantMessageId !== messageId) {
+      const message = this.repository.getMessage(messageId);
+      return message !== null && message.sessionId === sessionId ? message : null;
     }
-    finally {
-      this.activeSessions.delete(sessionId);
-    }
+    execution.interruptReason = reason;
+    execution.abortController.abort();
+    this.repository.failMessage(messageId, reason, execution.visibleText.trim());
+    execution.settled = true;
+    this.releaseExecution(execution);
+    const message = this.repository.getMessage(messageId);
+    return message !== null && message.sessionId === sessionId ? message : null;
   }
 
   saveMessageAsArticle(messageId: number) {
@@ -319,79 +351,219 @@ export class JournalKnowledgeAgentService {
     });
   }
 
-  private async generateAnswer(
-    history: JournalAiMessage[],
-    currentQuestion: string,
-  ): Promise<GeneratedAnswer> {
-    const messages: OpenAI.ChatCompletionMessageParam[] = [
-      { role: 'system', content: this.buildSystemPrompt(history) },
-    ];
-    for (const message of history) {
-      if (message.content.trim() === '') continue;
-      if (message.role === 'user') {
-        messages.push({ role: 'user', content: message.content });
-      }
-      else {
-        messages.push({ role: 'assistant', content: message.content });
-      }
-    }
-    messages.push({ role: 'user', content: currentQuestion });
-
+  private async *generateStream(
+    exchange: JournalAiExchange,
+    execution: ActiveExecution,
+  ): AsyncGenerator<JournalAiStreamEvent, void, void> {
+    const messageId = exchange.assistantMessage.id;
+    const signal = execution.abortController.signal;
     const sources = new Map<number, TrackedSource>();
-    for (let round = 0; round < maxModelCalls; round += 1) {
-      const finalRound = round === maxModelCalls - 1;
-      const completion = await this.complete(messages, finalRound);
-      const choice = completion.choices[0];
-      if (choice === undefined) {
-        throw new JournalKnowledgeError(502, 'DeepSeek 没有返回回答。');
-      }
-      if (choice.finish_reason !== 'stop' && choice.finish_reason !== 'tool_calls') {
-        throw new JournalKnowledgeError(502, `DeepSeek 未完整生成回答（${choice.finish_reason}）。`);
-      }
-      const assistant = choice.message;
-      const toolCalls = assistant.tool_calls;
-      if (toolCalls !== undefined && toolCalls.length > maxToolCallsPerRound) {
-        throw new JournalKnowledgeError(502, '模型超过了每轮最多 2 个工具调用的限制。');
-      }
-      if (finalRound === false && toolCalls !== undefined && toolCalls.length > 0) {
-        messages.push({
-          role: 'assistant',
-          content: assistant.content,
-          tool_calls: toolCalls,
-        });
-        for (let index = 0; index < toolCalls.length; index += 1) {
-          const toolCall = toolCalls[index];
-          if (toolCall === undefined) continue;
-          messages.push({
-            role: 'tool',
-            tool_call_id: toolCall.id,
-            content: JSON.stringify(this.executeTool(toolCall, sources)),
-          });
-        }
-        continue;
-      }
+    let completedFinal = false;
+    try {
+      signal.throwIfAborted();
+      yield {
+        type: 'started',
+        sessionId: exchange.assistantMessage.sessionId,
+        userMessage: exchange.userMessage,
+        assistantMessage: exchange.assistantMessage,
+      };
 
-      if (choice.finish_reason !== 'stop') {
-        throw new JournalKnowledgeError(502, 'DeepSeek 未返回完整的最终回答。');
+      const history = this.repository.listContextMessages(
+        exchange.assistantMessage.sessionId,
+        exchange.userMessage.position,
+        20,
+      );
+      const messages: OpenAI.ChatCompletionMessageParam[] = [
+        { role: 'system', content: this.buildSystemPrompt(history) },
+      ];
+      for (const historyMessage of history) {
+        if (historyMessage.content.trim() === '') continue;
+        if (historyMessage.role === 'user') {
+          messages.push({ role: 'user', content: historyMessage.content });
+        }
+        else {
+          messages.push({ role: 'assistant', content: historyMessage.content });
+        }
       }
-      const content = assistant.content?.trim() ?? '';
-      if (content === '') {
-        throw new JournalKnowledgeError(502, 'DeepSeek 返回了空回答。');
+      messages.push({ role: 'user', content: exchange.userMessage.content });
+
+      for (let round = 0; round < maxModelCalls; round += 1) {
+        if (signal.aborted) throw new Error(execution.interruptReason ?? '生成已中断。');
+        const finalRound = round === maxModelCalls - 1;
+        yield { type: 'round-start', messageId, round };
+        if (finalRound) {
+          yield { type: 'phase', messageId, phase: 'organizing', count: null };
+        }
+
+        const stream = await this.createModelStream(messages, finalRound, signal);
+        const toolCallParts = new Map<number, ToolCallAccumulator>();
+        let roundText = '';
+        let finishReason: string | null = null;
+        for await (const chunk of stream) {
+          if (signal.aborted) throw new Error(execution.interruptReason ?? '生成已中断。');
+          const choice = chunk.choices[0];
+          if (choice === undefined) continue;
+          const delta = choice.delta;
+          if (delta.content) {
+            roundText += delta.content;
+            execution.visibleText += delta.content;
+            yield { type: 'text-delta', messageId, round, delta: delta.content };
+          }
+          if (delta.tool_calls !== undefined) {
+            for (const partial of delta.tool_calls) {
+              let accumulator = toolCallParts.get(partial.index);
+              if (accumulator === undefined) {
+                accumulator = {
+                  id: '',
+                  type: partial.type ?? 'function',
+                  name: '',
+                  arguments: '',
+                };
+                toolCallParts.set(partial.index, accumulator);
+              }
+              if (partial.id) accumulator.id = partial.id;
+              if (partial.type) accumulator.type = partial.type;
+              if (partial.function?.name) accumulator.name += partial.function.name;
+              if (partial.function?.arguments) accumulator.arguments += partial.function.arguments;
+            }
+          }
+          if (choice.finish_reason !== null) finishReason = choice.finish_reason;
+        }
+        if (signal.aborted) {
+          throw new Error(execution.interruptReason ?? '生成已中断。');
+        }
+
+        if (finishReason === null) {
+          throw new JournalKnowledgeError(502, 'DeepSeek 流式响应没有结束原因。');
+        }
+        if (finishReason === 'tool_calls') {
+          if (finalRound) {
+            throw new JournalKnowledgeError(502, '最终回答轮不应调用工具。');
+          }
+          const toolCalls = this.toToolCalls(toolCallParts);
+          if (toolCalls === null || toolCalls.length === 0) {
+            throw new JournalKnowledgeError(502, 'DeepSeek 工具调用分片不完整。');
+          }
+          if (toolCalls.length > maxToolCallsPerRound) {
+            throw new JournalKnowledgeError(502, '模型超过了每轮最多 2 个工具调用的限制。');
+          }
+          yield { type: 'round-end', messageId, round, kind: 'tool' };
+          messages.push({
+            role: 'assistant',
+            content: roundText === '' ? null : roundText,
+            tool_calls: toolCalls,
+          });
+          for (const toolCall of toolCalls) {
+            const phase = toolCall.function.name === 'search_entries' ? 'searching' : 'reading';
+            yield { type: 'phase', messageId, phase, count: null };
+            signal.throwIfAborted();
+            const result = this.executeTool(toolCall, sources);
+            yield {
+              type: 'phase',
+              messageId,
+              phase,
+              count: this.toolResultCount(result),
+            };
+            messages.push({
+              role: 'tool',
+              tool_call_id: toolCall.id,
+              content: JSON.stringify(result),
+            });
+          }
+          continue;
+        }
+        if (finishReason !== 'stop') {
+          throw new JournalKnowledgeError(502, `DeepSeek 未完整生成回答（${finishReason}）。`);
+        }
+        if (roundText.trim() === '') {
+          throw new JournalKnowledgeError(502, 'DeepSeek 返回了空回答。');
+        }
+        yield { type: 'phase', messageId, phase: 'organizing', count: null };
+        yield { type: 'round-end', messageId, round, kind: 'answer' };
+        signal.throwIfAborted();
+        const completed = this.repository.completeMessage(
+          messageId,
+          roundText.trim(),
+          this.buildSources(sources),
+        );
+        if (completed === null) {
+          throw new Error('AI 回答写入失败。');
+        }
+        completedFinal = true;
+        execution.settled = true;
+        this.releaseExecution(execution);
+        yield { type: 'completed', message: completed, finalRound: round };
+        return;
       }
-      return { content, sources: this.buildSources(sources) };
+      throw new JournalKnowledgeError(502, 'AI 回答超过最大工具调用轮次。');
     }
-    throw new JournalKnowledgeError(502, 'AI 回答超过最大工具调用轮次。');
+    catch (error) {
+      if (completedFinal === false) {
+        const reason = signal.aborted
+          ? (execution.interruptReason ?? '生成已中断。')
+          : (error instanceof Error ? error.message : String(error));
+        const content = execution.visibleText.trim();
+        if (!execution.settled) {
+          this.repository.failMessage(messageId, reason, content);
+          execution.settled = true;
+        }
+        this.releaseExecution(execution);
+        yield { type: 'interrupted', messageId, reason, content };
+      }
+    }
+    finally {
+      // Readable destruction calls return(), which skips catch at a suspended yield.
+      if (!execution.settled) {
+        execution.interruptReason = '连接已断开，本轮未完成。';
+        execution.abortController.abort();
+        this.repository.failMessage(messageId, execution.interruptReason, execution.visibleText.trim());
+        execution.settled = true;
+      }
+      this.releaseExecution(execution);
+    }
   }
 
-  private async complete(
+  private toToolCalls(
+    parts: Map<number, ToolCallAccumulator>,
+  ): OpenAI.ChatCompletionMessageFunctionToolCall[] | null {
+    const result: OpenAI.ChatCompletionMessageFunctionToolCall[] = [];
+    const entries = [...parts.entries()].sort((left, right) => left[0] - right[0]);
+    for (const entry of entries) {
+      const part = entry[1];
+      if (part.type === 'custom') return null;
+      if (part.id === '' || part.name === '') return null;
+      result.push({
+        id: part.id,
+        type: 'function',
+        function: {
+          name: part.name,
+          arguments: part.arguments,
+        },
+      });
+    }
+    return result;
+  }
+
+  private toolResultCount(result: unknown): number {
+    if (result === null || typeof result !== 'object') return 0;
+    const record = result as { results?: unknown; entries?: unknown };
+    if (Array.isArray(record.results)) return record.results.length;
+    if (Array.isArray(record.entries)) return record.entries.length;
+    return 0;
+  }
+
+  private async createModelStream(
     messages: OpenAI.ChatCompletionMessageParam[],
     finalRound: boolean,
-  ): Promise<OpenAI.ChatCompletion> {
-    const request: DeepSeekCompletionRequest = {
+    signal: AbortSignal,
+  ): Promise<AsyncIterable<OpenAI.ChatCompletionChunk>> {
+    const request: DeepSeekStreamRequest = {
       model: DEEPSEEK_TASK_MODELS.writing,
       messages,
       temperature: 0.2,
       max_tokens: 2048,
+      stream: true,
+      stream_options: { include_usage: true },
       thinking: { type: 'disabled' },
     };
     if (finalRound) {
@@ -401,7 +573,7 @@ export class JournalKnowledgeAgentService {
       request.tools = knowledgeTools;
       request.tool_choice = 'auto';
     }
-    return await this.client.chat.completions.create(request);
+    return await this.client.chat.completions.create(request, { signal });
   }
 
   private executeTool(

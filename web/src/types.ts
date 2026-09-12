@@ -415,3 +415,59 @@ export interface AiSendMessageResponse {
 export interface AiSaveArticleResponse {
   article: JournalEntry;
 }
+
+export type AiStreamPhase = 'searching' | 'reading' | 'organizing';
+export type AiStreamRoundKind = 'tool' | 'answer';
+
+export type AiStreamEvent =
+  | {
+      type: 'started';
+      sessionId: number;
+      userMessage: AiMessage;
+      assistantMessage: AiMessage;
+    }
+  | {
+      type: 'round-start';
+      messageId: number;
+      round: number;
+    }
+  | {
+      type: 'text-delta';
+      messageId: number;
+      round: number;
+      delta: string;
+    }
+  | {
+      type: 'round-end';
+      messageId: number;
+      round: number;
+      kind: AiStreamRoundKind;
+    }
+  | {
+      type: 'phase';
+      messageId: number;
+      phase: AiStreamPhase;
+      count: number | null;
+    }
+  | {
+      type: 'completed';
+      message: AiMessage;
+      finalRound: number;
+    }
+  | {
+      type: 'interrupted';
+      messageId: number;
+      reason: string;
+      content: string;
+    };
+
+export interface AiStreamRound {
+  round: number;
+  kind: 'pending' | AiStreamRoundKind;
+  text: string;
+}
+
+export interface AiStreamPhaseState {
+  phase: AiStreamPhase;
+  count: number | null;
+}

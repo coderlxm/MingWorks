@@ -911,3 +911,53 @@ export const journalAiSaveArticleResponseSchema = z.object({
 export type JournalAiSaveArticleResponse = z.infer<
   typeof journalAiSaveArticleResponseSchema
 >;
+
+export const journalAiStreamPhaseSchema = z.enum(['searching', 'reading', 'organizing']);
+export type JournalAiStreamPhase = z.infer<typeof journalAiStreamPhaseSchema>;
+
+export const journalAiStreamRoundKindSchema = z.enum(['tool', 'answer']);
+export type JournalAiStreamRoundKind = z.infer<typeof journalAiStreamRoundKindSchema>;
+
+export const journalAiStreamEventSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('started'),
+    sessionId: z.number().int().positive(),
+    userMessage: journalAiMessageSchema,
+    assistantMessage: journalAiMessageSchema,
+  }).strict(),
+  z.object({
+    type: z.literal('round-start'),
+    messageId: z.number().int().positive(),
+    round: z.number().int().nonnegative(),
+  }).strict(),
+  z.object({
+    type: z.literal('text-delta'),
+    messageId: z.number().int().positive(),
+    round: z.number().int().nonnegative(),
+    delta: z.string(),
+  }).strict(),
+  z.object({
+    type: z.literal('round-end'),
+    messageId: z.number().int().positive(),
+    round: z.number().int().nonnegative(),
+    kind: journalAiStreamRoundKindSchema,
+  }).strict(),
+  z.object({
+    type: z.literal('phase'),
+    messageId: z.number().int().positive(),
+    phase: journalAiStreamPhaseSchema,
+    count: z.number().int().nonnegative().nullable(),
+  }).strict(),
+  z.object({
+    type: z.literal('completed'),
+    message: journalAiMessageSchema,
+    finalRound: z.number().int().nonnegative(),
+  }).strict(),
+  z.object({
+    type: z.literal('interrupted'),
+    messageId: z.number().int().positive(),
+    reason: z.string(),
+    content: z.string(),
+  }).strict(),
+]);
+export type JournalAiStreamEvent = z.infer<typeof journalAiStreamEventSchema>;

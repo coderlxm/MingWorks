@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, shallowRef, useTemplateRef } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, onUpdated, shallowRef, useTemplateRef } from 'vue';
 import { useRouter } from 'vue-router';
 import { login } from '../../api';
 import { useAiChatStore } from '../../stores/aiChat';
@@ -15,6 +15,8 @@ const router = useRouter();
 const historyOpen = shallowRef(false);
 const authBusy = shallowRef(false);
 const authError = shallowRef<string | null>(null);
+const nearBottom = shallowRef(true);
+const hasNewOutput = shallowRef(false);
 const conversation = useTemplateRef<HTMLDivElement>('conversation');
 const composer = useTemplateRef<HTMLTextAreaElement>('composer');
 let disposed = false;
@@ -35,16 +37,39 @@ const canSend = computed(() =>
   && store.draft.trim() !== '',
 );
 
-async function scrollToBottom(): Promise<void> {
+async function scrollToBottom(smooth: boolean): Promise<void> {
   await nextTick();
   if (conversation.value === null) return;
-  conversation.value.scrollTo({ top: conversation.value.scrollHeight, behavior: 'smooth' });
+  if (smooth) {
+    conversation.value.scrollTo({ top: conversation.value.scrollHeight, behavior: 'smooth' });
+  }
+  else {
+    conversation.value.scrollTop = conversation.value.scrollHeight;
+  }
+  nearBottom.value = true;
+  hasNewOutput.value = false;
 }
 
 function handleScroll(): void {
-  if (conversation.value === null) return;
-  store.scrollTop = conversation.value.scrollTop;
+  const element = conversation.value;
+  if (element === null) return;
+  store.scrollTop = element.scrollTop;
+  nearBottom.value = element.scrollHeight - element.scrollTop - element.clientHeight < 96;
+  if (nearBottom.value) hasNewOutput.value = false;
 }
+
+function followOutput(): void {
+  const element = conversation.value;
+  if (element === null) return;
+  element.scrollTop = element.scrollHeight;
+}
+
+onUpdated(() => {
+  if (store.sending) {
+    if (nearBottom.value) followOutput();
+    else hasNewOutput.value = true;
+  }
+});
 
 function selectExample(example: string): void {
   store.draft = example;
@@ -70,7 +95,7 @@ async function handleAuth(password: string): Promise<void> {
 async function handleNewChat(): Promise<void> {
   historyOpen.value = false;
   await store.startNewSession();
-  if (!disposed) await scrollToBottom();
+  if (!disposed) await scrollToBottom(true);
 }
 
 async function handleSelectSession(id: number): Promise<void> {
@@ -92,7 +117,7 @@ async function handleSend(): Promise<void> {
   if (canSend.value === false) return;
   const conversationState = store.activeConversation;
   await store.send(store.draft);
-  if (!disposed && store.activeConversation === conversationState) await scrollToBottom();
+  if (!disposed && store.activeConversation === conversationState) await scrollToBottom(true);
 }
 
 function handleComposerKeydown(event: KeyboardEvent): void {
@@ -109,6 +134,12 @@ async function openSource(entryId: number): Promise<void> {
       view: 'waterfall',
     },
   });
+}
+
+async function handleStop(messageId: number): Promise<void> {
+  const message = store.messages.find((entry) => entry.id === messageId);
+  if (message === undefined) return;
+  await store.stop(message.sessionId, messageId);
 }
 
 async function saveArticle(messageId: number): Promise<void> {
@@ -221,6 +252,7 @@ onUnmounted(() => {
                 class="ai-history__delete"
                 type="button"
                 aria-label="删除会话"
+                :disabled="store.isSessionSending(item.id)"
                 @click="handleDeleteSession($event, item.id)"
               >
                 删除
@@ -259,14 +291,27 @@ onUnmounted(() => {
               :key="message.id"
               :message="message"
               :saving="store.savingArticleMessageId === message.id"
+              :streaming="store.isMessageStreaming(message.id)"
+              :stopping="store.isMessageStopping(message.id)"
+              :rounds="store.roundsFor(message.id)"
+              :phase="store.phaseFor(message.id)"
               @open-entry="openSource($event)"
               @save-article="saveArticle"
               @open-article="openArticle"
+              @stop="handleStop"
             />
           </div>
         </section>
 
         <div class="ai-composer">
+          <button
+            v-if="hasNewOutput"
+            class="ai-composer__jump"
+            type="button"
+            @click="scrollToBottom(true)"
+          >
+            查看新回答
+          </button>
           <div v-if="store.error" class="ai-composer__error" role="alert">
             {{ store.error }}
           </div>
@@ -547,6 +592,19 @@ onUnmounted(() => {
   flex: none;
   border-top: 1px solid var(--border-subtle);
   background: var(--surface-page);
+}
+
+.ai-composer__jump {
+  display: block;
+  margin: 0 auto 0.6rem;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--surface-card);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 0.76rem;
+  font-weight: 620;
 }
 
 .ai-composer__error {

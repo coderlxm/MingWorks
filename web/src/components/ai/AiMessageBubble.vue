@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import type { AiMessage } from '../../types';
+import type { AiMessage, AiStreamPhaseState, AiStreamRound } from '../../types';
 import { renderAiMarkdown } from '../../utils/aiMarkdown';
 import AINavigationIcon from './AINavigationIcon.vue';
 import AiSourceList from './AiSourceList.vue';
@@ -8,20 +8,39 @@ import AiSourceList from './AiSourceList.vue';
 const props = defineProps<{
   message: AiMessage;
   saving: boolean;
+  streaming: boolean;
+  stopping: boolean;
+  rounds: AiStreamRound[];
+  phase: AiStreamPhaseState | null;
 }>();
 
 const emit = defineEmits<{
   openEntry: [entryId: number];
   saveArticle: [messageId: number];
   openArticle: [articleId: number];
+  stop: [messageId: number];
 }>();
 
 const renderedContent = computed(() => renderAiMarkdown(props.message.content));
+const renderedRounds = computed(() => props.rounds.map((round) => ({
+  ...round,
+  html: renderAiMarkdown(round.text),
+})));
 const canSave = computed(() =>
   props.message.role === 'assistant'
   && props.message.status === 'completed'
   && props.message.content.trim() !== '',
 );
+const phaseLabel = computed(() => {
+  if (props.phase === null) return '';
+  if (props.phase.phase === 'searching') {
+    return props.phase.count === null ? '正在查找相关记录…' : `已查找 ${props.phase.count} 条候选记录`;
+  }
+  if (props.phase.phase === 'reading') {
+    return props.phase.count === null ? '正在阅读正文…' : `已读取 ${props.phase.count} 条记录`;
+  }
+  return '正在整理回答…';
+});
 </script>
 
 <template>
@@ -39,10 +58,18 @@ const canSave = computed(() =>
       <template v-if="message.role === 'user'">
         <p class="ai-message__user-text">{{ message.content }}</p>
       </template>
-      <template v-else-if="message.status === 'pending'">
-        <div v-if="message.id > 0" class="ai-message__failure" role="alert">
-          <strong>本轮未完成。</strong>
-          <p>没有收到完整回答，不会自动重试。</p>
+
+      <template v-else-if="message.status === 'pending' && streaming">
+        <p v-if="phaseLabel" class="ai-message__phase">{{ phaseLabel }}</p>
+        <div v-if="renderedRounds.length > 0" class="ai-message__rounds">
+          <div
+            v-for="round in renderedRounds"
+            :key="round.round"
+            class="ai-message__round"
+            :class="[`ai-message__round--${round.kind}`]"
+          >
+            <div class="ai-message__body" v-html="round.html" />
+          </div>
         </div>
         <div v-else class="ai-message__pending" role="status">
           <span class="ai-message__pending-dot" />
@@ -50,13 +77,39 @@ const canSave = computed(() =>
           <span class="ai-message__pending-dot" />
           <span>正在查找并整理…</span>
         </div>
+        <span v-if="stopping === false" class="ai-message__cursor" aria-hidden="true" />
+        <div class="ai-message__actions">
+          <button
+            v-if="message.id > 0"
+            class="ai-message__action"
+            type="button"
+            :disabled="stopping"
+            @click="emit('stop', message.id)"
+          >
+            {{ stopping ? '正在停止…' : '停止生成' }}
+          </button>
+        </div>
       </template>
+
+      <template v-else-if="message.status === 'pending'">
+        <div class="ai-message__failure" role="alert">
+          <strong>本轮未完成。</strong>
+          <p>没有收到完整回答，不会自动重试。</p>
+        </div>
+      </template>
+
       <template v-else-if="message.status === 'failed'">
         <div class="ai-message__failure" role="alert">
           <strong>本轮没有完成。</strong>
+          <div
+            v-if="message.content.trim() !== ''"
+            class="ai-message__body ai-message__partial-body"
+            v-html="renderedContent"
+          />
           <p>{{ message.error || '请求失败，未生成完整回答。' }}</p>
         </div>
       </template>
+
       <template v-else>
         <div class="ai-message__body" v-html="renderedContent" />
         <AiSourceList :sources="message.sources" @open-entry="emit('openEntry', $event)" />
@@ -137,11 +190,33 @@ const canSave = computed(() =>
   white-space: pre-wrap;
 }
 
+.ai-message__phase {
+  margin: 0 0 0.55rem;
+  color: var(--text-muted);
+  font-size: 0.76rem;
+}
+
+.ai-message__rounds {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.ai-message__round--tool {
+  padding-left: 0.65rem;
+  border-left: 2px solid var(--border-subtle);
+  color: var(--text-muted);
+}
+
 .ai-message__body {
   color: var(--text-primary);
   font-size: 0.92rem;
   line-height: 1.8;
   overflow-wrap: anywhere;
+}
+
+.ai-message__partial-body {
+  margin-top: 0.45rem;
+  color: var(--text-muted);
 }
 
 .ai-message__body :deep(h2),
@@ -210,6 +285,17 @@ const canSave = computed(() =>
   animation-delay: 0.28s;
 }
 
+.ai-message__cursor {
+  display: inline-block;
+  width: 0.45rem;
+  height: 1rem;
+  margin-left: 0.15rem;
+  border-radius: 1px;
+  background: var(--accent);
+  animation: ai-cursor 1s steps(2, start) infinite;
+  vertical-align: text-bottom;
+}
+
 .ai-message__failure {
   color: var(--danger);
 }
@@ -254,6 +340,18 @@ const canSave = computed(() =>
   50% {
     opacity: 1;
     transform: translateY(-0.12rem);
+  }
+}
+
+@keyframes ai-cursor {
+  0%,
+  49% {
+    opacity: 1;
+  }
+
+  50%,
+  100% {
+    opacity: 0;
   }
 }
 </style>

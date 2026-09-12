@@ -218,11 +218,11 @@ export class JournalKnowledgeRepository {
     return this.getMessage(id);
   }
 
-  failMessage(id: number, error: string): void {
+  failMessage(id: number, error: string, content: string): void {
     const now = new Date().toISOString();
     this.database.prepare(
-      'UPDATE journal_ai_messages SET status = \'failed\', error = ?, updated_at = ? WHERE id = ? AND role = \'assistant\'',
-    ).run(error, now, id);
+      'UPDATE journal_ai_messages SET content = ?, status = \'failed\', error = ?, updated_at = ? WHERE id = ? AND role = \'assistant\'',
+    ).run(content, error, now, id);
   }
 
   getMessage(id: number): JournalAiMessage | null {
