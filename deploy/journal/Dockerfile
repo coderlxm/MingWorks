@@ -45,6 +45,7 @@ RUN chown node:node /app
 COPY --from=dependencies --chown=node:node /app/node_modules ./node_modules
 COPY --from=dependencies --chown=node:node /app/package.json ./package.json
 COPY --from=web-builder --chown=node:node /app/web/dist ./web/dist
+COPY --chown=node:node src/ai/models.ts ./src/ai/models.ts
 COPY --chown=node:node src/journal-server ./src/journal-server
 COPY --chown=node:node src/shared ./src/shared
 COPY --chown=node:node src/fetchers/qweatherCurrent.ts ./src/fetchers/qweatherCurrent.ts
