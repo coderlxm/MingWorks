@@ -113,6 +113,8 @@ export const DEEPSEEK_TASK_MODELS = {
 - Journal server 的标签建议和主题建议继续共用原有服务与 client 配置。
 - 不新增环境变量，不改数据库，不改提示词，不改变部署结构。
 
+补充：Journal 镜像本身已经通过 `deploy/journal/Dockerfile` 单独复制 `src/ai/models.ts`；同时在 GitHub Actions 的 Journal 变更范围中加入该文件，确保仅调整共享模型映射时也能触发对应发布流程。
+
 ## 6. 外部依据与注意事项
 
 DeepSeek 官方模型与计费文档当前列出 `deepseek-v4-pro`，并标明 OpenAI 兼容接口和 JSON Output 可用；这与项目当前使用的 Chat Completions 调用方式相容。正式实施时仍按官方当前文档确认模型名和请求能力，以用户指定的 `deepseek-v4-pro` 为目标值。

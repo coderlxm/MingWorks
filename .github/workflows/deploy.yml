@@ -51,6 +51,7 @@ jobs:
         with:
           filters: |
             journal:
+              - 'src/ai/models.ts'
               - 'src/journal-server/**'
               - 'src/shared/**'
               - 'web/**'
