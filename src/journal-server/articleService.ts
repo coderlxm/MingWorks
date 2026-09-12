@@ -57,6 +57,22 @@ export class JournalArticleService {
     });
   }
 
+  createArticleFromAiMessage(
+    messageId: number,
+    input: Omit<JournalArticleCreateRequest, 'aiGenerated'>,
+  ): JournalEntry {
+    const richBodyJson = this.serializeRichBody(input.richBody, { allowImages: false });
+    const contentText = extractContentText(input.richBody);
+    this.assertBodyIsNotEmpty(contentText, []);
+    return this.repository.createArticleFromAiMessage(messageId, {
+      title: input.title,
+      richBodyJson,
+      tags: input.tags,
+      contentText,
+      aiGenerated: true,
+    });
+  }
+
   async updateArticle(id: number, rawInput: unknown): Promise<JournalEntry> {
     const input = journalArticleUpdateRequestSchema.parse(rawInput) as JournalArticleUpdateRequest;
     const existing = this.repository.getArticleForEditing(id);

@@ -11,3 +11,5 @@ export * from './api/resume';
 export * from './api/contributions';
 export * from './api/articles';
 export * from './api/guestbook';
+
+export * from './api/ai';

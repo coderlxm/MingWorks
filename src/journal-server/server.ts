@@ -27,6 +27,8 @@ import { JournalGuestbookNotificationService } from './guestbookNotification.js'
 import { JournalIngestService } from './ingest.js';
 import { JournalCommentNotificationService } from './interactionNotification.js';
 import { JournalInteractionService } from './interactionService.js';
+import { JournalKnowledgeAgentService } from './knowledgeAgentService.js';
+import { JournalKnowledgeRepository } from './knowledgeRepository.js';
 import { JournalPhotoDriveClient } from './photoDriveClient.js';
 import { JournalPhotoLibraryService } from './photoLibraryService.js';
 import {
@@ -46,6 +48,7 @@ import { registerGameRoutes } from './routes/games.js';
 import { registerGuestbookRoutes } from './routes/guestbook.js';
 import { registerInternalRoutes } from './routes/internal.js';
 import { registerInteractionRoutes } from './routes/interactions.js';
+import { registerKnowledgeRoutes } from './routes/knowledge.js';
 import { registerMediaRoutes } from './routes/media.js';
 import { registerPhotoRoutes } from './routes/photos.js';
 import { registerPrivateContributionRoutes } from './routes/privateContributions.js';
@@ -103,6 +106,13 @@ export async function createJournalServer(config: JournalServerConfig): Promise<
   const videoPreviews = new JournalVideoPreviewService();
   const videoNormalization = new JournalVideoNormalizationService(storage, videoPreviews);
   const articleService = new JournalArticleService(repository, storage, previews);
+  const knowledgeRepository = new JournalKnowledgeRepository(database);
+  const knowledgeAgentService = new JournalKnowledgeAgentService(
+    knowledgeRepository,
+    articleService,
+    config.publicBaseUrl,
+    config.deepseekApiKey,
+  );
   const webEntryService = new JournalWebEntryService(repository, storage);
   const gameService = new GameService(gameRepository, storage);
   const webEntryUploads = new JournalWebEntryUploadService(
@@ -223,6 +233,7 @@ export async function createJournalServer(config: JournalServerConfig): Promise<
   await registerTopicSuggestionRoutes(server, auth, aiSuggestions);
   webEntryUploads.registerRoutes(server);
   await registerArticleRoutes(server, auth, articleService);
+  await registerKnowledgeRoutes(server, auth, knowledgeAgentService);
   await registerMediaRoutes(server, auth, repository, config.dataDir);
   await registerPhotoRoutes(server, photoLibrary);
   await registerPrivateContributionRoutes(server, {

@@ -18,6 +18,7 @@ export type AppRoute =
   | { name: 'photo-album'; key: string; albumId: string }
   | { name: 'games'; key: string }
   | { name: 'guestbook'; key: 'guestbook' }
+  | { name: 'ai'; key: 'ai' }
   | { name: 'detail'; key: string; publicId: string }
   | { name: 'private'; key: string; entryId: number | null; assetView: AssetView; page: number }
   | { name: 'entry-new'; key: string }

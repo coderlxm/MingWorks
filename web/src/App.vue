@@ -38,7 +38,7 @@ const { ownerAuthenticated, authenticationChecked } = storeToRefs(session);
 const { profile, loadError: profileLoadError } = storeToRefs(siteProfile);
 
 const defaultAssetView = computed<AssetView>(() => isMobile.value ? 'waterfall' : 'table');
-const { route, publicShellActive, isPrivateRoute, isAssetRoute } = useAppRoute(
+const { route, publicShellActive, isPrivateRoute, isAssetRoute, isAiRoute } = useAppRoute(
   currentRoute,
   defaultAssetView,
 );
@@ -154,6 +154,10 @@ function openPhotos(): void {
   navigate('/photos');
 }
 
+function openAi(): void {
+  navigate('/ai');
+}
+
 function openGames(): void {
   navigate('/games');
 }
@@ -185,7 +189,7 @@ onUnmounted(() => {
       v-if="!immersiveActive"
       :profile="profile"
       :profile-load-error="profileLoadError"
-      :public-mode="publicShellActive"
+      :public-mode="publicShellActive && route.name !== 'ai'"
       :show-navigation="showProfileNavigation"
       :public-nav-active="publicNavActive"
       :private-context="isPrivateRoute"
@@ -211,11 +215,13 @@ onUnmounted(() => {
         :games-active="gamesActive"
         :guestbook-active="guestbookActive"
         :immersive="immersiveActive"
+        :ai-active="isAiRoute"
         @select="changePublicChannel"
         @select-about="openAbout"
         @select-photos="openPhotos"
         @select-games="openGames"
         @select-guestbook="openGuestbook"
+        @select-ai="openAi"
       />
 
       <AppRouteViewport

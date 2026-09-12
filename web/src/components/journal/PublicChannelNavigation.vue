@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onClickOutside, useMediaQuery } from '@vueuse/core';
-import { computed, onUnmounted, shallowRef, useTemplateRef } from 'vue';
+import { computed, shallowRef, useTemplateRef } from 'vue';
 import { useNavIconStyle } from '../../composables/useNavIconStyle';
 import type { JournalChannel } from '../../types';
 import AboutNavigationIcon from '../about/AboutNavigationIcon.vue';
@@ -48,8 +48,6 @@ const desktopNavigation = useMediaQuery('(min-width: 800px)');
 const immersiveDrawer = computed(() => props.immersive && desktopNavigation.value);
 const drawerOpen = shallowRef(false);
 const moreOpen = shallowRef(false);
-const aiNoticeVisible = shallowRef(false);
-let toastTimer: ReturnType<typeof setTimeout> | null = null;
 
 const isMoreActive = computed(() =>
   props.photosActive || props.gamesActive || props.guestbookActive || props.aboutActive || props.aiActive,
@@ -123,12 +121,6 @@ function selectAi(): void {
   closeDrawer();
   closeMore();
   emit('selectAi');
-  aiNoticeVisible.value = true;
-  if (toastTimer) clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => {
-    aiNoticeVisible.value = false;
-    toastTimer = null;
-  }, 2200);
 }
 
 function selectAbout(): void {
@@ -137,9 +129,6 @@ function selectAbout(): void {
   emit('selectAbout');
 }
 
-onUnmounted(() => {
-  if (toastTimer) clearTimeout(toastTimer);
-});
 
 onClickOutside(sidebar, () => {
   closeDrawer();
@@ -436,20 +425,6 @@ onClickOutside(sidebar, () => {
       </Transition>
     </Teleport>
 
-    <!-- AI 开发中提示 Toast -->
-    <Teleport to="body">
-      <Transition name="ai-toast">
-        <div
-          v-if="aiNoticeVisible"
-          class="ai-toast-banner"
-          role="status"
-          aria-live="polite"
-        >
-          <AINavigationIcon class="ai-toast-banner__icon" />
-          <span>开发中，敬请期待</span>
-        </div>
-      </Transition>
-    </Teleport>
   </aside>
 </template>
 

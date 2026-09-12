@@ -365,3 +365,53 @@ export function parseTagsInput(value: string): string[] {
       .filter((tag) => tag.length > 0 && tag.length <= 32),
   )].slice(0, 20);
 }
+
+export type AiMessageRole = 'user' | 'assistant';
+export type AiMessageStatus = 'pending' | 'completed' | 'failed';
+
+export interface AiSource {
+  entryId: number;
+  publicId: string;
+  title: string | null;
+  sourceCreatedAt: string;
+  updatedAt: string;
+  excerpt: string;
+  readComplete: boolean;
+  deleted: boolean;
+}
+
+export interface AiMessage {
+  id: number;
+  sessionId: number;
+  position: number;
+  role: AiMessageRole;
+  content: string;
+  sources: AiSource[];
+  status: AiMessageStatus;
+  error: string | null;
+  articleId: number | null;
+  articleTitle: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AiSessionSummary {
+  id: number;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AiSessionDetail {
+  session: AiSessionSummary;
+  messages: AiMessage[];
+}
+
+export interface AiSendMessageResponse {
+  userMessage: AiMessage;
+  assistantMessage: AiMessage;
+}
+
+export interface AiSaveArticleResponse {
+  article: JournalEntry;
+}

@@ -592,10 +592,31 @@ export class JournalRepository {
   }
 
   createArticle(input: CreateArticleInput): JournalEntry {
+    const insert = this.database.transaction(() => this.insertArticle(input));
+    return this.getById(insert());
+  }
+
+  createArticleFromAiMessage(
+    messageId: number,
+    input: CreateArticleInput,
+  ): JournalEntry {
+    const insert = this.database.transaction(() => {
+      const entryId = this.insertArticle(input);
+      const result = this.database.prepare(
+        'UPDATE journal_ai_messages SET article_id = ?, updated_at = ? WHERE id = ? AND article_id IS NULL',
+      ).run(entryId, new Date().toISOString(), messageId);
+      if (result.changes === 0) {
+        throw new Error(`AI message ${messageId} was not found.`);
+      }
+      return entryId;
+    });
+    return this.getById(insert());
+  }
+
+  private insertArticle(input: CreateArticleInput): number {
     const publicId = randomUUID();
     const now = new Date().toISOString();
-    const insert = this.database.transaction(() => {
-      const result = this.database.prepare(`
+    const result = this.database.prepare(`
         INSERT INTO journal_entries (
           public_id, source_kind, chat_id, source_message_id, media_group_id, content_type,
           title, body_format, rich_body_json, content_text,
@@ -613,10 +634,7 @@ export class JournalRepository {
         now,
         now,
       );
-      return Number(result.lastInsertRowid);
-    });
-    const entryId = insert();
-    return this.getById(entryId);
+    return Number(result.lastInsertRowid);
   }
 
   createWebEntry(input: CreateWebEntryInput): JournalEntry {

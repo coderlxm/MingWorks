@@ -98,6 +98,10 @@ export function parseAppRoute(
   if (route.name === 'guestbook') {
     return { name: 'guestbook', key: 'guestbook' };
   }
+  if (route.name === 'ai') {
+    return { name: 'ai', key: 'ai' };
+  }
+
   if (route.name === 'photo-album') {
     const albumId = String(route.params.albumId);
     if (!PHOTO_ALBUM_ID_PATTERN.test(albumId)) {

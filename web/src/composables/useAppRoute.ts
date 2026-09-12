@@ -23,8 +23,10 @@ export function useAppRoute(
     || route.value.name === 'settings',
   );
 
+  const isAiRoute = computed(() => route.value.name === 'ai');
+
   const isPrivateRoute = computed(() =>
-    isAssetRoute.value || isContributionRoute.value,
+    isAssetRoute.value || isContributionRoute.value || isAiRoute.value,
   );
 
   const publicShellActive = computed(() =>
@@ -38,13 +40,15 @@ export function useAppRoute(
     || route.value.name === 'photo-album'
     || route.value.name === 'games'
     || route.value.name === 'guestbook'
-    || route.value.name === 'detail',
+    || route.value.name === 'detail'
+    || route.value.name === 'ai',
   );
 
   return {
     route,
     isContributionRoute,
     isAssetRoute,
+    isAiRoute,
     isPrivateRoute,
     publicShellActive,
   };

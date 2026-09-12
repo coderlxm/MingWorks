@@ -1404,7 +1404,44 @@ const migrations: JournalMigration[] = [
       `);
     },
   },
+  {
+    version: 23,
+    up(database) {
+      database.exec(`
+        CREATE TABLE journal_ai_sessions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          title TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+
+        CREATE INDEX idx_journal_ai_sessions_updated
+        ON journal_ai_sessions(updated_at DESC, id DESC);
+
+        CREATE TABLE journal_ai_messages (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          session_id INTEGER NOT NULL,
+          position INTEGER NOT NULL,
+          role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+          content TEXT NOT NULL DEFAULT '',
+          status TEXT NOT NULL CHECK (status IN ('pending', 'completed', 'failed')),
+          error TEXT,
+          sources_json TEXT NOT NULL DEFAULT '[]',
+          article_id INTEGER,
+          article_title TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          UNIQUE(session_id, position),
+          FOREIGN KEY(session_id) REFERENCES journal_ai_sessions(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX idx_journal_ai_messages_session
+        ON journal_ai_messages(session_id, position);
+      `);
+    },
+  },
 ];
+
 
 export function runJournalMigrations(database: Database.Database): void {
   const currentVersion = database.pragma('user_version', { simple: true }) as number;

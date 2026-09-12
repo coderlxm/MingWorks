@@ -838,3 +838,76 @@ export const journalContributionErrorCodeSchema = z.enum([
 export type JournalContributionErrorCode = z.infer<
   typeof journalContributionErrorCodeSchema
 >;
+
+export const journalAiMessageRoleSchema = z.enum(['user', 'assistant']);
+export type JournalAiMessageRole = z.infer<typeof journalAiMessageRoleSchema>;
+
+export const journalAiMessageStatusSchema = z.enum(['pending', 'completed', 'failed']);
+export type JournalAiMessageStatus = z.infer<typeof journalAiMessageStatusSchema>;
+
+export const journalAiSourceSchema = z.object({
+  entryId: z.number().int().positive(),
+  publicId: z.string().uuid(),
+  title: z.string().nullable(),
+  sourceCreatedAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+  excerpt: z.string(),
+  readComplete: z.boolean(),
+  deleted: z.boolean().default(false),
+}).strict();
+export type JournalAiSource = z.infer<typeof journalAiSourceSchema>;
+
+export const journalAiSessionSummarySchema = z.object({
+  id: z.number().int().positive(),
+  title: z.string(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+}).strict();
+export type JournalAiSessionSummary = z.infer<typeof journalAiSessionSummarySchema>;
+
+export const journalAiMessageSchema = z.object({
+  id: z.number().int().positive(),
+  sessionId: z.number().int().positive(),
+  position: z.number().int().positive(),
+  role: journalAiMessageRoleSchema,
+  content: z.string(),
+  sources: z.array(journalAiSourceSchema),
+  status: journalAiMessageStatusSchema,
+  error: z.string().nullable(),
+  articleId: z.number().int().positive().nullable(),
+  articleTitle: z.string().nullable(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+}).strict();
+export type JournalAiMessage = z.infer<typeof journalAiMessageSchema>;
+
+export const journalAiSessionDetailSchema = z.object({
+  session: journalAiSessionSummarySchema,
+  messages: z.array(journalAiMessageSchema),
+}).strict();
+export type JournalAiSessionDetail = z.infer<typeof journalAiSessionDetailSchema>;
+
+export const journalAiSendMessageRequestSchema = z.object({
+  content: z.string().trim().min(1).refine(
+    (value) => [...value].length <= 2000,
+    { message: 'AI message must not exceed 2,000 Unicode characters.' },
+  ),
+}).strict();
+export type JournalAiSendMessageRequest = z.infer<
+  typeof journalAiSendMessageRequestSchema
+>;
+
+export const journalAiSendMessageResponseSchema = z.object({
+  userMessage: journalAiMessageSchema,
+  assistantMessage: journalAiMessageSchema,
+}).strict();
+export type JournalAiSendMessageResponse = z.infer<
+  typeof journalAiSendMessageResponseSchema
+>;
+
+export const journalAiSaveArticleResponseSchema = z.object({
+  article: journalEntrySchema,
+}).strict();
+export type JournalAiSaveArticleResponse = z.infer<
+  typeof journalAiSaveArticleResponseSchema
+>;

@@ -58,6 +58,11 @@ export const router = createRouter({
       component: () => import('./components/games/GameLibraryView.vue'),
     },
     {
+      path: '/ai',
+      name: 'ai',
+      component: () => import('./components/ai/AiView.vue'),
+    },
+    {
       path: '/guestbook',
       name: 'guestbook',
       component: () => import('./components/guestbook/GuestbookView.vue'),
@@ -116,6 +121,7 @@ const routeTitles = new Map([
   ['photos', '照片墙 · 小明同学'],
   ['photo-album', '照片墙 · 小明同学'],
   ['games', '游戏墙 · 小明同学'],
+  ['ai', 'AI · 小明同学'],
   ['guestbook', '留言板 · 小明同学'],
 ]);
 
