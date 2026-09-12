@@ -1,5 +1,6 @@
 import { config } from '../config/index.js';
-import { getDeepSeekClient, DEEPSEEK_MODEL } from './client.js';
+import { getDeepSeekClient } from './client.js';
+import { DEEPSEEK_TASK_MODELS } from './models.js';
 import type { GameNews } from '../fetchers/games.js';
 import type { EnglishContent } from '../fetchers/english.js';
 import type { V2exTopic } from '../fetchers/v2ex.js';
@@ -34,7 +35,7 @@ ${newsList.map((n, i) => `[${i}] ${n.title}`).join('\n')}
   try {
     const completion = await openai.chat.completions.create({
       messages: [{ role: 'user', content: prompt }],
-      model: DEEPSEEK_MODEL,
+      model: DEEPSEEK_TASK_MODELS.writing,
     });
 
     const aiContent = completion.choices[0].message.content || '';
@@ -84,7 +85,7 @@ ${repos.map((n, i) => `${i + 1}. ${n.title}: ${n.description}`).join('\n')}
   try {
     const completion = await openai.chat.completions.create({
       messages: [{ role: 'user', content: prompt }],
-      model: DEEPSEEK_MODEL,
+      model: DEEPSEEK_TASK_MODELS.writing,
     });
 
     return completion.choices[0].message.content || 'AI 总结失败。';
@@ -106,7 +107,7 @@ export async function generateLifeTipWithAI(): Promise<string> {
   try {
     const completion = await openai.chat.completions.create({
       messages: [{ role: 'user', content: prompt }],
-      model: DEEPSEEK_MODEL,
+      model: DEEPSEEK_TASK_MODELS.writing,
     });
 
     return completion.choices[0].message.content || '生活小贴士：好梦！';
@@ -156,7 +157,7 @@ Task:
   try {
     const completion = await openai.chat.completions.create({
       messages: [{ role: 'user', content: prompt }],
-      model: DEEPSEEK_MODEL,
+      model: DEEPSEEK_TASK_MODELS.writing,
     });
 
     return completion.choices[0].message.content || '老师今天累了，请明天再来。';
@@ -206,7 +207,7 @@ export async function generateEnglishFallbackWithAI(): Promise<string> {
   try {
     const completion = await openai.chat.completions.create({
       messages: [{ role: 'user', content: prompt }],
-      model: DEEPSEEK_MODEL,
+      model: DEEPSEEK_TASK_MODELS.writing,
     });
 
     return completion.choices[0].message.content || '今日英语替补内容生成失败。';
@@ -276,7 +277,7 @@ Task:
   try {
     const completion = await openai.chat.completions.create({
       messages: [{ role: 'user', content: prompt }],
-      model: DEEPSEEK_MODEL,
+      model: DEEPSEEK_TASK_MODELS.writing,
     });
 
     return completion.choices[0].message.content || 'AI 总结失败。';
@@ -334,7 +335,7 @@ Task:
   try {
     const completion = await openai.chat.completions.create({
       messages: [{ role: 'user', content: prompt }],
-      model: DEEPSEEK_MODEL,
+      model: DEEPSEEK_TASK_MODELS.writing,
     });
 
     return completion.choices[0].message.content || '教练正在忙，请稍后刷新。';

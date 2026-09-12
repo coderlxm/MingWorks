@@ -12,5 +12,3 @@ export function getDeepSeekClient(): OpenAI {
   }
   return client;
 }
-
-export const DEEPSEEK_MODEL = 'deepseek-v4-flash';

@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import Parser from 'rss-parser';
 import type { Telegraf } from 'telegraf';
+import { DEEPSEEK_TASK_MODELS } from '../ai/models.js';
 import { createBot } from '../bot/createBot.js';
 import { config } from '../config/index.js';
 import { formatAvLabelSummaryMessage, formatAvUpdateMessage } from '../formatters/avFormatter.js';
@@ -127,7 +128,7 @@ async function translateAvTitle(title: string): Promise<string | null> {
   try {
     const completion = await openai.chat.completions.create({
       messages: [{ role: 'user', content: prompt }],
-      model: 'deepseek-v4-flash',
+      model: DEEPSEEK_TASK_MODELS.writing,
     });
     const output = completion.choices[0]?.message?.content?.trim();
     return output || null;
@@ -163,7 +164,7 @@ async function translateLabelTitlesBatch(titles: string[]): Promise<string[]> {
 
   const completion = await openai.chat.completions.create({
     messages: [{ role: 'user', content: prompt }],
-    model: 'deepseek-v4-flash',
+    model: DEEPSEEK_TASK_MODELS.writing,
     response_format: { type: 'json_object' },
   });
   const output = completion.choices[0]?.message?.content?.trim();

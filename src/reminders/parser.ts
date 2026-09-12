@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import { z } from 'zod';
+import { DEEPSEEK_TASK_MODELS } from '../ai/models.js';
 import { config } from '../config/index.js';
 import { bjFormat } from '../utils/time.js';
 import type { RecurrenceSpec } from './recurring.js';
@@ -268,7 +269,7 @@ target 枚举：once（一次性）、recurring（循环）、any（两者都查
   try {
     const completion = await openai.chat.completions.create({
       messages: [{ role: 'user', content: prompt }],
-      model: 'deepseek-v4-flash',
+      model: DEEPSEEK_TASK_MODELS.structured,
       response_format: { type: 'json_object' },
     });
 

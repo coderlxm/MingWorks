@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { config } from '../config/index.js';
-import { getDeepSeekClient, DEEPSEEK_MODEL } from '../ai/client.js';
+import { getDeepSeekClient } from '../ai/client.js';
+import { DEEPSEEK_TASK_MODELS } from '../ai/models.js';
 import { bj, bjFormat } from '../utils/time.js';
 
 export interface ParsedMasturbationInput {
@@ -92,7 +93,7 @@ export async function parseMasturbationInput(
   try {
     const completion = await openai.chat.completions.create({
       messages: [{ role: 'user', content: prompt }],
-      model: DEEPSEEK_MODEL,
+      model: DEEPSEEK_TASK_MODELS.structured,
       response_format: { type: 'json_object' },
     });
 

@@ -1,5 +1,6 @@
 import * as cheerio from 'cheerio';
 import OpenAI from 'openai';
+import { DEEPSEEK_TASK_MODELS } from '../ai/models.js';
 import { config } from '../config/index.js';
 
 export interface Magnet {
@@ -182,7 +183,7 @@ export async function aiPickBestMagnet(magnets: Magnet[]): Promise<string | null
   try {
     const completion = await openai.chat.completions.create({
       messages: [{ role: 'user', content: prompt }],
-      model: 'deepseek-v4-flash',
+      model: DEEPSEEK_TASK_MODELS.structured,
     });
     return completion.choices[0]?.message?.content?.trim() || null;
   } catch (error) {
@@ -211,7 +212,7 @@ export async function enhanceGenresWithAI(genres: string[]): Promise<string | nu
   try {
     const completion = await openai.chat.completions.create({
       messages: [{ role: 'user', content: prompt }],
-      model: 'deepseek-v4-flash',
+      model: DEEPSEEK_TASK_MODELS.writing,
     });
     return completion.choices[0]?.message?.content?.trim() || null;
   } catch (error) {

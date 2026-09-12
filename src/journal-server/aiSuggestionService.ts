@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import { z } from 'zod';
+import { DEEPSEEK_TASK_MODELS } from '../ai/models.js';
 import {
   journalTagSuggestionModelResponseSchema,
   journalTagSuggestionResponseSchema,
@@ -13,7 +14,6 @@ import { extractJournalTags } from './repository.js';
 import { extractContentText } from './richText.js';
 
 const deepSeekBaseUrl = 'https://api.deepseek.com';
-const deepSeekModel = 'deepseek-v4-flash';
 const articleContentSchema = z.string().trim().min(1, {
   message: 'Article tag suggestions require text content.',
 });
@@ -106,7 +106,7 @@ export class JournalAiSuggestionService {
     emptyResponseMessage: string,
   ): Promise<string> {
     const request: DeepSeekCompletionRequest = {
-      model: deepSeekModel,
+      model: DEEPSEEK_TASK_MODELS.writing,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
