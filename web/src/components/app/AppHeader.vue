@@ -1,8 +1,10 @@
-<script setup lang="ts">
+<script setup lang="ts" name="AppHeader">
 import { computed, onMounted, onUnmounted, shallowRef, useTemplateRef, watch } from 'vue';
-import type { SiteProfile } from '../../types';
+import type { JournalEntry, SiteProfile } from '../../types';
 import { showMessage } from '../../utils/message';
+import { useProfileStories } from '../../composables/useProfileStories';
 import PublicSearchBar from '../discovery/PublicSearchBar.vue';
+import ProfileStoryViewer from '../story/ProfileStoryViewer.vue';
 import ThemeModeControl from '../ui/ThemeModeControl.vue';
 
 const props = defineProps<{
@@ -59,12 +61,35 @@ watch(() => props.profileLoadError, (error) => {
     : null;
 }, { immediate: true });
 
+const {
+  stories,
+  isViewerOpen,
+  hasUnviewed,
+  loadStories,
+  openStories,
+  closeStories,
+  markAllViewed,
+} = useProfileStories();
+
+function handleAvatarClick(): void {
+  if (stories.value.length > 0) {
+    openStories();
+  } else {
+    emit('navigate', '/');
+  }
+}
+
+function handleSelectStory(entry: JournalEntry): void {
+  emit('navigate', `/p/${encodeURIComponent(entry.publicId)}`);
+}
+
 onMounted(() => {
   profileBioResizeObserver = new ResizeObserver(measureProfileBio);
   if (profileBio.value) {
     profileBioResizeObserver.observe(profileBio.value);
     measureProfileBio();
   }
+  void loadStories();
 });
 
 onUnmounted(() => {
@@ -77,14 +102,27 @@ onUnmounted(() => {
   <div class="profile-bar">
     <header class="profile" :class="{ 'profile--public': publicMode }">
       <div class="profile__identity">
-        <button class="profile__home" type="button" aria-label="返回公开首页" @click="emit('navigate', '/')">
-          <img v-if="profile" class="profile__avatar" :src="profile.avatarUrl" alt="小明同学">
-          <span
-            v-else
-            class="profile__avatar-placeholder"
-            :class="{ 'profile__avatar-placeholder--error': profileLoadError }"
-            aria-hidden="true"
-          />
+        <button
+          class="profile__home"
+          :class="{
+            'profile__home--has-stories': stories.length > 0,
+            'profile__home--unviewed': hasUnviewed,
+            'profile__home--viewed': stories.length > 0 && !hasUnviewed,
+          }"
+          type="button"
+          :aria-label="stories.length > 0 ? '查看近期动态' : '返回公开首页'"
+          :title="stories.length > 0 ? '近期动态' : '返回首页'"
+          @click="handleAvatarClick"
+        >
+          <div class="profile__avatar-ring">
+            <img v-if="profile" class="profile__avatar" :src="profile.avatarUrl" alt="小明同学">
+            <span
+              v-else
+              class="profile__avatar-placeholder"
+              :class="{ 'profile__avatar-placeholder--error': profileLoadError }"
+              aria-hidden="true"
+            />
+          </div>
         </button>
         <div class="profile__copy">
           <button class="profile__name" type="button" @click="emit('navigate', '/')">小明同学</button>
@@ -134,6 +172,15 @@ onUnmounted(() => {
         <ThemeModeControl />
       </div>
     </header>
+
+    <ProfileStoryViewer
+      v-if="isViewerOpen"
+      :stories="stories"
+      :profile="profile"
+      @close="closeStories"
+      @select-entry="handleSelectStory"
+      @finished="markAllViewed"
+    />
   </div>
 </template>
 
@@ -177,6 +224,37 @@ onUnmounted(() => {
   flex: 0 0 auto;
   padding: 0;
   border-radius: 50%;
+  display: inline-flex;
+}
+
+.profile__avatar-ring {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  padding: 0;
+  transition: transform 0.22s var(--ease-card, ease-out), box-shadow 0.22s ease;
+}
+
+.profile__home--has-stories .profile__avatar-ring {
+  padding: 2.5px;
+}
+
+.profile__home--unviewed .profile__avatar-ring {
+  background: linear-gradient(135deg, #f58529 0%, #dd2a7b 50%, #8134af 100%);
+  box-shadow: 0 1px 6px rgba(221, 42, 123, 0.24);
+}
+
+.profile__home--viewed .profile__avatar-ring {
+  background: var(--border-strong);
+}
+
+.profile__home--has-stories:hover .profile__avatar-ring {
+  transform: scale(1.05);
+}
+
+.profile__home--unviewed:hover .profile__avatar-ring {
+  box-shadow: 0 3px 12px rgba(221, 42, 123, 0.38);
 }
 
 .profile__avatar,
@@ -186,6 +264,12 @@ onUnmounted(() => {
   height: 3rem;
   border-radius: 50%;
   box-shadow: 0 0 0 1px var(--border-strong);
+}
+
+.profile__home--has-stories .profile__avatar,
+.profile__home--has-stories .profile__avatar-placeholder {
+  border: 1.75px solid var(--surface-page);
+  box-shadow: none;
 }
 
 .profile__avatar {
