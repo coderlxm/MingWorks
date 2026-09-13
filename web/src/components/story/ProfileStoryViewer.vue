@@ -317,7 +317,6 @@ onUnmounted(() => {
   justify-content: center;
   background: rgba(12, 12, 14, 0.88);
   backdrop-filter: blur(28px);
-  -webkit-backdrop-filter: blur(28px);
   user-select: none;
   animation: story-fade-in 0.22s ease-out;
 }
@@ -629,7 +628,6 @@ onUnmounted(() => {
   border-radius: 9999px;
   background: rgba(255, 255, 255, 0.16);
   backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
   border: 1px solid rgba(255, 255, 255, 0.26);
   color: #ffffff;
   font-size: 0.85rem;
@@ -656,7 +654,6 @@ onUnmounted(() => {
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.12);
   backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
   color: #ffffff;
   cursor: pointer;
   align-items: center;
