@@ -206,6 +206,10 @@ onUnmounted(() => {
               <div class="story-header__meta">
                 <span class="story-header__name">小明同学</span>
                 <span class="story-header__dot">·</span>
+                <span v-if="currentStory" class="story-header__badge">
+                  {{ currentStory.channel === 'interest' ? '兴趣' : '生活' }}
+                </span>
+                <span v-if="currentStory" class="story-header__dot">·</span>
                 <span v-if="currentStory" class="story-header__time">
                   {{ formatStoryTime(currentStory.sourceCreatedAt || currentStory.capturedAt) }}
                 </span>
@@ -260,7 +264,7 @@ onUnmounted(() => {
                   #{{ tag }}
                 </span>
                 <span v-if="!currentStory.tags.length" class="story-text-poster__tag">
-                  #生活随记
+                  #{{ currentStory.channel === 'interest' ? '兴趣探索' : '生活随记' }}
                 </span>
               </div>
               <h3 v-if="currentStory.title" class="story-text-poster__title">
@@ -406,6 +410,17 @@ onUnmounted(() => {
   font-size: 0.94rem;
   font-weight: 700;
   letter-spacing: 0.02em;
+}
+
+.story-header__badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
 }
 
 .story-header__dot {

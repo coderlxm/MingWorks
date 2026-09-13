@@ -33,8 +33,24 @@ export function useProfileStories() {
     loading.value = true;
     loadError.value = null;
     try {
-      const feed = await fetchPublicFeed({ channel: 'life' });
-      const publicEntries = feed.entries.filter(isPublicJournalEntry).slice(0, 6);
+      const [lifeFeed, interestFeed] = await Promise.all([
+        fetchPublicFeed({ channel: 'life' }),
+        fetchPublicFeed({ channel: 'interest' }),
+      ]);
+      const seen = new Set<number>();
+      const combined: JournalEntry[] = [];
+      for (const item of [...lifeFeed.entries, ...interestFeed.entries]) {
+        if (isPublicJournalEntry(item) && !seen.has(item.id)) {
+          seen.add(item.id);
+          combined.push(item);
+        }
+      }
+      combined.sort((a, b) => {
+        const timeA = new Date(a.sourceCreatedAt || a.capturedAt).getTime();
+        const timeB = new Date(b.sourceCreatedAt || b.capturedAt).getTime();
+        return timeB - timeA;
+      });
+      const publicEntries = combined.slice(0, 8);
       stories.value = publicEntries;
       checkUnviewed(publicEntries);
     }
