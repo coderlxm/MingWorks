@@ -4,6 +4,7 @@ export interface JournalServerConfig {
   telegramToken: string;
   allowedChatId: string;
   ingestToken: string;
+  articleToken: string;
   adminPassword: string;
   cookieSecret: string;
   publicBaseUrl: string;

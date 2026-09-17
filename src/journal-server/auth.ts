@@ -44,8 +44,20 @@ function protectedCookieName(publicId: string): string {
 export class JournalAuth {
   constructor(
     private readonly ingestToken: string,
+    private readonly articleToken: string,
     private readonly adminPassword: string,
   ) {}
+
+  requireArticleAutomation = async (request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply | void> => {
+    const authorization = request.headers.authorization;
+    const token = authorization?.startsWith('Bearer ')
+      ? authorization.slice('Bearer '.length)
+      : '';
+    if (secretsEqual(token, this.articleToken) === false) {
+      await reply.code(401).send({ error: 'Journal article automation authentication failed.' });
+      return reply;
+    }
+  };
 
   requireInternal = async (request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply | void> => {
     const authorization = request.headers.authorization;

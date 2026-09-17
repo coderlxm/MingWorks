@@ -2,9 +2,11 @@ import {
   journalArticleAssetResponseSchema,
   journalArticleCreateRequestSchema,
   journalArticleUpdateRequestSchema,
+  journalAutomationArticleRequestSchema,
   type JournalArticleAssetResponse,
   type JournalArticleCreateRequest,
   type JournalArticleUpdateRequest,
+  type JournalAutomationArticleRequest,
   type JournalEntry,
   type JournalRichDocument,
 } from '../shared/journalProtocol.js';
@@ -12,6 +14,11 @@ import {
   type CoverAssetRecord,
   JournalRepository,
 } from './repository.js';
+import {
+  assertAutomationArticleMarkdown,
+  JournalArticleInputError,
+  markdownToRichDocument,
+} from './articleMarkdown.js';
 import {
   type JournalImageDimensions,
   JournalImagePreviewService,
@@ -54,6 +61,24 @@ export class JournalArticleService {
       tags: input.tags,
       contentText,
       aiGenerated: input.aiGenerated,
+      visibility: 'private',
+    });
+  }
+
+  createArticleFromMarkdown(rawInput: unknown): JournalEntry {
+    const input = journalAutomationArticleRequestSchema.parse(rawInput) as JournalAutomationArticleRequest;
+    assertAutomationArticleMarkdown(input.markdown);
+    const richBody = markdownToRichDocument(input.markdown, { preserveCodeLanguage: true });
+    const richBodyJson = this.serializeRichBody(richBody, { allowImages: false });
+    const contentText = extractContentText(richBody);
+    this.assertBodyIsNotEmpty(contentText, []);
+    return this.repository.createArticle({
+      title: input.title,
+      richBodyJson,
+      tags: input.tags,
+      contentText,
+      aiGenerated: input.aiGenerated,
+      visibility: input.visibility,
     });
   }
 
@@ -70,6 +95,7 @@ export class JournalArticleService {
       tags: input.tags,
       contentText,
       aiGenerated: true,
+      visibility: 'private',
     });
   }
 
@@ -232,7 +258,7 @@ export class JournalArticleService {
     const normalized = normalizeRichDocument(document);
     const json = JSON.stringify(normalized);
     if (Buffer.byteLength(json, 'utf8') > maxRichBodyBytes) {
-      throw new Error('Article rich body exceeds the 512 KB limit.');
+      throw new JournalArticleInputError(413, 'Article rich body exceeds the 512 KB limit.');
     }
     assertRichDocument(normalized, options);
     return json;
@@ -240,7 +266,7 @@ export class JournalArticleService {
 
   private assertBodyIsNotEmpty(contentText: string, inlineAssetIds: number[]): void {
     if (contentText.trim() === '' && inlineAssetIds.length === 0) {
-      throw new Error('Article body must not be empty.');
+      throw new JournalArticleInputError(400, 'Article body must not be empty.');
     }
   }
 }

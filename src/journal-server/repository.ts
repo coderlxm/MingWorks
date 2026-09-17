@@ -98,6 +98,7 @@ export interface CreateArticleInput {
   tags: string[];
   contentText: string;
   aiGenerated: boolean;
+  visibility: 'private' | 'public';
 }
 
 export interface UpdateArticleInput {
@@ -622,12 +623,13 @@ export class JournalRepository {
           title, body_format, rich_body_json, content_text,
           channel, visibility, tags_json, structured_content_json, telegram_message_json,
           ai_generated, source_created_at, captured_at, updated_at
-        ) VALUES (?, 'web', NULL, NULL, NULL, 'article', ?, 'rich', ?, ?, 'article', 'private', ?, NULL, NULL, ?, ?, ?, ?)
+        ) VALUES (?, 'web', NULL, NULL, NULL, 'article', ?, 'rich', ?, ?, 'article', ?, ?, NULL, NULL, ?, ?, ?, ?)
       `).run(
         publicId,
         input.title,
         input.richBodyJson,
         input.contentText,
+        input.visibility,
         JSON.stringify(input.tags),
         input.aiGenerated ? 1 : 0,
         now,

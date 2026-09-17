@@ -1,23 +1,18 @@
 import OpenAI from 'openai';
 import { z } from 'zod';
-import { marked } from 'marked';
-import sanitizeHtml from 'sanitize-html';
-import { generateJSON } from '@tiptap/html/server';
 import { DEEPSEEK_TASK_MODELS } from '../ai/models.js';
-import { createJournalRichTextExtensions } from '../shared/journalRichText.js';
 import {
   type JournalAiMessage,
   type JournalAiSource,
   type JournalAiStreamEvent,
-  type JournalRichDocument,
 } from '../shared/journalProtocol.js';
+import { markdownToRichDocument } from './articleMarkdown.js';
 import type { JournalArticleService } from './articleService.js';
 import {
   type JournalAiExchange,
   type JournalKnowledgeRepository,
   type KnowledgeReadResult,
 } from './knowledgeRepository.js';
-import { assertRichDocument, normalizeRichDocument } from './richText.js';
 
 export class JournalKnowledgeError extends Error {
   constructor(
@@ -198,39 +193,6 @@ function isCovered(source: TrackedSource): boolean {
     if (coveredUntil >= source.totalLength) return true;
   }
   return coveredUntil >= source.totalLength;
-}
-
-function markdownToRichDocument(markdown: string): JournalRichDocument {
-  const html = sanitizeHtml(
-    marked.parse(markdown, { gfm: true, breaks: true, async: false }) as string,
-    {
-      allowedTags: [
-        'p', 'br', 'hr', 'h2', 'h3', 'strong', 'em', 's', 'code', 'pre',
-        'blockquote', 'ul', 'ol', 'li', 'a',
-      ],
-      allowedAttributes: {
-        a: ['href', 'rel', 'target'],
-      },
-      allowedSchemes: ['http', 'https', 'mailto'],
-      transformTags: {
-        h1: 'h2',
-        h4: 'h3',
-        h5: 'h3',
-        h6: 'h3',
-        a: sanitizeHtml.simpleTransform('a', {
-          rel: 'noopener noreferrer',
-          target: '_blank',
-        }),
-      },
-    },
-  );
-  const document = generateJSON(
-    html,
-    createJournalRichTextExtensions({ updateHeadingIds: false }),
-  ) as JournalRichDocument;
-  const normalized = normalizeRichDocument(document);
-  assertRichDocument(normalized, { allowImages: false });
-  return normalized;
 }
 
 export class JournalKnowledgeAgentService {

@@ -234,6 +234,37 @@ export type JournalAdminCommentDeletionResponse = z.infer<
 export const journalArticleTagsSchema = z.array(z.string().trim().min(1).max(32)).max(20);
 export type JournalArticleTags = z.infer<typeof journalArticleTagsSchema>;
 
+export const journalAutomationArticleVisibilitySchema = z.enum(['private', 'public']);
+export type JournalAutomationArticleVisibility = z.infer<
+  typeof journalAutomationArticleVisibilitySchema
+>;
+
+export const journalAutomationArticleRequestSchema = z.object({
+  title: z.string().trim().min(1).max(120),
+  markdown: z.string().refine(
+    (value) => value.trim().length > 0,
+    { message: 'Markdown body must not be empty.' },
+  ),
+  tags: journalArticleTagsSchema,
+  visibility: journalAutomationArticleVisibilitySchema.default('public'),
+  aiGenerated: z.boolean(),
+}).strict();
+export type JournalAutomationArticleRequest = z.infer<
+  typeof journalAutomationArticleRequestSchema
+>;
+
+export const journalAutomationArticleResponseSchema = z.object({
+  id: z.number().int().positive(),
+  publicId: z.uuid(),
+  title: z.string().min(1),
+  visibility: journalAutomationArticleVisibilitySchema,
+  editorUrl: z.url(),
+  readerUrl: z.url(),
+}).strict();
+export type JournalAutomationArticleResponse = z.infer<
+  typeof journalAutomationArticleResponseSchema
+>;
+
 export const journalArticleCreateRequestSchema = z.object({
   title: z.string().trim().min(1).max(120),
   richBody: journalRichDocumentSchema,

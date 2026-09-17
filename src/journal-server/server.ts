@@ -42,6 +42,7 @@ import {
 } from './resumePreview.js';
 import { JournalResumeService } from './resumeService.js';
 import { registerArticleRoutes } from './routes/articles.js';
+import { registerAutomationArticleRoutes } from './routes/automationArticles.js';
 import { registerContributionRoutes } from './routes/contributions.js';
 import { registerFeedRoutes } from './routes/feeds.js';
 import { registerGameRoutes } from './routes/games.js';
@@ -78,7 +79,7 @@ export async function createJournalServer(config: JournalServerConfig): Promise<
   const database = openJournalDatabase(config.dataDir);
   const repository = new JournalRepository(database);
   const gameRepository = new GameRepository(database);
-  const auth = new JournalAuth(config.ingestToken, config.adminPassword);
+  const auth = new JournalAuth(config.ingestToken, config.articleToken, config.adminPassword);
   const resumePreviews = new JournalResumePreviewService();
   const resumeService = new JournalResumeService(
     repository,
@@ -233,6 +234,7 @@ export async function createJournalServer(config: JournalServerConfig): Promise<
   await registerTopicSuggestionRoutes(server, auth, aiSuggestions);
   webEntryUploads.registerRoutes(server);
   await registerArticleRoutes(server, auth, articleService);
+  await registerAutomationArticleRoutes(server, auth, articleService, config.publicBaseUrl);
   await registerKnowledgeRoutes(server, auth, knowledgeAgentService);
   await registerMediaRoutes(server, auth, repository, config.dataDir);
   await registerPhotoRoutes(server, photoLibrary);
