@@ -5,5 +5,5 @@ export const DEEPSEEK_MODELS = {
 
 export const DEEPSEEK_TASK_MODELS = {
   structured: DEEPSEEK_MODELS.flash,
-  writing: DEEPSEEK_MODELS.pro,
+  writing: DEEPSEEK_MODELS.flash,
 } as const;
