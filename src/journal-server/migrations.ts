@@ -4,6 +4,7 @@ import { assertRichDocument, normalizeRichDocument } from './richText.js';
 
 interface JournalMigration {
   version: number;
+  disableForeignKeys?: boolean;
   up: (database: Database.Database) => void;
 }
 
@@ -1440,6 +1441,136 @@ const migrations: JournalMigration[] = [
       `);
     },
   },
+  {
+    version: 24,
+    disableForeignKeys: true,
+    up(database) {
+      const schemaObjects = database.prepare(`
+        SELECT sql FROM sqlite_schema
+        WHERE tbl_name = 'journal_entries'
+          AND type IN ('index', 'trigger') AND sql IS NOT NULL
+      `).all() as Array<{ sql: string }>;
+      const sequence = database.prepare(
+        "SELECT seq FROM sqlite_sequence WHERE name = 'journal_entries'",
+      ).get() as { seq: number } | undefined;
+
+      // Rebuild only the parent table, keeping asset/comment/reaction rows and IDs.
+      database.exec(`
+        CREATE TABLE journal_entries_v24 (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          public_id TEXT NOT NULL UNIQUE,
+          source_kind TEXT NOT NULL
+            CHECK (source_kind IN ('telegram', 'web')),
+          chat_id TEXT,
+          source_message_id INTEGER,
+          media_group_id TEXT,
+          content_type TEXT NOT NULL,
+          title TEXT,
+          body_format TEXT NOT NULL DEFAULT 'plain'
+            CHECK (body_format IN ('plain', 'rich')),
+          content_text TEXT NOT NULL DEFAULT '',
+          rich_body_json TEXT,
+          publication_status TEXT NOT NULL DEFAULT 'published'
+            CHECK (publication_status IN ('draft', 'published')),
+          channel TEXT NOT NULL DEFAULT 'life'
+            CHECK (channel IN ('life', 'article', 'interest')),
+          visibility TEXT NOT NULL
+            CHECK (visibility IN ('private', 'protected', 'public')),
+          access_password_hash TEXT,
+          access_revision INTEGER NOT NULL DEFAULT 0
+            CHECK (access_revision >= 0),
+          tags_json TEXT NOT NULL DEFAULT '[]',
+          structured_content_json TEXT,
+          telegram_message_json TEXT,
+          pinned INTEGER NOT NULL DEFAULT 0
+            CHECK (pinned IN (0, 1)),
+          source_created_at TEXT NOT NULL,
+          captured_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          ai_generated INTEGER NOT NULL DEFAULT 0
+            CHECK (ai_generated IN (0, 1)),
+          CHECK (
+            (source_kind = 'telegram'
+              AND chat_id IS NOT NULL
+              AND source_message_id IS NOT NULL
+              AND telegram_message_json IS NOT NULL
+              AND body_format = 'plain'
+              AND rich_body_json IS NULL)
+            OR
+            (source_kind = 'web'
+              AND chat_id IS NULL
+              AND source_message_id IS NULL
+              AND media_group_id IS NULL
+              AND telegram_message_json IS NULL
+              AND content_type = 'article'
+              AND body_format = 'rich'
+              AND title IS NOT NULL
+              AND rich_body_json IS NOT NULL)
+            OR
+            (source_kind = 'web'
+              AND chat_id IS NULL
+              AND source_message_id IS NULL
+              AND media_group_id IS NULL
+              AND telegram_message_json IS NULL
+              AND content_type IN ('text', 'photo', 'video')
+              AND body_format = 'plain'
+              AND (
+                title IS NULL
+                OR (title = trim(title) AND length(title) BETWEEN 1 AND 60)
+              )
+              AND rich_body_json IS NULL)
+          ),
+          CHECK (
+            publication_status = 'published'
+            OR (
+              publication_status = 'draft'
+              AND source_kind = 'web'
+              AND visibility = 'private'
+            )
+          ),
+          CHECK (
+            (visibility = 'protected'
+              AND access_password_hash IS NOT NULL
+              AND access_revision > 0)
+            OR
+            (visibility IN ('private', 'public')
+              AND access_password_hash IS NULL)
+          ),
+          UNIQUE(chat_id, source_message_id)
+        );
+
+        INSERT INTO journal_entries_v24 (
+          id, public_id, source_kind, chat_id, source_message_id, media_group_id,
+          content_type, title, body_format, content_text, rich_body_json,
+          publication_status, channel, visibility, access_password_hash,
+          access_revision, tags_json, structured_content_json, telegram_message_json,
+          pinned, source_created_at, captured_at, updated_at, ai_generated
+        )
+        SELECT
+          id, public_id, source_kind, chat_id, source_message_id, media_group_id,
+          content_type, title, body_format, content_text, rich_body_json,
+          publication_status, channel, visibility, access_password_hash,
+          access_revision, tags_json, structured_content_json, telegram_message_json,
+          pinned, source_created_at, captured_at, updated_at, ai_generated
+        FROM journal_entries;
+
+        DROP TABLE journal_entries;
+        ALTER TABLE journal_entries_v24 RENAME TO journal_entries;
+      `);
+
+      for (const object of schemaObjects) database.exec(object.sql);
+      if (sequence !== undefined) {
+        // Deleted article IDs must not be reused (AI messages can retain them).
+        database.prepare("DELETE FROM sqlite_sequence WHERE name = 'journal_entries'").run();
+        database.prepare('INSERT INTO sqlite_sequence (name, seq) VALUES (?, ?)')
+          .run('journal_entries', sequence.seq);
+      }
+      const foreignKeyViolations = database.pragma('foreign_key_check') as unknown[];
+      if (foreignKeyViolations.length > 0) {
+        throw new Error('Rich article draft migration would break existing foreign key relationships.');
+      }
+    },
+  },
 ];
 
 
@@ -1448,9 +1579,19 @@ export function runJournalMigrations(database: Database.Database): void {
 
   for (const migration of migrations) {
     if (migration.version <= currentVersion) continue;
-    database.transaction(() => {
-      migration.up(database);
-      database.pragma(`user_version = ${migration.version}`);
-    })();
+    const foreignKeys = migration.disableForeignKeys
+      ? database.pragma('foreign_keys', { simple: true }) as number
+      : undefined;
+    // SQLite ignores foreign_keys changes inside a transaction. Disabling it
+    // beforehand also prevents ON DELETE CASCADE during the parent-table rebuild.
+    if (migration.disableForeignKeys) database.pragma('foreign_keys = OFF');
+    try {
+      database.transaction(() => {
+        migration.up(database);
+        database.pragma(`user_version = ${migration.version}`);
+      })();
+    } finally {
+      if (foreignKeys !== undefined) database.pragma(`foreign_keys = ${foreignKeys}`);
+    }
   }
 }
