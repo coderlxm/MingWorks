@@ -2,7 +2,7 @@ import type { JournalRichDocument, JournalRichNode } from '../types';
 
 export interface ArticleHeading {
   id: string;
-  level: 2 | 3;
+  level: 1 | 2 | 3 | 4 | 5 | 6;
   text: string;
 }
 
@@ -18,7 +18,7 @@ export function extractArticleHeadings(document: JournalRichDocument | null): Ar
     const level = node.attrs?.level;
     const id = node.attrs?.anchorId;
     const text = nodeText(node).trim();
-    if ((level !== 2 && level !== 3) || typeof id !== 'string' || text === '') return [];
-    return [{ id, level, text }];
+    if (typeof level !== 'number' || level < 1 || level > 6 || typeof id !== 'string' || text === '') return [];
+    return [{ id, level: level as ArticleHeading['level'], text }];
   });
 }

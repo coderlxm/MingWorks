@@ -2,6 +2,8 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { JournalAuth } from '../auth.js';
 import { JournalArticleService } from '../articleService.js';
+import { markdownToRichDocument, richDocumentToMarkdown } from '../articleMarkdown.js';
+import { journalRichDocumentSchema } from '../../shared/journalProtocol.js';
 
 const idParamsSchema = z.object({
   id: z.coerce.number().int().positive(),
@@ -19,6 +21,22 @@ export async function registerArticleRoutes(
   auth: JournalAuth,
   articleService: JournalArticleService,
 ): Promise<void> {
+  server.get('/api/me/articles/drafts', { preHandler: auth.requireAdmin }, async () => ({ articles: articleService.listDrafts() }));
+  server.post('/api/me/articles/drafts', { preHandler: auth.requireAdmin }, async request => articleService.createDraft(request.body));
+  server.delete('/api/me/articles/drafts/:id', { preHandler: auth.requireAdmin }, async (request, reply) => {
+    await articleService.deleteDraft(idParamsSchema.parse(request.params).id);
+    return reply.code(204).send();
+  });
+  server.post('/api/me/articles/:id/complete', { preHandler: auth.requireAdmin }, async request =>
+    await articleService.updateArticle(idParamsSchema.parse(request.params).id, request.body, true));
+  server.post('/api/me/articles/content/import', { preHandler: auth.requireAdmin, bodyLimit: 1024 * 1024 }, async request => {
+    const { markdown, imageAliases } = z.object({ markdown: z.string(), imageAliases: z.record(z.string(), z.string()).optional() }).parse(request.body);
+    return { document: markdownToRichDocument(markdown, { imageAliases: new Map(Object.entries(imageAliases ?? {})) }) };
+  });
+  server.post('/api/me/articles/content/export', { preHandler: auth.requireAdmin, bodyLimit: 1024 * 1024 }, async request => {
+    const { document, mode } = z.object({ document: journalRichDocumentSchema, mode: z.enum(['faithful', 'gfm']) }).parse(request.body);
+    return { markdown: richDocumentToMarkdown(document, mode) };
+  });
   server.get('/api/me/articles/:id', {
     preHandler: auth.requireAdmin,
   }, async (request, reply) => {

@@ -5,6 +5,29 @@ import type {
 } from '../types';
 import { requestJson, requestWithoutResponse, jsonRequest } from './client';
 
+type ArticleInput = { title: string; richBody: JournalRichDocument; tags: string[]; aiGenerated: boolean };
+
+export function createArticleDraft(input: ArticleInput): Promise<JournalEntry> {
+  return requestJson('/api/me/articles/drafts', jsonRequest('POST', input));
+}
+export function fetchArticleDrafts(): Promise<{ articles: JournalEntry[] }> {
+  return requestJson('/api/me/articles/drafts');
+}
+export function deleteArticleDraft(id: number): Promise<void> {
+  return requestWithoutResponse(`/api/me/articles/drafts/${id}`, { method: 'DELETE' });
+}
+export function completeArticle(id: number, input: ArticleInput): Promise<JournalEntry> {
+  return requestJson(`/api/me/articles/${id}/complete`, jsonRequest('POST', input));
+}
+export async function importArticleMarkdown(markdown: string, imageAliases: Record<string, string> = {}): Promise<JournalRichDocument> {
+  const result = await requestJson<{ document: JournalRichDocument }>('/api/me/articles/content/import', jsonRequest('POST', { markdown, imageAliases }));
+  return result.document;
+}
+export async function exportArticleMarkdown(document: JournalRichDocument, mode: 'faithful' | 'gfm'): Promise<string> {
+  const result = await requestJson<{ markdown: string }>('/api/me/articles/content/export', jsonRequest('POST', { document, mode }));
+  return result.markdown;
+}
+
 export function fetchArticle(id: number): Promise<JournalEntry> {
   return requestJson<JournalEntry>(`/api/me/articles/${id}`);
 }

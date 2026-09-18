@@ -1,5 +1,8 @@
 import type Database from 'better-sqlite3';
 import { z } from 'zod';
+import { extractContentText } from './richText.js';
+import { parseJournalInternalImageId } from '../shared/journalContentPolicy.js';
+import type { JournalRichDocument } from '../shared/journalProtocol.js';
 import {
   journalAiSourceSchema,
   type JournalAiMessage,
@@ -78,6 +81,7 @@ export interface KnowledgeSearchPage {
 }
 
 export interface KnowledgeReadResult {
+  images: Array<{ assetId: number | null; url: string; alt: string; caption: string; width: number | null; height: number | null }>;
   entryId: number;
   publicId: string;
   title: string | null;
@@ -315,11 +319,28 @@ export class JournalKnowledgeRepository {
 
   readEntry(id: number, offset: number, length: number): KnowledgeReadResult | null {
     const row = this.database.prepare(
-      'SELECT id, public_id, title, content_text, content_type, body_format, tags_json, source_created_at, updated_at, publication_status FROM journal_entries WHERE id = ? AND publication_status = \'published\'',
-    ).get(id) as KnowledgeEntryRow | undefined;
+      'SELECT id, public_id, title, content_text, rich_body_json, content_type, body_format, tags_json, source_created_at, updated_at, publication_status FROM journal_entries WHERE id = ? AND publication_status = \'published\'',
+    ).get(id) as (KnowledgeEntryRow & { rich_body_json: string | null }) | undefined;
     if (row === undefined) return null;
 
-    const characters = [...row.content_text];
+    const body = row.rich_body_json === null ? null : JSON.parse(row.rich_body_json) as JournalRichDocument;
+    const images: KnowledgeReadResult['images'] = [];
+    const owned = this.database.prepare("SELECT id, original_name, width, height FROM journal_assets WHERE entry_id = ? AND kind IN ('photo', 'animation') ORDER BY sort_order, id")
+      .all(id) as Array<{ id: number; original_name: string | null; width: number | null; height: number | null }>;
+    const visit = (nodes: JournalRichDocument['content']): void => {
+      for (const node of nodes) {
+        if (node.type === 'image' && typeof node.attrs?.src === 'string') {
+          const assetId = parseJournalInternalImageId(node.attrs.src);
+          if (assetId !== null && !owned.some(asset => asset.id === assetId)) throw new Error(`Article ${id} contains an image owned by another entry.`);
+          images.push({ assetId, url: node.attrs.src, alt: String(node.attrs.alt ?? ''), caption: String(node.attrs.caption ?? ''),
+            width: typeof node.attrs.width === 'number' ? node.attrs.width : null, height: typeof node.attrs.height === 'number' ? node.attrs.height : null });
+        }
+        if (node.content) visit(node.content);
+      }
+    };
+    if (body) visit(body.content);
+    else for (const asset of owned) images.push({ assetId: asset.id, url: `/media/${asset.id}`, alt: asset.original_name ?? '', caption: '', width: asset.width, height: asset.height });
+    const characters = [...(body ? extractContentText(body) : row.content_text)];
     const totalLength = characters.length;
     const start = Math.max(0, Math.min(offset, totalLength));
     const end = Math.min(totalLength, start + length);
@@ -333,6 +354,7 @@ export class JournalKnowledgeRepository {
       contentType: row.content_type,
       bodyFormat: row.body_format,
       text: characters.slice(start, end).join(''),
+      images,
       offset: start,
       end,
       totalLength,

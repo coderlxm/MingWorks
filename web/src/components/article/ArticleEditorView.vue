@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, shallowRef, watch } from 'vue';
-import { useRouter } from 'vue-router';
+import { onBeforeRouteLeave, onBeforeRouteUpdate, useRouter } from 'vue-router';
 import JournalLoading from '../ui/JournalLoading.vue';
 import { useDeferredLoading } from '../../composables/useDeferredLoading';
 import { useArticleEditor } from '../../composables/useArticleEditor';
@@ -11,6 +11,7 @@ import ArticleCardContent from './ArticleCardContent.vue';
 import ArticleEditorSidebar from './ArticleEditorSidebar.vue';
 import ArticleTitleField from './ArticleTitleField.vue';
 import RichTextEditor from './RichTextEditor.vue';
+import ArticleDraftList from './ArticleDraftList.vue';
 
 const props = withDefaults(defineProps<{
   articleId?: number;
@@ -35,6 +36,23 @@ const accessPassword = shallowRef('');
 const initializedArticleId = shallowRef<number | null>(null);
 const savingAction = shallowRef<'content' | 'access' | null>(null);
 const mediaAction = shallowRef<'cover-upload' | 'inline-upload' | 'delete' | null>(null);
+const richEditor = shallowRef<InstanceType<typeof RichTextEditor> | null>(null);
+const sourceDirty = shallowRef(false);
+const contentBusy = shallowRef(false);
+let creatingDraft = false;
+let active = true;
+function formInput() { return { title: title.value.trim(), richBody: richBody.value, tags: tags.value, aiGenerated: aiGenerated.value }; }
+const savedSnapshot = shallowRef(JSON.stringify(formInput()));
+const dirty = computed(() => sourceDirty.value || JSON.stringify(formInput()) !== savedSnapshot.value);
+function mayLeave(): boolean {
+  return (!dirty.value && !contentBusy.value && !editor.uploading.value) || window.confirm('仍有未保存的正文、Markdown 或上传操作。离开后不会自动保存，确定离开？');
+}
+function beforeUnload(event: BeforeUnloadEvent): void {
+  if (!dirty.value && !contentBusy.value && !editor.uploading.value) return;
+  event.preventDefault(); event.returnValue = '';
+}
+onBeforeRouteLeave(mayLeave);
+onBeforeRouteUpdate(mayLeave);
 let terminalErrorMessage: ReturnType<typeof showMessage> | null = null;
 
 const isEditing = computed(() => props.articleId !== undefined);
@@ -82,7 +100,7 @@ const canSave = computed(() => {
   const trimmed = title.value.trim();
   if (trimmed.length < 1 || trimmed.length > 120) return false;
   if (!hasArticleBody(richBody.value)) return false;
-  return !editor.saving.value && !editor.uploading.value;
+  return !editor.saving.value && !editor.uploading.value && !contentBusy.value && !sourceDirty.value;
 });
 const canGenerateTags = computed(() => {
   const titleLength = title.value.trim().length;
@@ -98,6 +116,7 @@ const accessSettingsValid = computed(() =>
   || (hasExistingPassword.value && accessPassword.value === ''),
 );
 const canSaveAccess = computed(() => article.value !== null
+  && article.value.publicationStatus === 'published'
   && accessSettingsValid.value
   && (selectedVisibility.value !== article.value.visibility || accessPassword.value !== '')
   && !editor.saving.value
@@ -105,6 +124,8 @@ const canSaveAccess = computed(() => article.value !== null
 
 watch(article, (entry) => {
   if (!entry) return;
+  if (creatingDraft) return;
+  if (savingAction.value === 'content') { initializedArticleId.value = entry.id; return; }
   if (initializedArticleId.value === entry.id) return;
   initializedArticleId.value = entry.id;
   title.value = entry.title ?? '';
@@ -113,6 +134,7 @@ watch(article, (entry) => {
   selectedVisibility.value = entry.visibility;
   accessPassword.value = '';
   if (entry.richBody) richBody.value = entry.richBody;
+  savedSnapshot.value = JSON.stringify(formInput());
 }, { immediate: true });
 
 watch(() => editor.error.value, (error) => {
@@ -129,9 +151,10 @@ watch(() => editor.error.value, (error) => {
   showMessage({ message: error, type: 'error' });
 });
 
-onBeforeUnmount(() => terminalErrorMessage?.close());
+onBeforeUnmount(() => { active = false; terminalErrorMessage?.close(); window.removeEventListener('beforeunload', beforeUnload); });
 
 onMounted(() => {
+  window.addEventListener('beforeunload', beforeUnload);
   if (props.articleId !== undefined) void editor.load(props.articleId);
 });
 
@@ -147,18 +170,57 @@ async function save(): Promise<void> {
     };
     if (article.value === null) {
       const created = await editor.create(input);
-      if (created) await router.push({ name: 'article-edit', params: { articleId: created.id } });
+      if (created) {
+        savedSnapshot.value = JSON.stringify(input);
+        showMessage({ message: '已保存为私有文章', type: 'success' });
+        await router.replace({ name: 'article-edit', params: { articleId: created.id } });
+      }
       return;
     }
-    await editor.save(input);
+    const updated = await editor.save(input, article.value.publicationStatus === 'draft');
+    if (updated) {
+      savedSnapshot.value = JSON.stringify(input);
+      showMessage({ message: '文章已保存', type: 'success' });
+      if (!props.articleId) await router.replace({ name: 'article-edit', params: { articleId: updated.id } });
+    }
   } finally {
     savingAction.value = null;
   }
 }
 
+async function ensureDraft(): Promise<boolean> {
+  if (article.value) return true;
+  creatingDraft = true;
+  const input = { ...formInput(), title: title.value.trim() || '未命名文章' };
+  try {
+    const created = await editor.create(input, true);
+    if (!created) return false;
+    initializedArticleId.value = created.id;
+    if (!title.value.trim()) title.value = input.title;
+    savedSnapshot.value = JSON.stringify(input);
+    return true;
+  } finally { creatingDraft = false; }
+}
+
+async function saveDraft(): Promise<void> {
+  if (sourceDirty.value) { showMessage({ message: '请先应用或放弃 Markdown 修改。', type: 'info' }); return; }
+  savingAction.value = 'content';
+  try {
+    if (!await ensureDraft()) return;
+    const input = formInput();
+    const saved = await editor.save(input);
+    if (saved) {
+      savedSnapshot.value = JSON.stringify(input);
+      showMessage({ message: '草稿已保存，可从写文章入口恢复', type: 'success' });
+      if (!props.articleId) await router.replace({ name: 'article-edit', params: { articleId: saved.id } });
+    }
+  } finally { savingAction.value = null; }
+}
+
 async function uploadCover(file: File): Promise<void> {
   mediaAction.value = 'cover-upload';
   try {
+    if (!await ensureDraft()) return;
     await editor.uploadAsset(file, 'cover');
   } finally {
     mediaAction.value = null;
@@ -168,6 +230,8 @@ async function uploadCover(file: File): Promise<void> {
 async function uploadInline(file: File): Promise<{ id: number; url: string } | null> {
   mediaAction.value = 'inline-upload';
   try {
+    if (!await ensureDraft()) return null;
+    if (!active) return null;
     return await editor.uploadAsset(file, 'inline');
   } finally {
     mediaAction.value = null;
@@ -175,9 +239,13 @@ async function uploadInline(file: File): Promise<{ id: number; url: string } | n
 }
 
 async function removeAsset(asset: JournalAsset): Promise<void> {
+  if (sourceDirty.value) { showMessage({ message: '请先应用或放弃 Markdown 修改，再删除素材。', type: 'info' }); return; }
+  const references = (nodes: JournalRichDocument['content']): boolean => nodes.some(node => node.type === 'image' && node.attrs?.src === `/media/${asset.id}` || node.content && references(node.content));
+  if (references(richBody.value.content)) { showMessage({ message: '请先从正文移除此图片并保存，再删除素材。', type: 'info' }); return; }
+  if (!window.confirm('永久删除此素材？删除后将清空正文撤销历史，避免恢复已删除图片。')) return;
   mediaAction.value = 'delete';
   try {
-    await editor.removeAsset(asset.id);
+    if (await editor.removeAsset(asset.id)) richEditor.value?.clearHistory();
   } finally {
     mediaAction.value = null;
   }
@@ -185,6 +253,7 @@ async function removeAsset(asset: JournalAsset): Promise<void> {
 
 async function saveAccessSettings(): Promise<void> {
   if (!article.value) return;
+  if (selectedVisibility.value === 'public' && article.value.visibility !== 'public' && assets.value.length && !window.confirm('公开文章时，正文图片和从其他记录复制的图片将一并公开。继续？')) return;
   savingAction.value = 'access';
   try {
     const updated = await editor.setVisibility(
@@ -257,6 +326,7 @@ function returnToAssets(): void {
       <button class="text-button" type="button" @click="returnToAssets">← 返回我的资产</button>
       <span>{{ isEditing ? '编辑文章' : '写文章' }}</span>
     </div>
+    <ArticleDraftList v-if="!article && !isEditing" />
 
     <div class="editor-view__stage" :class="{ 'editor-view__stage--reading': !formAvailable }" :aria-busy="awaitingArticle">
       <Transition name="editor-stage" mode="out-in">
@@ -265,11 +335,14 @@ function returnToAssets(): void {
           <div class="editor-view__manuscript">
             <ArticleTitleField v-model="title" />
             <RichTextEditor
+              ref="richEditor"
               v-model="richBody"
               :assets="assets"
-              :disabled="editor.saving.value || editor.uploading.value"
-              :images-enabled="article !== null"
+              :disabled="editor.saving.value && !creatingDraft"
+              :images-enabled="true"
               :upload-image="uploadInline"
+              @source-dirty="sourceDirty = $event"
+              @busy="contentBusy = $event"
             />
           </div>
           <ArticleEditorSidebar
@@ -278,7 +351,7 @@ function returnToAssets(): void {
             v-model:access-password="accessPassword"
             v-model:ai-generated="aiGenerated"
             :article="article"
-            :action-busy="editor.saving.value || editor.uploading.value"
+            :action-busy="editor.saving.value || editor.uploading.value || contentBusy"
             :assets="assets"
             :can-save="canSave"
             :can-save-access="canSaveAccess"
@@ -295,6 +368,7 @@ function returnToAssets(): void {
             @remove-asset="removeAsset"
             @upload-cover="uploadCover"
             @view-article="viewCurrentArticle"
+            @save-draft="saveDraft"
           />
         </form>
         <div v-else key="reserve" class="editor-view__reading-reserve" aria-hidden="true"></div>

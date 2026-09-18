@@ -99,7 +99,7 @@ export async function registerKnowledgeRoutes(
     preHandler: auth.requireAdmin,
   }, async (request) => {
     const { id } = messageParamsSchema.parse(request.params);
-    const article = service.saveMessageAsArticle(id);
+    const article = await service.saveMessageAsArticle(id);
     return { article };
   });
 }

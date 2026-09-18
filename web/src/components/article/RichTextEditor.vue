@@ -2,10 +2,20 @@
 import { computed, onBeforeUnmount, shallowRef, watch } from 'vue';
 import { Editor, EditorContent, useEditor } from '@tiptap/vue-3';
 import { FileHandler } from '@tiptap/extension-file-handler';
+import { EditorState } from '@tiptap/pm/state';
+import { closeHistory } from '@tiptap/pm/history';
 import Placeholder from '@tiptap/extension-placeholder';
 import JournalLoading from '../ui/JournalLoading.vue';
+import { isAllowedJournalLinkHref } from '../../../../src/shared/journalContentPolicy';
 import { createJournalRichTextExtensions } from '../../../../src/shared/journalRichText';
 import type { JournalAsset, JournalRichDocument } from '../../types';
+import { isAllowedJournalExternalImageUrl } from '../../../../src/shared/journalContentPolicy';
+import { ArticleUploadAnchor, articleUploadKey } from '../../utils/articleUploadAnchor';
+import { showMessage } from '../../utils/message';
+import TableControls from './TableControls.vue';
+import ImageControls from './ImageControls.vue';
+import MarkdownWorkspace from './MarkdownWorkspace.vue';
+import RichArticleRenderer from './RichArticleRenderer.vue';
 
 const props = withDefaults(defineProps<{
   assets?: readonly JournalAsset[];
@@ -15,29 +25,32 @@ const props = withDefaults(defineProps<{
 }>(), {
   assets: () => [],
   disabled: false,
-  imagesEnabled: false,
+  imagesEnabled: true,
 });
 
 const model = defineModel<JournalRichDocument>({ required: true });
 const inlineAssets = computed(() => props.assets.filter((asset) => asset.role === 'inline'));
 const selectedAssetId = shallowRef('');
-const imageAlt = shallowRef('');
+const sourceOpen = shallowRef(false);
+const sourceChanged = shallowRef(false);
+const workspaceBusy = shallowRef(false);
+const previewOpen = shallowRef(false);
+const emit = defineEmits<{ sourceDirty: [dirty: boolean]; busy: [busy: boolean] }>();
 
 const editor = useEditor({
   editable: !props.disabled,
   extensions: [
-    ...createJournalRichTextExtensions(),
+    ...createJournalRichTextExtensions({ resizeImages: true }),
+    ArticleUploadAnchor,
     Placeholder.configure({ placeholder: '在这里写下你的文章…' }),
     FileHandler.configure({
       allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/gif'],
       consumePasteEvent: true,
       onPaste: (editorInstance, files) => {
-        const file = files[0];
-        if (file) void handleFile(file, editorInstance);
+        void handleFiles(files, editorInstance);
       },
       onDrop: (editorInstance, files, position) => {
-        const file = files[0];
-        if (file) void handleFile(file, editorInstance, position);
+        void handleFiles(files, editorInstance, position);
       },
     }),
   ],
@@ -45,7 +58,6 @@ const editor = useEditor({
   onUpdate: ({ editor }) => {
     model.value = editor.getJSON() as JournalRichDocument;
   },
-  onSelectionUpdate: ({ editor }) => syncImageAlt(editor),
 });
 
 watch(() => props.disabled, (disabled) => {
@@ -54,7 +66,6 @@ watch(() => props.disabled, (disabled) => {
 
 watch(model, (next) => {
   if (!editor.value) return;
-  if (editor.value.isFocused) return;
   const current = JSON.stringify(editor.value.getJSON());
   if (current === JSON.stringify(next)) return;
   editor.value.commands.setContent(next, { emitUpdate: false });
@@ -70,14 +81,24 @@ function run(editorInstance: Editor | null | undefined, command: string): void {
     case 'undo': chain.undo().run(); break;
     case 'redo': chain.redo().run(); break;
     case 'paragraph': chain.setParagraph().run(); break;
+    case 'h1': chain.toggleHeading({ level: 1 }).run(); break;
     case 'h2': chain.toggleHeading({ level: 2 }).run(); break;
     case 'h3': chain.toggleHeading({ level: 3 }).run(); break;
+    case 'h4': chain.toggleHeading({ level: 4 }).run(); break;
+    case 'h5': chain.toggleHeading({ level: 5 }).run(); break;
+    case 'h6': chain.toggleHeading({ level: 6 }).run(); break;
     case 'bold': chain.toggleBold().run(); break;
     case 'italic': chain.toggleItalic().run(); break;
     case 'strike': chain.toggleStrike().run(); break;
+    case 'underline': chain.toggleUnderline().run(); break;
+    case 'highlight': chain.toggleHighlight().run(); break;
+    case 'subscript': chain.toggleSubscript().run(); break;
+    case 'superscript': chain.toggleSuperscript().run(); break;
     case 'code': chain.toggleCode().run(); break;
     case 'bulletList': chain.toggleBulletList().run(); break;
     case 'orderedList': chain.toggleOrderedList().run(); break;
+    case 'taskList': chain.toggleTaskList().run(); break;
+    case 'table': chain.insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(); break;
     case 'blockquote': chain.toggleBlockquote().run(); break;
     case 'codeBlock': chain.toggleCodeBlock().run(); break;
     case 'hr': chain.setHorizontalRule().run(); break;
@@ -89,20 +110,14 @@ function run(editorInstance: Editor | null | undefined, command: string): void {
 
 function promptLink(editorInstance: Editor): void {
   const previous = editorInstance.getAttributes('link').href;
-  const href = window.prompt('链接地址（http://、https:// 或 mailto:）', previous ?? 'https://');
+  const href = window.prompt('链接地址（http://、https://、mailto:、站内相对地址或 #锚点）', previous ?? 'https://');
   if (href === null) return;
-  try {
-    const url = new URL(href);
-    if (!['http:', 'https:', 'mailto:'].includes(url.protocol)) {
-      window.alert('仅支持 http、https 和 mailto 链接。');
-      return;
-    }
-  } catch {
-    window.alert('请输入合法链接。');
-    return;
-  }
   if (href === '') {
     editorInstance.chain().focus().unsetLink().run();
+    return;
+  }
+  if (isAllowedJournalLinkHref(href) === false) {
+    window.alert('仅支持 http、https、mailto、站内相对地址和页面锚点。');
     return;
   }
   editorInstance.chain().focus().extendMarkRange('link').setLink({ href }).run();
@@ -131,26 +146,6 @@ function insertImage(
   else chain.insertContentAt(position, content).run();
 }
 
-async function handleFile(
-  file: File,
-  editorInstance: Editor | null | undefined,
-  position?: number,
-): Promise<void> {
-  if (props.disabled || !editorInstance) return;
-  if (!props.imagesEnabled) {
-    window.alert('请先保存文章，再上传文中图片。');
-    return;
-  }
-  busy.value = true;
-  try {
-    const asset = await props.uploadImage(file);
-    if (!asset) return;
-    insertImage(editorInstance, asset, file.name, position);
-  } finally {
-    busy.value = false;
-  }
-}
-
 function insertSelectedAsset(): void {
   const asset = inlineAssets.value.find((item) => String(item.id) === selectedAssetId.value);
   if (!asset || !editor.value) return;
@@ -158,22 +153,74 @@ function insertSelectedAsset(): void {
   selectedAssetId.value = '';
 }
 
-function syncImageAlt(editorInstance: Editor): void {
-  imageAlt.value = editorInstance.isActive('image')
-    ? String(editorInstance.getAttributes('image').alt ?? '')
-    : '';
+async function handleFiles(
+  files: readonly File[],
+  editorInstance: Editor | null | undefined,
+  position?: number,
+): Promise<void> {
+  if (busy.value) { showMessage({ message: '请等待当前批次上传完成，再插入图片。', type: 'info' }); return; }
+  if (props.disabled || !editorInstance || !props.imagesEnabled) return;
+  const id = {};
+  busy.value = true;
+  emit('busy', true);
+  editorInstance.view.dispatch(editorInstance.state.tr.setMeta(articleUploadKey, { add: { id, position: position ?? editorInstance.state.selection.from } }));
+  try {
+    for (const file of files) {
+      const asset = await props.uploadImage(file);
+      if (!asset || editorInstance.isDestroyed) break;
+      const anchor = articleUploadKey.getState(editorInstance.state)?.find(undefined, undefined, spec => spec.id === id)[0];
+      if (!anchor) throw new Error('上传位置已删除；图片已保留在素材面板，可重新插入。');
+      insertImage(editorInstance, asset, file.name, anchor.from);
+    }
+  } catch (error) {
+    showMessage({ message: error instanceof Error ? error.message : String(error), type: 'error' });
+  } finally {
+    if (!editorInstance.isDestroyed) editorInstance.view.dispatch(editorInstance.state.tr.setMeta(articleUploadKey, { remove: id }));
+    busy.value = false;
+    emit('busy', false);
+  }
 }
 
-function applyImageAlt(): void {
-  if (!editor.value?.isActive('image')) return;
-  editor.value.chain().focus().updateAttributes('image', { alt: imageAlt.value }).run();
+function insertExternalImage(): void {
+  const src = window.prompt('HTTPS 图片地址（外部图片可能失效，服务器不会下载）');
+  if (src === null) return;
+  if (!isAllowedJournalExternalImageUrl(src)) { window.alert('请输入有效的 HTTPS 图片地址。'); return; }
+  editor.value?.chain().focus().setImage({ src, alt: '' }).run();
 }
+
+function applyMarkdown(document: JournalRichDocument): void {
+  const instance = editor.value!;
+  instance.chain().focus().command(({ tr }) => { closeHistory(tr); return true; }).selectAll().insertContent(document.content).run();
+  instance.view.dispatch(closeHistory(instance.state.tr));
+  sourceOpen.value = false;
+  sourceChanged.value = false;
+  emit('sourceDirty', false);
+}
+function toggleSource(): void {
+  if (sourceOpen.value && sourceChanged.value && !window.confirm('放弃尚未应用的 Markdown 修改？')) return;
+  sourceOpen.value = !sourceOpen.value;
+  sourceChanged.value = false;
+  emit('sourceDirty', false);
+}
+async function copyCode(): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(editor.value!.state.selection.$from.parent.textContent);
+    showMessage({ message: '代码已复制', type: 'success' });
+  } catch (error) { showMessage({ message: error instanceof Error ? error.message : String(error), type: 'error' }); }
+}
+
+function clearHistory(): void {
+  const instance = editor.value;
+  if (!instance) return;
+  instance.view.updateState(EditorState.create({ schema: instance.schema, doc: instance.state.doc, plugins: instance.state.plugins }));
+}
+defineExpose({ clearHistory });
 
 function onFileChange(event: Event): void {
   const target = event.target as HTMLInputElement;
-  const file = target.files?.[0];
+  const files = Array.from(target.files ?? []);
   target.value = '';
-  if (file) void handleFile(file, editor.value);
+  if (files.length > 0) void handleFiles(files, editor.value);
 }
 
 onBeforeUnmount(() => {
@@ -183,27 +230,46 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="rich-editor">
+    <div class="content-controls">
+      <button type="button" :disabled="disabled || busy || workspaceBusy" @click="toggleSource">{{ sourceOpen ? '返回富文本' : 'Markdown 工作区 / 导入导出' }}</button>
+      <button v-if="!sourceOpen" type="button" :disabled="busy" @click="previewOpen = !previewOpen">{{ previewOpen ? '继续编辑' : '预览正文' }}</button>
+    </div>
+    <MarkdownWorkspace v-if="sourceOpen" :document="model" :upload-image="uploadImage" :disabled="disabled || busy" @apply="applyMarkdown" @dirty="sourceChanged = $event; emit('sourceDirty', $event)" @busy="workspaceBusy = $event; emit('busy', $event)" />
+    <RichArticleRenderer v-if="previewOpen && !sourceOpen" :document="model" />
+    <div v-show="!sourceOpen && !previewOpen">
     <div class="rich-editor__toolbar" role="toolbar">
       <button type="button" :disabled="disabled" @click="run(editor, 'undo')">撤销</button>
       <button type="button" :disabled="disabled" @click="run(editor, 'redo')">重做</button>
       <span class="rich-editor__sep" />
       <button type="button" :disabled="disabled" :aria-pressed="editor?.isActive('paragraph')" @click="run(editor, 'paragraph')">正文</button>
+      <button type="button" :disabled="disabled" :aria-pressed="editor?.isActive('heading', { level: 1 })" @click="run(editor, 'h1')">H1</button>
       <button type="button" :disabled="disabled" :aria-pressed="editor?.isActive('heading', { level: 2 })" @click="run(editor, 'h2')">H2</button>
       <button type="button" :disabled="disabled" :aria-pressed="editor?.isActive('heading', { level: 3 })" @click="run(editor, 'h3')">H3</button>
+      <button type="button" :disabled="disabled" :aria-pressed="editor?.isActive('heading', { level: 4 })" @click="run(editor, 'h4')">H4</button>
+      <button type="button" :disabled="disabled" :aria-pressed="editor?.isActive('heading', { level: 5 })" @click="run(editor, 'h5')">H5</button>
+      <button type="button" :disabled="disabled" :aria-pressed="editor?.isActive('heading', { level: 6 })" @click="run(editor, 'h6')">H6</button>
       <span class="rich-editor__sep" />
       <button type="button" :disabled="disabled" :aria-pressed="editor?.isActive('bold')" @click="run(editor, 'bold')">粗体</button>
       <button type="button" :disabled="disabled" :aria-pressed="editor?.isActive('italic')" @click="run(editor, 'italic')">斜体</button>
       <button type="button" :disabled="disabled" :aria-pressed="editor?.isActive('strike')" @click="run(editor, 'strike')">删除线</button>
+      <button type="button" :disabled="disabled" :aria-pressed="editor?.isActive('underline')" @click="run(editor, 'underline')">下划线</button>
+      <button type="button" :disabled="disabled" :aria-pressed="editor?.isActive('highlight')" @click="run(editor, 'highlight')">高亮</button>
+      <button type="button" :disabled="disabled" :aria-pressed="editor?.isActive('subscript')" @click="run(editor, 'subscript')">下标</button>
+      <button type="button" :disabled="disabled" :aria-pressed="editor?.isActive('superscript')" @click="run(editor, 'superscript')">上标</button>
       <button type="button" :disabled="disabled" :aria-pressed="editor?.isActive('code')" @click="run(editor, 'code')">代码</button>
       <span class="rich-editor__sep" />
       <button type="button" :disabled="disabled" :aria-pressed="editor?.isActive('bulletList')" @click="run(editor, 'bulletList')">无序</button>
       <button type="button" :disabled="disabled" :aria-pressed="editor?.isActive('orderedList')" @click="run(editor, 'orderedList')">有序</button>
+      <button type="button" :disabled="disabled" :aria-pressed="editor?.isActive('taskList')" @click="run(editor, 'taskList')">任务</button>
+      <button type="button" :disabled="disabled" @click="run(editor, 'table')">表格</button>
       <button type="button" :disabled="disabled" :aria-pressed="editor?.isActive('blockquote')" @click="run(editor, 'blockquote')">引用</button>
       <button type="button" :disabled="disabled" :aria-pressed="editor?.isActive('codeBlock')" @click="run(editor, 'codeBlock')">代码块</button>
       <button type="button" :disabled="disabled" @click="run(editor, 'hr')">分隔线</button>
       <button type="button" :disabled="disabled" @click="run(editor, 'hardBreak')">换行</button>
       <span class="rich-editor__sep" />
       <button type="button" :disabled="disabled" @click="run(editor, 'link')">链接</button>
+      <button type="button" :disabled="disabled" @click="insertExternalImage">外链图片</button>
+      <button v-for="[align, label] in [['left', '左对齐'], ['center', '居中'], ['right', '右对齐']]" :key="align" type="button" :disabled="disabled" @click="editor?.chain().focus().setTextAlign(align).run()">{{ label }}</button>
       <button
         type="button"
         :disabled="disabled || busy || !imagesEnabled"
@@ -217,6 +283,7 @@ onBeforeUnmount(() => {
         ref="fileInput"
         type="file"
         accept="image/jpeg,image/png,image/webp,image/gif"
+        multiple
         hidden
         @change="onFileChange"
       >
@@ -232,11 +299,12 @@ onBeforeUnmount(() => {
         插入正文
       </button>
     </div>
-    <label v-if="editor?.isActive('image')" class="rich-editor__alt-field">
-      <span>图片替代文字</span>
-      <input v-model="imageAlt" type="text" maxlength="200" :disabled="disabled" @change="applyImageAlt">
-    </label>
-    <EditorContent :editor="editor" class="rich-editor__content" />
+    <TableControls v-if="editor?.isActive('table')" :editor="editor" :disabled="disabled" />
+    <ImageControls v-if="editor?.isActive('image')" :editor="editor" :disabled="disabled" />
+    <label v-if="editor?.isActive('codeBlock')">代码语言 <input :value="editor.getAttributes('codeBlock').language" placeholder="例如 typescript" @change="editor.chain().focus().updateAttributes('codeBlock', { language: ($event.target as HTMLInputElement).value || null }).run()"></label>
+    <button v-if="editor?.isActive('codeBlock')" type="button" @click="copyCode">复制代码</button>
+    <EditorContent :editor="editor" class="rich-editor__content journal-prose" />
+    </div>
   </div>
 </template>
 
@@ -343,79 +411,7 @@ onBeforeUnmount(() => {
   height: 0;
 }
 
-.rich-editor__content :deep(.ProseMirror p) {
-  margin: 0.85rem 0;
-}
-
-.rich-editor__content :deep(.ProseMirror h2) {
-  margin: 1.4rem 0 0.7rem;
-  font-size: 1.3rem;
-  font-weight: 700;
-}
-
-.rich-editor__content :deep(.ProseMirror h3) {
-  margin: 1.2rem 0 0.6rem;
-  font-size: 1.1rem;
-  font-weight: 700;
-}
-
-.rich-editor__content :deep(.ProseMirror ul),
-.rich-editor__content :deep(.ProseMirror ol) {
-  margin: 0.7rem 0;
-  padding-left: 1.5rem;
-}
-
-.rich-editor__content :deep(.ProseMirror blockquote) {
-  margin: 0.9rem 0;
-  padding: 0 0 0 0.85rem;
-  border-left: 3px solid var(--border-strong);
-  color: var(--text-muted);
-}
-
-.rich-editor__content :deep(.ProseMirror pre) {
-  margin: 0.9rem 0;
-  padding: 0.75rem 0.9rem;
-  border-radius: 0.6rem;
-  background: var(--surface-muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.85rem;
-}
-
-.rich-editor__content :deep(.ProseMirror code) {
-  padding: 0.1rem 0.3rem;
-  border-radius: 0.3rem;
-  background: var(--surface-muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.85em;
-}
-
-.rich-editor__content :deep(.ProseMirror pre code) {
-  padding: 0;
-  background: transparent;
-}
-
-.rich-editor__content :deep(.ProseMirror a) {
-  color: var(--accent-strong);
-  text-decoration: underline;
-}
-
-.rich-editor__content :deep(.ProseMirror img) {
-  display: block;
-  max-width: 100%;
-  margin: 0.9rem 0;
-  border-radius: 0.6rem;
-}
-
-.rich-editor__content :deep(.ProseMirror hr) {
-  margin: 1.2rem 0;
-  border: 0;
-  border-top: 1px solid var(--border-subtle);
-}
-
 @media (max-width: 620px) {
-  .rich-editor__toolbar {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-  }
+  .rich-editor__toolbar { flex-wrap: nowrap; overflow-x: auto; }
 }
 </style>

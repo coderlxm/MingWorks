@@ -13,7 +13,7 @@ function itemTitle(entry: JournalEntry): string {
 
 function itemContent(entry: JournalEntry, publicBaseUrl: string): string {
   if (entry.bodyFormat === 'rich' && entry.richBody) {
-    return generateArticleHtml(entry.richBody, publicBaseUrl);
+    return generateArticleHtml(entry.richBody, publicBaseUrl, `${publicBaseUrl}/p/${entry.publicId}`);
   }
   return entry.contentText;
 }

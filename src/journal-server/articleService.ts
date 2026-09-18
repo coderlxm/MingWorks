@@ -1,3 +1,7 @@
+import { randomUUID } from 'node:crypto';
+import { readFile, stat, writeFile } from 'node:fs/promises';
+import { Lexer, walkTokens } from 'marked';
+import { fileTypeFromFile } from 'file-type';
 import {
   journalArticleAssetResponseSchema,
   journalArticleCreateRequestSchema,
@@ -12,10 +16,11 @@ import {
 } from '../shared/journalProtocol.js';
 import {
   type CoverAssetRecord,
+  type CreateArticleInput,
+  type WebEntryAssetInput,
   JournalRepository,
 } from './repository.js';
 import {
-  assertAutomationArticleMarkdown,
   JournalArticleInputError,
   markdownToRichDocument,
 } from './articleMarkdown.js';
@@ -27,6 +32,7 @@ import {
   assertRichDocument,
   collectInlineAssetIds,
   extractContentText,
+  hasImageNode,
   normalizeRichDocument,
 } from './richText.js';
 import { JournalStorage } from './storage.js';
@@ -42,6 +48,11 @@ export interface ArticleUploadInput {
   mimeType: string;
   originalName: string | null;
 }
+export interface ArticleFileInput {
+  path: string;
+  mimeType: string;
+  originalName: string | null;
+}
 
 export class JournalArticleService {
   constructor(
@@ -52,9 +63,10 @@ export class JournalArticleService {
 
   createArticle(rawInput: unknown): JournalEntry {
     const input = journalArticleCreateRequestSchema.parse(rawInput) as JournalArticleCreateRequest;
-    const richBodyJson = this.serializeRichBody(input.richBody, { allowImages: false });
+    if (collectInlineAssetIds(input.richBody).length) throw new JournalArticleInputError(400, '新文章的站内图片必须先上传到该文章草稿。');
+    const richBodyJson = this.serializeRichBody(input.richBody, { allowImages: true });
     const contentText = extractContentText(input.richBody);
-    this.assertBodyIsNotEmpty(contentText, []);
+    this.assertBodyIsNotEmpty(contentText, [], hasImageNode(input.richBody));
     return this.repository.createArticle({
       title: input.title,
       richBodyJson,
@@ -65,41 +77,127 @@ export class JournalArticleService {
     });
   }
 
-  createArticleFromMarkdown(rawInput: unknown): JournalEntry {
+  async createArticleFromMarkdown(rawInput: unknown, uploads: Map<string, ArticleFileInput> = new Map()): Promise<JournalEntry> {
     const input = journalAutomationArticleRequestSchema.parse(rawInput) as JournalAutomationArticleRequest;
-    assertAutomationArticleMarkdown(input.markdown);
-    const richBody = markdownToRichDocument(input.markdown, { preserveCodeLanguage: true });
-    const richBodyJson = this.serializeRichBody(richBody, { allowImages: false });
-    const contentText = extractContentText(richBody);
-    this.assertBodyIsNotEmpty(contentText, []);
-    return this.repository.createArticle({
-      title: input.title,
-      richBodyJson,
-      tags: input.tags,
-      contentText,
-      aiGenerated: input.aiGenerated,
-      visibility: input.visibility,
+    const aliases = new Map<string, ArticleFileInput>();
+    const imageAliases = new Map<string, string>();
+    const tokens = Lexer.lex(input.markdown, { gfm: true, breaks: true });
+    walkTokens(tokens, token => {
+      if (token.type !== 'image' || !token.href.startsWith('asset:')) return;
+      const key = token.href.slice(6);
+      const upload = uploads.get(key);
+      if (!upload) throw new JournalArticleInputError(400, `缺少图片文件 ${key}。`);
+      const alias = `https://journal-upload.invalid/${encodeURIComponent(key)}`;
+      aliases.set(alias, upload);
+      imageAliases.set(token.href, alias);
     });
+    if (aliases.size !== uploads.size) throw new JournalArticleInputError(400, '上传文件必须全部在 Markdown 中通过 asset:key 引用。');
+    // Render the original token tree, never rewrite Markdown with regular expressions.
+    const richBody = markdownToRichDocument(input.markdown, { imageAliases });
+    return await this.createWithImages(input, richBody, aliases, []);
   }
 
-  createArticleFromAiMessage(
+  async createArticleFromAiMessage(
     messageId: number,
     input: Omit<JournalArticleCreateRequest, 'aiGenerated'>,
-  ): JournalEntry {
-    const richBodyJson = this.serializeRichBody(input.richBody, { allowImages: false });
-    const contentText = extractContentText(input.richBody);
-    this.assertBodyIsNotEmpty(contentText, []);
-    return this.repository.createArticleFromAiMessage(messageId, {
-      title: input.title,
-      richBodyJson,
-      tags: input.tags,
-      contentText,
-      aiGenerated: true,
-      visibility: 'private',
-    });
+    sourceEntryIds: number[],
+  ): Promise<JournalEntry> {
+    return await this.createWithImages({ ...input, aiGenerated: true, visibility: 'private' }, input.richBody, new Map(), sourceEntryIds, messageId);
   }
 
-  async updateArticle(id: number, rawInput: unknown): Promise<JournalEntry> {
+  private async createWithImages(
+    input: Pick<CreateArticleInput, 'title' | 'tags' | 'aiGenerated' | 'visibility'>,
+    document: JournalRichDocument,
+    aliases: Map<string, ArticleFileInput>,
+    sourceEntryIds: number[],
+    messageId?: number,
+  ): Promise<JournalEntry> {
+    for (const assetId of new Set(collectInlineAssetIds(document))) {
+      const source = this.repository.findImageForCopy(assetId, sourceEntryIds);
+      if (!source) throw new JournalArticleInputError(400, `图片 ${assetId} 不是本次允许引用的来源图片。`);
+      const path = this.storage.absoluteAssetPath(source.relative_path);
+      const detected = await fileTypeFromFile(path);
+      if (!detected) throw new JournalArticleInputError(400, `来源图片 ${assetId} 的文件格式无法识别。`);
+      aliases.set(`/media/${assetId}`, {
+        path,
+        mimeType: detected.mime, originalName: source.original_name,
+      });
+    }
+    let bytes = 0;
+    for (const file of aliases.values()) bytes += (await stat(file.path)).size;
+    if (aliases.size > 10 || bytes > 40 * 1024 * 1024) {
+      throw new JournalArticleInputError(413, '每篇文章最多 10 张本地图片，总计不超过 40 MB。');
+    }
+    const publicId = randomUUID();
+    const sourceCreatedAt = new Date().toISOString();
+    const session = await this.storage.begin(publicId, sourceCreatedAt);
+    let finalized = false;
+    let committed = false;
+    try {
+      const assets: WebEntryAssetInput[] = [];
+      for (const file of aliases.values()) {
+        const detected = await fileTypeFromFile(file.path);
+        if (!detected || detected.mime !== file.mimeType) throw new JournalArticleInputError(400, '上传图片实际格式与 MIME 不一致。');
+        const upload = { ...file, buffer: await readFile(file.path) };
+        assertWebImageUpload(upload);
+        const target = this.storage.assetTarget(session);
+        await writeFile(target.absolutePath, upload.buffer, { flag: 'wx' });
+        const dimensions = await this.previews.generate(target.absolutePath, target.previewAbsolutePath);
+        const kind = webImageKind(upload.mimeType);
+        if (kind === 'animation') await this.previews.generatePoster(target.absolutePath, target.posterAbsolutePath);
+        assets.push({ relativePath: target.relativePath, previewRelativePath: target.previewRelativePath,
+          posterRelativePath: kind === 'animation' ? target.posterRelativePath : null,
+          kind, mimeType: upload.mimeType, originalName: upload.originalName, byteSize: upload.buffer.length, ...dimensions });
+      }
+      await this.storage.finalize(session);
+      finalized = true;
+      const result = this.repository.createArticleWithAssets({ ...input, publicId, sourceCreatedAt, richBodyJson: '{"type":"doc","content":[]}', contentText: '' }, assets, ids => {
+        const mapping = new Map([...aliases.keys()].map((key, index) => [key, ids[index]!]));
+        const body = structuredClone(document);
+        const visit = (node: JournalRichDocument['content'][number]): void => {
+          if (node.type === 'image' && typeof node.attrs?.src === 'string' && node.attrs.src.startsWith('https://journal-upload.invalid/') && !mapping.has(node.attrs.src)) {
+            throw new JournalArticleInputError(400, '图片上传引用不存在。');
+          }
+          if (node.type === 'image' && typeof node.attrs?.src === 'string' && mapping.has(node.attrs.src)) {
+            const id = mapping.get(node.attrs.src)!;
+            node.attrs = { ...node.attrs, src: `/media/${id}`, 'data-asset-id': String(id) };
+          }
+          node.content?.forEach(visit);
+        };
+        body.content.forEach(visit);
+        const richBodyJson = this.serializeRichBody(body, { allowImages: true });
+        const contentText = extractContentText(body);
+        this.assertBodyIsNotEmpty(contentText, [], hasImageNode(body));
+        return { richBodyJson, contentText };
+      }, messageId);
+      committed = result.created;
+      return result.entry;
+    } finally {
+      if (!committed) {
+        if (finalized) await this.storage.discardFinal(session);
+        else await this.storage.discardTemporary(session);
+      }
+    }
+  }
+
+  createDraft(rawInput: unknown): JournalEntry {
+    const input = journalArticleCreateRequestSchema.parse(rawInput);
+    if (collectInlineAssetIds(input.richBody).length) throw new JournalArticleInputError(400, '草稿不能引用其他文章图片。');
+    return this.repository.createArticle({ ...input, visibility: 'private', publicationStatus: 'draft',
+      richBodyJson: this.serializeRichBody(input.richBody, { allowImages: true }), contentText: extractContentText(input.richBody) });
+  }
+
+  listDrafts(): JournalEntry[] { return this.repository.listArticleDrafts(); }
+
+  async deleteDraft(id: number): Promise<void> {
+    const article = this.repository.getArticleForEditing(id);
+    if (!article || article.publicationStatus !== 'draft') throw new JournalArticleInputError(404, '文章草稿不存在。');
+    const target = this.repository.findDeletionTargetById(id)!;
+    await this.storage.deleteEntryAssets(target.entries);
+    this.repository.deleteTarget(target);
+  }
+
+  async updateArticle(id: number, rawInput: unknown, complete = false): Promise<JournalEntry> {
     const input = journalArticleUpdateRequestSchema.parse(rawInput) as JournalArticleUpdateRequest;
     const existing = this.repository.getArticleForEditing(id);
     if (!existing) {
@@ -109,7 +207,7 @@ export class JournalArticleService {
 
     const referencedIds = collectInlineAssetIds(input.richBody);
     const contentText = extractContentText(input.richBody);
-    this.assertBodyIsNotEmpty(contentText, referencedIds);
+    if (complete || existing.publicationStatus === 'published') this.assertBodyIsNotEmpty(contentText, referencedIds, hasImageNode(input.richBody));
     const existingInline = this.repository.listInlineAssets(id);
     const existingInlineIds = new Set(existingInline.map((asset) => asset.id));
     for (const referenced of referencedIds) {
@@ -117,25 +215,14 @@ export class JournalArticleService {
         throw new Error(`Inline image ${referenced} does not belong to article ${id}.`);
       }
     }
-    const unreferenced = existingInline.filter((asset) => !referencedIds.includes(asset.id));
 
-    const updated = this.repository.updateArticle(id, {
+    return this.repository.updateArticle(id, {
       title: input.title,
       richBodyJson,
       tags: input.tags,
       contentText,
       aiGenerated: input.aiGenerated,
-    }, unreferenced.map((asset) => asset.id));
-
-    for (const asset of unreferenced) {
-      await this.storage.deleteAssetFiles(
-        asset.relativePath,
-        asset.previewRelativePath,
-        asset.posterRelativePath,
-      );
-    }
-
-    return updated;
+    }, [], complete);
   }
 
   getArticleForEditing(id: number): JournalEntry | null {
@@ -264,8 +351,8 @@ export class JournalArticleService {
     return json;
   }
 
-  private assertBodyIsNotEmpty(contentText: string, inlineAssetIds: number[]): void {
-    if (contentText.trim() === '' && inlineAssetIds.length === 0) {
+  private assertBodyIsNotEmpty(contentText: string, inlineAssetIds: number[], hasImage = false): void {
+    if (contentText.trim() === '' && inlineAssetIds.length === 0 && hasImage === false) {
       throw new JournalArticleInputError(400, 'Article body must not be empty.');
     }
   }

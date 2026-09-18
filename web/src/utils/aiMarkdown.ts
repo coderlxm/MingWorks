@@ -1,52 +1,61 @@
-import { Marked, type RendererObject, type Tokens } from 'marked';
+import DOMPurify from 'dompurify';
+import { Marked } from 'marked';
+import {
+  isAllowedJournalExternalImageUrl,
+  isAllowedJournalLinkHref,
+  parseJournalInternalImageId,
+} from '../../../src/shared/journalContentPolicy';
 
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
+const marked = new Marked({ gfm: true, breaks: true });
 
-function escapeHtmlAttr(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/"/g, '&quot;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
-
-function safeUrl(href: string): string | null {
-  if (!URL.canParse(href, window.location.origin)) return null;
-  const url = new URL(href, window.location.origin);
-  if (url.protocol !== 'http:' && url.protocol !== 'https:' && url.protocol !== 'mailto:') {
-    return null;
+DOMPurify.addHook('uponSanitizeAttribute', (node, data) => {
+  if (node.nodeName === 'IMG' && data.attrName === 'src') {
+    const src = data.attrValue.trim();
+    if (parseJournalInternalImageId(src) === null && isAllowedJournalExternalImageUrl(src) === false) {
+      data.keepAttr = false;
+    }
+    return;
   }
-  return url.toString();
-}
+  if (node.nodeName === 'A' && data.attrName === 'href') {
+    if (isAllowedJournalLinkHref(data.attrValue) === false) {
+      data.keepAttr = false;
+    }
+    return;
+  }
+  if (data.attrName === 'style') {
+    const style = data.attrValue.trim().toLowerCase();
+    const allowed = /^(?:text-align:\s*(?:left|center|right)\s*;?|(?:min-)?width:\s*\d+(?:\.\d+)?px\s*;?)$/.test(style);
+    data.keepAttr = allowed;
+  }
+  if (data.attrName === 'class') data.keepAttr = node.nodeName === 'CODE' && /^language-[\w+-]+$/.test(data.attrValue);
+  if (node.nodeName === 'INPUT' && data.attrName === 'type') data.attrValue = 'checkbox';
+});
 
-const aiRenderer: RendererObject<string, string> = {
-  html({ text }: Tokens.HTML | Tokens.Tag): string {
-    return escapeHtml(text);
-  },
-  link({ href, tokens }: Tokens.Link): string {
-    const label = this.parser.parseInline(tokens);
-    const url = safeUrl(href);
-    if (url === null) return label;
-    return `<a href="${escapeHtmlAttr(url)}" target="_blank" rel="noopener noreferrer">${label}</a>`;
-  },
-  image({ text }: Tokens.Image): string {
-    return escapeHtml(text);
-  },
-  text(token: Tokens.Text | Tokens.Escape): string {
-    if ('tokens' in token && token.tokens) return this.parser.parseInline(token.tokens);
-    return escapeHtml(token.text);
-  },
+const sanitizeOptions = {
+  ALLOWED_TAGS: [
+    'p', 'br', 'hr',
+    'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+    'strong', 'em', 's', 'del', 'u', 'mark', 'sub', 'sup',
+    'code', 'pre', 'blockquote',
+    'ul', 'ol', 'li', 'a', 'img',
+    'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'colgroup', 'col',
+    'figure', 'figcaption',
+    'label', 'input', 'span', 'div',
+  ],
+  ALLOWED_ATTR: [
+    'href', 'rel', 'target',
+    'src', 'alt', 'title', 'width', 'height', 'data-asset-id', 'data-caption', 'data-align',
+    'data-anchorid', 'style', 'class',
+    'data-type', 'data-checked', 'checked', 'disabled', 'type',
+    'colspan', 'rowspan', 'colwidth', 'align',
+    'span', 'loading', 'referrerpolicy', 'start',
+  ],
+  ALLOW_DATA_ATTR: false,
 };
 
-const marked = new Marked({ renderer: aiRenderer, gfm: true, breaks: true });
-
 export function renderAiMarkdown(markdown: string): string {
-  return marked.parse(markdown, { async: false }) as string;
+  const raw = marked.parse(markdown, { async: false }) as string;
+  return sanitizeJournalHtml(raw);
 }
+
+export function sanitizeJournalHtml(html: string): string { return DOMPurify.sanitize(html, sanitizeOptions); }

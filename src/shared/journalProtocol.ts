@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { journalImageAlignments, journalTableAlignments } from './journalContentPolicy.js';
 
 export const journalVisibilitySchema = z.enum(['private', 'protected', 'public']);
 export type JournalVisibility = z.infer<typeof journalVisibilitySchema>;
@@ -38,7 +39,10 @@ export interface JournalRichNode {
 }
 
 const journalRichMarkSchema = z.object({
-  type: z.enum(['bold', 'italic', 'strike', 'code', 'link']),
+  type: z.enum([
+    'bold', 'italic', 'strike', 'code', 'link',
+    'underline', 'highlight', 'subscript', 'superscript',
+  ]),
   attrs: z.record(z.string(), z.unknown()).optional(),
 });
 
@@ -51,10 +55,16 @@ const journalRichNodeSchema: z.ZodType<JournalRichNode> = z.lazy(() => z.object(
     'bulletList',
     'orderedList',
     'listItem',
+    'taskList',
+    'taskItem',
     'blockquote',
     'codeBlock',
     'horizontalRule',
     'hardBreak',
+    'table',
+    'tableRow',
+    'tableHeader',
+    'tableCell',
     'image',
   ]),
   attrs: z.record(z.string(), z.unknown()).optional(),
@@ -68,6 +78,12 @@ export const journalRichDocumentSchema = z.object({
   content: z.array(journalRichNodeSchema),
 });
 export type JournalRichDocument = z.infer<typeof journalRichDocumentSchema>;
+
+export const journalImageAlignSchema = z.enum(journalImageAlignments);
+export type JournalImageAlign = z.infer<typeof journalImageAlignSchema>;
+
+export const journalTableAlignSchema = z.enum(journalTableAlignments);
+export type JournalTableAlign = z.infer<typeof journalTableAlignSchema>;
 
 export const journalAssetSchema = z.object({
   id: z.number().int().positive(),

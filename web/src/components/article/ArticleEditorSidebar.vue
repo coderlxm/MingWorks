@@ -28,6 +28,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
+  saveDraft: [];
   generateTags: [];
   saveAccessSettings: [];
   removeAsset: [asset: JournalAsset];
@@ -109,7 +110,7 @@ async function copyAccessLink(): Promise<void> {
         </div>
 
         <EntryVisibilityField
-          v-if="article"
+          v-if="article?.publicationStatus === 'published'"
           :key="article.updatedAt"
           v-model="visibility"
           v-model:access-password="accessPassword"
@@ -122,6 +123,7 @@ async function copyAccessLink(): Promise<void> {
         </div>
 
         <div class="editor-sidebar__actions">
+          <button v-if="!article || article.publicationStatus === 'draft'" class="button button--quiet" type="button" :disabled="actionBusy" @click="emit('saveDraft')">保存草稿</button>
           <button
             class="button button--primary"
             type="submit"
@@ -129,7 +131,7 @@ async function copyAccessLink(): Promise<void> {
             :aria-busy="savingAction === 'content'"
           >
             <JournalLoading v-if="savingAction === 'content'" variant="inline" label="保存中…" />
-            <template v-else>{{ isEditing ? '保存修改' : '保存文章' }}</template>
+            <template v-else>{{ article?.publicationStatus === 'draft' ? '完成草稿（私有文章）' : (isEditing ? '保存修改' : '保存文章') }}</template>
           </button>
           <button
             v-if="article"
@@ -141,7 +143,7 @@ async function copyAccessLink(): Promise<void> {
             {{ article.visibility !== 'private' ? '查看文章' : (previewing ? '收起预览' : '预览文章') }}
           </button>
           <button
-            v-if="article"
+            v-if="article?.publicationStatus === 'published'"
             class="button button--quiet"
             type="button"
             :disabled="!canSaveAccess"

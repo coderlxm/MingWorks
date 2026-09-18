@@ -93,6 +93,9 @@ interface AssetRow {
 }
 
 export interface CreateArticleInput {
+  publicId?: string;
+  sourceCreatedAt?: string;
+  publicationStatus?: JournalPublicationStatus;
   title: string;
   richBodyJson: string;
   tags: string[];
@@ -597,6 +600,39 @@ export class JournalRepository {
     return this.getById(insert());
   }
 
+  listArticleDrafts(): JournalEntry[] {
+    return (this.database.prepare("SELECT * FROM journal_entries WHERE source_kind = 'web' AND body_format = 'rich' AND publication_status = 'draft' ORDER BY updated_at DESC").all() as EntryRow[]).map(row => this.toEntry(row));
+  }
+
+  findImageForCopy(assetId: number, sourceEntryIds: number[]): AssetRow | null {
+    if (!sourceEntryIds.length) return null;
+    const row = this.database.prepare(`SELECT a.* FROM journal_assets a JOIN journal_entries e ON e.id = a.entry_id
+      WHERE a.id = ? AND e.publication_status = 'published' AND a.kind IN ('photo', 'animation')
+      AND e.id IN (${sourceEntryIds.map(() => '?').join(',')})`).get(assetId, ...sourceEntryIds) as AssetRow | undefined;
+    return row ?? null;
+  }
+
+  createArticleWithAssets(
+    input: CreateArticleInput,
+    assets: WebEntryAssetInput[],
+    bodyFor: (assetIds: number[]) => { richBodyJson: string; contentText: string },
+    messageId?: number,
+  ): { entry: JournalEntry; created: boolean } {
+    return this.database.transaction(() => {
+      if (messageId !== undefined) {
+        const message = this.database.prepare('SELECT article_id FROM journal_ai_messages WHERE id = ?').get(messageId) as { article_id: number | null } | undefined;
+        if (!message) throw new Error('AI message was not found.');
+        if (message.article_id !== null) return { entry: this.getById(message.article_id), created: false };
+      }
+      const id = this.insertArticle(input);
+      const assetIds = assets.map((asset, index) => this.insertWebAsset({ ...asset, entryId: id, role: 'inline', sortOrder: index }));
+      const body = bodyFor(assetIds);
+      this.database.prepare('UPDATE journal_entries SET rich_body_json = ?, content_text = ? WHERE id = ?').run(body.richBodyJson, body.contentText, id);
+      if (messageId !== undefined) this.database.prepare('UPDATE journal_ai_messages SET article_id = ?, updated_at = ? WHERE id = ?').run(id, new Date().toISOString(), messageId);
+      return { entry: this.getById(id), created: true };
+    })();
+  }
+
   createArticleFromAiMessage(
     messageId: number,
     input: CreateArticleInput,
@@ -615,15 +651,15 @@ export class JournalRepository {
   }
 
   private insertArticle(input: CreateArticleInput): number {
-    const publicId = randomUUID();
-    const now = new Date().toISOString();
+    const publicId = input.publicId ?? randomUUID();
+    const now = input.sourceCreatedAt ?? new Date().toISOString();
     const result = this.database.prepare(`
         INSERT INTO journal_entries (
           public_id, source_kind, chat_id, source_message_id, media_group_id, content_type,
           title, body_format, rich_body_json, content_text,
           channel, visibility, tags_json, structured_content_json, telegram_message_json,
-          ai_generated, source_created_at, captured_at, updated_at
-        ) VALUES (?, 'web', NULL, NULL, NULL, 'article', ?, 'rich', ?, ?, 'article', ?, ?, NULL, NULL, ?, ?, ?, ?)
+          ai_generated, source_created_at, captured_at, updated_at, publication_status
+        ) VALUES (?, 'web', NULL, NULL, NULL, 'article', ?, 'rich', ?, ?, 'article', ?, ?, NULL, NULL, ?, ?, ?, ?, ?)
       `).run(
         publicId,
         input.title,
@@ -635,6 +671,7 @@ export class JournalRepository {
         now,
         now,
         now,
+        input.publicationStatus ?? 'published',
       );
     return Number(result.lastInsertRowid);
   }
@@ -818,14 +855,13 @@ export class JournalRepository {
     }));
   }
 
-  updateArticle(id: number, input: UpdateArticleInput, removedAssetIds: number[]): JournalEntry {
+  updateArticle(id: number, input: UpdateArticleInput, removedAssetIds: number[], complete = false): JournalEntry {
     const update = this.database.transaction(() => {
       const result = this.database.prepare(`
         UPDATE journal_entries
         SET title = ?, rich_body_json = ?, content_text = ?, tags_json = ?,
-            ai_generated = ?, updated_at = ?
+            ai_generated = ?, updated_at = ?, publication_status = CASE WHEN ? THEN 'published' ELSE publication_status END
         WHERE id = ? AND source_kind = 'web' AND body_format = 'rich'
-          AND publication_status = 'published'
       `).run(
         input.title,
         input.richBodyJson,
@@ -833,6 +869,7 @@ export class JournalRepository {
         JSON.stringify(input.tags),
         input.aiGenerated ? 1 : 0,
         new Date().toISOString(),
+        complete ? 1 : 0,
         id,
       );
       if (result.changes === 0) {
@@ -848,7 +885,6 @@ export class JournalRepository {
     const row = this.database.prepare(`
       SELECT * FROM journal_entries
       WHERE id = ? AND source_kind = 'web' AND body_format = 'rich'
-        AND publication_status = 'published'
     `).get(id) as EntryRow | undefined;
     return row ? this.toEntry(row) : null;
   }
@@ -952,7 +988,6 @@ export class JournalRepository {
         AND a.source_kind = 'web'
         AND e.source_kind = 'web'
         AND e.body_format = 'rich'
-        AND e.publication_status = 'published'
     `).get(assetId, id) as AssetRow | undefined;
     return row ?? null;
   }

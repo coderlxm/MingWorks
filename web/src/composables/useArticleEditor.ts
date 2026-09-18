@@ -1,6 +1,8 @@
 import { readonly, shallowRef } from 'vue';
 import {
   createArticle as createArticleRequest,
+  createArticleDraft,
+  completeArticle,
   deleteArticleAsset as deleteArticleAssetRequest,
   fetchArticle,
   updateArticle as updateArticleRequest,
@@ -42,11 +44,11 @@ export function useArticleEditor() {
     richBody: JournalRichDocument;
     tags: string[];
     aiGenerated: boolean;
-  }): Promise<JournalEntry | null> {
+  }, draft = false): Promise<JournalEntry | null> {
     saving.value = true;
     error.value = null;
     try {
-      const created = await createArticleRequest(input);
+      const created = await (draft ? createArticleDraft(input) : createArticleRequest(input));
       article.value = created;
       return created;
     } catch (reason) {
@@ -62,12 +64,12 @@ export function useArticleEditor() {
     richBody: JournalRichDocument;
     tags: string[];
     aiGenerated: boolean;
-  }): Promise<JournalEntry | null> {
+  }, complete = false): Promise<JournalEntry | null> {
     if (article.value === null) return null;
     saving.value = true;
     error.value = null;
     try {
-      const updated = await updateArticleRequest(article.value.id, input);
+      const updated = await (complete ? completeArticle(article.value.id, input) : updateArticleRequest(article.value.id, input));
       article.value = updated;
       return updated;
     } catch (reason) {
@@ -117,16 +119,18 @@ export function useArticleEditor() {
     }
   }
 
-  async function removeAsset(assetId: number): Promise<void> {
-    if (article.value === null) return;
+  async function removeAsset(assetId: number): Promise<boolean> {
+    if (article.value === null) return false;
     uploading.value = true;
     error.value = null;
     try {
       await deleteArticleAssetRequest(article.value.id, assetId);
       const refreshed = await fetchArticle(article.value.id);
       article.value = refreshed;
+      return true;
     } catch (reason) {
       exposeError(reason);
+      return false;
     } finally {
       uploading.value = false;
     }

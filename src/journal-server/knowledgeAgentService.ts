@@ -310,7 +310,7 @@ export class JournalKnowledgeAgentService {
       title,
       richBody,
       tags: [],
-    });
+    }, message.sources.map(source => source.entryId));
   }
 
   private async *generateStream(
@@ -618,6 +618,8 @@ export class JournalKnowledgeAgentService {
         complete: read.complete,
         nextOffset: read.nextOffset,
         text: read.text,
+        images: read.images,
+        imageUsage: '图片仅有元信息，不代表看过图片内容。需要配图时只使用本次 read_entries 返回的 url，不得猜测 /media ID。',
       });
     }
     return { entries: results };

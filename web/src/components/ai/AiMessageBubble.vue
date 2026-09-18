@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { AiMessage, AiStreamPhaseState, AiStreamRound } from '../../types';
-import { renderAiMarkdown } from '../../utils/aiMarkdown';
+import MarkdownBody from '../content/MarkdownBody.vue';
 import AINavigationIcon from './AINavigationIcon.vue';
 import AiSourceList from './AiSourceList.vue';
 
@@ -21,11 +21,6 @@ const emit = defineEmits<{
   stop: [messageId: number];
 }>();
 
-const renderedContent = computed(() => renderAiMarkdown(props.message.content));
-const renderedRounds = computed(() => props.rounds.map((round) => ({
-  ...round,
-  html: renderAiMarkdown(round.text),
-})));
 const canSave = computed(() =>
   props.message.role === 'assistant'
   && props.message.status === 'completed'
@@ -61,14 +56,14 @@ const phaseLabel = computed(() => {
 
       <template v-else-if="message.status === 'pending' && streaming">
         <p v-if="phaseLabel" class="ai-message__phase">{{ phaseLabel }}</p>
-        <div v-if="renderedRounds.length > 0" class="ai-message__rounds">
+        <div v-if="rounds.length > 0" class="ai-message__rounds">
           <div
-            v-for="round in renderedRounds"
+            v-for="(round, index) in rounds"
             :key="round.round"
             class="ai-message__round"
             :class="[`ai-message__round--${round.kind}`]"
           >
-            <div class="ai-message__body" v-html="round.html" />
+            <MarkdownBody class="ai-message__body" :content="round.text" :streaming="index === rounds.length - 1" />
           </div>
         </div>
         <div v-else class="ai-message__pending" role="status">
@@ -101,17 +96,17 @@ const phaseLabel = computed(() => {
       <template v-else-if="message.status === 'failed'">
         <div class="ai-message__failure" role="alert">
           <strong>本轮没有完成。</strong>
-          <div
+          <MarkdownBody
             v-if="message.content.trim() !== ''"
             class="ai-message__body ai-message__partial-body"
-            v-html="renderedContent"
+            :content="message.content"
           />
           <p>{{ message.error || '请求失败，未生成完整回答。' }}</p>
         </div>
       </template>
 
       <template v-else>
-        <div class="ai-message__body" v-html="renderedContent" />
+        <MarkdownBody class="ai-message__body" :content="message.content" />
         <AiSourceList :sources="message.sources" @open-entry="emit('openEntry', $event)" />
         <div v-if="canSave" class="ai-message__actions">
           <button
@@ -219,47 +214,6 @@ const phaseLabel = computed(() => {
   color: var(--text-muted);
 }
 
-.ai-message__body :deep(h2),
-.ai-message__body :deep(h3) {
-  margin: 0.9rem 0 0.45rem;
-  font-family: var(--font-serif);
-  font-weight: 700;
-}
-
-.ai-message__body :deep(p) {
-  margin: 0.55rem 0;
-}
-
-.ai-message__body :deep(ul),
-.ai-message__body :deep(ol) {
-  padding-left: 1.2rem;
-  margin: 0.55rem 0;
-}
-
-.ai-message__body :deep(blockquote) {
-  margin: 0.65rem 0;
-  padding: 0.25rem 0.85rem;
-  border-left: 3px solid var(--border-strong);
-  color: var(--text-muted);
-}
-
-.ai-message__body :deep(code) {
-  padding: 0.12rem 0.3rem;
-  border-radius: 5px;
-  background: var(--surface-muted);
-  font-size: 0.86em;
-}
-
-.ai-message__body :deep(pre) {
-  overflow-x: auto;
-  padding: 0.75rem;
-  border-radius: 10px;
-  background: var(--surface-muted);
-}
-
-.ai-message__body :deep(a) {
-  color: var(--accent-strong);
-}
 
 .ai-message__pending {
   display: flex;
@@ -354,4 +308,5 @@ const phaseLabel = computed(() => {
     opacity: 0;
   }
 }
+
 </style>
