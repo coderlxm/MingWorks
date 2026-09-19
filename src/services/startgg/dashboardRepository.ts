@@ -70,6 +70,10 @@ export function readDashboardSets(rowId: number, live = false): DashboardSet[] {
   const sets = rows.map(row => JSON.parse(row.payload_json) as DashboardSet);
   return live ? sets.filter(set => set.startedAt !== null) : sets;
 }
+export function readRecentDashboardSets(): DashboardSet[] {
+  const rows = getDb().prepare('SELECT payload_json FROM startgg_dashboard_sets WHERE completed_at IS NOT NULL ORDER BY completed_at DESC,set_id DESC LIMIT 20').all() as Array<{ payload_json: string }>;
+  return rows.map(row => JSON.parse(row.payload_json) as DashboardSet);
+}
 export function dashboardEvent(row: StartggWatchEvent) {
   const snapshot = readDashboardSnapshot(row.id);
   return { eventId: row.event_id, eventSlug: row.event_slug, eventName: row.event_display_name ?? row.event_name,

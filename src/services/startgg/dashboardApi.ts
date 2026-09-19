@@ -4,7 +4,7 @@ import type { Telegraf } from 'telegraf';
 import { z } from 'zod';
 import { listStartggWatchEvents } from '../startggRepository.js';
 import { getStartggPollingRuntimeStatus } from '../../scheduled/jobs.js';
-import { dashboardEvent, dashboardFollowing, dashboardEventPlayers, dashboardSeeds, findDashboardEvent, readDashboardSets, readDashboardSnapshot, readDashboardSync, markDashboardError } from './dashboardRepository.js';
+import { dashboardEvent, dashboardFollowing, dashboardEventPlayers, dashboardSeeds, findDashboardEvent, readDashboardSets, readRecentDashboardSets, readDashboardSnapshot, readDashboardSync, markDashboardError } from './dashboardRepository.js';
 import { dismissDiscoveredStartggEvent, addStartggDashboardPlayer, applyStartggInterest, discoverStartggDashboard, pauseStartggDashboard, resolveStartggDashboardPlayers, setStartggDashboardSeeds, startStartggDashboardEvent, syncStartggDashboard, type ResolvedDashboardPlayer } from './control.js';
 import { queueStartggTask, getStartggTaskQueueStatus } from './taskQueue.js';
 
@@ -66,6 +66,7 @@ export async function startStartggDashboardApi(bot: Telegraf): Promise<void> {
     return { servedAt: new Date().toISOString(), events: rows.map(dashboardEvent),
       players: rows.filter(row => row.active === 1 && row.event_id !== null).flatMap(row => dashboardEventPlayers(row.id).map(player => ({ ...player, eventId: row.event_id!, eventName: row.event_display_name ?? row.event_name }))),
       liveSets: rows.filter(row => row.active === 1).flatMap(row => readDashboardSets(row.id, true)),
+      recentSets: readRecentDashboardSets(),
       pendingCount: following.pending.length, runtime: { ...getStartggPollingRuntimeStatus(), ...readDashboardSync('global'), ...getStartggTaskQueueStatus() }, operation: currentOperation };
   });
   api.get<{ Params: { eventId: string } }>('/api/startgg/events/:eventId', async (request, reply) => {
