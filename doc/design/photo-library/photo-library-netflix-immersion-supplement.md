@@ -2,7 +2,7 @@
 
 ## 1. 方案定位与设计目标
 
-本方案作为 [photo-library-immersive-mode.md](file:///Users/xiaomingli/Code/NotiNewsForXiaoming/doc/design/photo-library-immersive-mode.md) 的视觉与交互体验补充设计。
+本方案作为 [photo-library-immersive-mode.md](./photo-library-immersive-mode.md) 的视觉与交互体验补充设计。
 
 在原方案确立的**“路由驱动伪全屏、零新增后端接口、单用户极简状态”**工程底座之上，针对“Netflix 影院式沉浸感”进行专项视觉与动效升级，重点强化：
 
