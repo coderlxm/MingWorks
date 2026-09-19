@@ -741,6 +741,7 @@ export function clearStartggWatchState(): void {
     db.prepare('DELETE FROM startgg_watch_event_entrants').run();
     db.prepare('DELETE FROM startgg_watch_snapshots').run();
     db.prepare('DELETE FROM startgg_watch_events').run();
+    db.prepare('DELETE FROM startgg_dashboard_sync_state').run();
   });
   clear();
 }

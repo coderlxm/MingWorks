@@ -1,5 +1,6 @@
 packages:
   - 'apps/lu-dashboard'
+  - 'apps/startgg-dashboard'
 
 allowBuilds:
   better-sqlite3: false

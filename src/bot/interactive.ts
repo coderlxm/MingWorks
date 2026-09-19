@@ -1,3 +1,4 @@
+import { applyStartggInterest, pauseStartggDashboard, setStartggDashboardSeeds, startStartggDashboardEvent, syncStartggDashboard } from '../services/startgg/control.js';
 import type { Telegraf, Context } from 'telegraf';
 import { message } from 'telegraf/filters';
 import { isAuthorized } from './auth.js';
@@ -71,10 +72,8 @@ import {
 } from '../formatters/startggFormatter.js';
 import {
   describeStartggError,
-  fetchEventMeta,
   listEventEntrantPlayers,
   resolveUserToPlayer,
-  runStartggWatchOnce,
 } from '../services/startgg/index.js';
 import {
   createStartggWatchPlayer,
@@ -84,24 +83,17 @@ import {
   listStartggWatchPlayers,
   listStartggWatchStatusViews,
   listStartggSentMessageIds,
-  replaceActiveStartggWatchEvent,
   clearStartggWatchState,
   updateStartggWatchPlayerIdentity,
   getFeaturedSeedCount,
-  setFeaturedSeedCount,
   listEventFeaturedEntrants,
   listActiveStartggWatchEvents,
   type StartggFeaturedSeedCount,
 } from '../services/startggRepository.js';
-import { runStartggGo, runStartggWatchNow, syncStartggPresetPlayers, resyncFeaturedEntrantsForActiveEvents } from '../services/startggPresetSync.js';
+import { runStartggGo, syncStartggPresetPlayers } from '../services/startggPresetSync.js';
 import { runStartggTask } from '../services/startgg/taskQueue.js';
 import {
-  addStartggEventInterestOverride,
-  deleteStartggPendingEvent,
-  deleteStartggPendingEventsByVideogame,
-  dismissStartggEvent,
   findStartggPendingEventById,
-  followStartggVideogame,
 } from '../services/startggInterestRepository.js';
 import { escapeHtml } from '../utils/html.js';
 import { bjFormat } from '../utils/time.js';
@@ -312,13 +304,16 @@ function formatAvSubscriptionList(targets: TrackedTarget[]): string {
 }
 
 export function registerInteractiveHandlers(bot: Telegraf): void {
+  bot.use(async (ctx, next) => {
+    const text = ctx.message && 'text' in ctx.message ? ctx.message.text : '';
+    const callback = ctx.callbackQuery && 'data' in ctx.callbackQuery ? ctx.callbackQuery.data : '';
+    const isStartgg = /^\/(?:startgg|startggpoll|fetchstartgg|watch|watchlist|startggwatchlist)(?:@\w+)?(?:\s|$)/i.test(text)
+      || isStartggGoNaturalAlias(text) || /^(?:sgwatch|sgseeds|sginterest):/.test(callback);
+    if (isStartgg) await runStartggTask(next);
+    else await next();
+  });
   async function applyFeaturedSeedCount(count: StartggFeaturedSeedCount): Promise<void> {
-    const summary = await runStartggTask(async () => {
-      await resyncFeaturedEntrantsForActiveEvents(count);
-      setFeaturedSeedCount(count);
-      return runStartggWatchOnce(bot);
-    });
-    updateStartggFastWatch(bot, summary.activeEventSlugs);
+    await setStartggDashboardSeeds(bot, count);
   }
 
   bot.use(async (ctx, next) => {
@@ -562,8 +557,7 @@ export function registerInteractiveHandlers(bot: Telegraf): void {
     if (!isAuthorized(ctx)) return;
     await ctx.reply('开始手动检查 start.gg 选手状态...', { parse_mode: 'HTML' });
     try {
-      const summary = await runStartggTask(() => runStartggWatchNow(bot));
-      updateStartggFastWatch(bot, summary.activeEventSlugs);
+      const summary = await syncStartggDashboard(bot);
       await ctx.reply(
         `检查完成：本次检查项目 ${summary.checkedEvents} 个，选手 ${summary.checkedPlayers} 个，状态变化 ${summary.changed} 条，进行中 ${summary.activeSetCount} 条。`,
         { parse_mode: 'HTML' }
@@ -615,8 +609,8 @@ export function registerInteractiveHandlers(bot: Telegraf): void {
         );
         return;
       }
-      updateStartggFastWatch(bot, summary.activeEventSlugs);
       enableStartggPolling(bot, false);
+      updateStartggFastWatch(bot, summary.activeEventSlugs);
 
       const seedCount = getFeaturedSeedCount();
       await ctx.telegram.editMessageText(
@@ -777,12 +771,12 @@ export function registerInteractiveHandlers(bot: Telegraf): void {
     const text = ctx.message && 'text' in ctx.message ? ctx.message.text : '';
     const arg = text.replace(/^\/startggpoll\s*/, '').trim().toLowerCase();
     if (arg === 'on') {
-      const enabled = enableStartggPolling(bot);
-      await ctx.reply(enabled ? 'start.gg 自动轮询已开启：每 15 分钟检查一次。' : 'start.gg 自动轮询已经开启。', { parse_mode: 'HTML' });
+      await syncStartggDashboard(bot, true);
+      await ctx.reply('首次采集完成，start.gg 自动轮询已开启：每 15 分钟检查一次。', { parse_mode: 'HTML' });
       return;
     }
     if (arg === 'off') {
-      const disabled = disableStartggPolling();
+      const { paused: disabled } = await pauseStartggDashboard();
       await ctx.reply(disabled ? 'start.gg 自动轮询已关闭。' : 'start.gg 自动轮询本来就是关闭的。', { parse_mode: 'HTML' });
       return;
     }
@@ -804,29 +798,8 @@ export function registerInteractiveHandlers(bot: Telegraf): void {
 
     try {
       if (isStartggEventReference(raw)) {
-        const event = await fetchEventMeta(raw);
-        const eventName = event.tournamentName ? `${event.tournamentName} / ${event.name}` : event.name;
-        if (
-          !event.tournamentName
-          || event.tournamentEndAt === null
-          || event.videogameId === null
-          || !event.videogameName
-        ) {
-          throw new Error(`start.gg 项目缺少 tournament 元数据：${event.slug}`);
-        }
-        followStartggVideogame(
-          event.videogameId,
-          event.videogameName,
-        );
-        replaceActiveStartggWatchEvent(
-          event.slug,
-          eventName,
-          event.tournamentName,
-          event.name,
-          new Date(event.tournamentEndAt * 1000).toISOString(),
-          event.videogameId,
-          event.videogameName,
-        );
+        await startStartggDashboardEvent(bot, raw);
+        const eventName = listActiveStartggWatchEvents()[0]!.event_name;
         const enabledPlayers = listStartggWatchPlayers().filter((row) => row.enabled === 1).length;
         const nextStep = enabledPlayers === 0
           ? '下一步：发送 /watch <选手名> 或 /watch <user_url> 添加选手。'
@@ -1538,38 +1511,15 @@ export function registerInteractiveHandlers(bot: Telegraf): void {
 
       await ctx.answerCbQuery();
       if (interestAction.action === 'follow' || interestAction.action === 'event') {
-        if (interestAction.action === 'follow') {
-          followStartggVideogame(pending.videogame_id, pending.videogame_name);
-        } else {
-          addStartggEventInterestOverride(pending.event_slug, pending.tournament_end_at);
-        }
-        let summary: Awaited<ReturnType<typeof runStartggGo>>;
         try {
-          summary = await runStartggTask(() => runStartggGo(bot, '', pending.event_slug));
+          await applyStartggInterest(bot, pending.id, interestAction.action, false);
         } catch (error) {
           const message = describeStartggError(error);
           await ctx.editMessageText(
-            `${formatStartggInterestPrompt({
-              playerNames: JSON.parse(pending.player_names) as string[],
-              videogameName: pending.videogame_name,
-              tournamentName: pending.tournament_name,
-            })}\n\n启动监控失败：${escapeHtml(message)}`,
-            {
-              parse_mode: 'HTML',
-              ...buildStartggInterestPromptButtons(pending.id),
-            },
+            `${formatStartggInterestPrompt({ playerNames: JSON.parse(pending.player_names) as string[], videogameName: pending.videogame_name, tournamentName: pending.tournament_name })}\n\n${escapeHtml(message)}`,
+            { parse_mode: 'HTML', ...buildStartggInterestPromptButtons(pending.id) },
           );
           return;
-        }
-        if (summary.status !== 'started') {
-          throw new Error('所选赛事未启动监控。');
-        }
-        updateStartggFastWatch(bot, summary.activeEventSlugs);
-        enableStartggPolling(bot, false);
-        if (interestAction.action === 'follow') {
-          deleteStartggPendingEventsByVideogame(pending.videogame_id);
-        } else {
-          deleteStartggPendingEvent(pending.id);
         }
         await ctx.editMessageText(
           interestAction.action === 'follow'
@@ -1578,8 +1528,7 @@ export function registerInteractiveHandlers(bot: Telegraf): void {
           { parse_mode: 'HTML' },
         );
       } else {
-        dismissStartggEvent(pending.event_slug, pending.tournament_end_at);
-        deleteStartggPendingEvent(pending.id);
+        await applyStartggInterest(bot, pending.id, 'dismiss', false);
         await ctx.editMessageText(
           `本届赛事不关注：${escapeHtml(pending.tournament_name)}\n以后同一游戏的新赛事仍会询问。`,
           { parse_mode: 'HTML' },

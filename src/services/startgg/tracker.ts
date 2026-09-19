@@ -1,4 +1,5 @@
 import type { Telegraf } from 'telegraf';
+import { StartggNotificationError, clearDashboardNotificationError, dashboardPlayers, dashboardSeeds, markDashboardAttempt, markDashboardError, markDashboardSuccess, readDashboardSnapshot, saveDashboardSnapshot, type DashboardSet, type DashboardSnapshot } from './dashboardRepository.js';
 import {
   buildStartggEventSummaryMessages,
   type StartggEventSummaryInput,
@@ -436,6 +437,8 @@ async function processEvent(
   refreshEventMeta: boolean,
 ): Promise<EventProcessResult> {
   const normalizedSlug = normalizeEventSlug(eventRow.event_slug);
+  let resolvedEventId = eventRow.event_id;
+  const previousDashboard = readDashboardSnapshot(eventRow.id);
   let tournamentName = eventRow.tournament_name;
   let eventDisplayName = eventRow.event_display_name;
   let resolvedEventSlug = normalizedSlug;
@@ -447,6 +450,7 @@ async function processEvent(
     if (!header.tournament?.name || header.tournament.endAt === null) {
       throw new Error(`start.gg event missing tournament metadata: ${normalizedSlug}`);
     }
+    resolvedEventId = header.id;
     tournamentName = header.tournament.name;
     eventDisplayName = header.name;
     resolvedEventSlug = header.slug;
@@ -493,6 +497,8 @@ async function processEvent(
       : Promise.resolve([]),
   ]);
 
+  const dashboardPlayerRows = dashboardPlayers(eventRow.id);
+  const dashboardSeedRows = dashboardSeeds(eventRow.id).map(seed => ({ ...seed, phaseName: previousDashboard?.snapshot.seeds.find(item => item.phaseId === seed.phaseId)?.phaseName ?? null }));
   let changed = 0;
   let activeSetCount = 0;
 
@@ -505,6 +511,13 @@ async function processEvent(
     );
 
     const snapshot = computePlayerSnapshot(normalizedSlug, playerSets, entrantId, eventStandings);
+    const dashboardPlayer = dashboardPlayerRows.find(item => item.id === player.id)!;
+    Object.assign(dashboardPlayer, {
+      playerName: eventPlayerName, entrantId, status: snapshot.status, placement: snapshot.placement,
+      placementIsFinal: eventStandings.find(item => item.entrant?.id === entrantId)?.isFinal === true,
+      lastSetScoreText: snapshot.lastSetScoreText, lastSetRoundLabel: snapshot.lastSetRoundLabel,
+      capturedAt: new Date().toISOString(),
+    });
     if (snapshot.activeSetExists) {
       activeSetCount += 1;
     }
@@ -614,6 +627,9 @@ async function processEvent(
   let finalPhaseName = eventRow.final_phase_name;
   let finalPhaseNumSeeds = eventRow.final_phase_num_seeds;
   let eventState = eventRow.event_state;
+  let finalEntrantsFetched = false;
+  let dashboardFinalEntrants = previousDashboard?.snapshot.finalPhase?.entrants ?? [];
+  let dashboardFinalStandings = previousDashboard?.snapshot.finalPhase?.standings ?? [];
   let phaseTracking: Awaited<ReturnType<typeof fetchPhaseTracking>> | null = null;
 
   if (refreshEventMeta) {
@@ -622,6 +638,7 @@ async function processEvent(
       throw new Error(`start.gg event phase metadata missing: ${normalizedSlug}`);
     }
     eventState = phaseMeta.state;
+    for (const seed of dashboardSeedRows) seed.phaseName = phaseMeta.phases.find(phase => phase.id === seed.phaseId)?.name ?? null;
     const discoveredPhase = finalPhaseId === null ? selectFinalPhase(phaseMeta.phases) : null;
     updateStartggWatchEventFinalPhase({
       eventRowId: eventRow.id,
@@ -639,6 +656,11 @@ async function processEvent(
         fetchPhaseSeeds(discoveredPhase.id),
         fetchPhaseTracking(discoveredPhase.id),
       ]);
+      finalEntrantsFetched = true;
+      dashboardFinalEntrants = seeds.filter(seed => seed.entrant !== null).map(seed => ({
+        seedNum: seed.seedNum, entrantId: seed.entrant!.id, entrantName: seed.entrant!.name,
+        phaseId: discoveredPhase.id, phaseName: discoveredPhase.name,
+      }));
       phaseTracking = baselineTracking;
       eventState = baselineTracking.eventState;
       for (const set of baselineTracking.sets.filter(
@@ -661,6 +683,10 @@ async function processEvent(
   }
 
   if (finalPhaseId !== null && finalPhaseName && finalPhaseNumSeeds !== null) {
+    if (!finalEntrantsFetched && (refreshEventMeta || dashboardFinalEntrants.length === 0)) {
+      const seeds = await fetchPhaseSeeds(finalPhaseId);
+      dashboardFinalEntrants = seeds.filter(seed => seed.entrant !== null).map(seed => ({ seedNum: seed.seedNum, entrantId: seed.entrant!.id, entrantName: seed.entrant!.name, phaseId: finalPhaseId!, phaseName: finalPhaseName }));
+    }
     phaseTracking ??= await fetchPhaseTracking(finalPhaseId);
     eventState = phaseTracking.eventState;
     const phaseSets = phaseTracking.sets;
@@ -703,8 +729,10 @@ async function processEvent(
       }
     }
 
-    if (eventState === 'COMPLETED' && eventRow.final_phase_tracking_completed === 0) {
-      const standings = (await fetchEventStandings(normalizedSlug))
+    if (eventState === 'COMPLETED' && (eventRow.final_phase_tracking_completed === 0 || dashboardFinalStandings.length === 0)) {
+      const officialStandings = await fetchEventStandings(normalizedSlug);
+      dashboardFinalStandings = officialStandings.filter(item => item.placement <= 8 && item.entrant?.name).map(item => ({ placement: item.placement, entrantId: item.entrant!.id, entrantName: item.entrant!.name! }));
+      const standings = officialStandings
         .filter((standing) => standing.placement <= 8 && standing.entrant?.name)
         .map((standing) => ({
           placement: standing.placement,
@@ -713,11 +741,43 @@ async function processEvent(
       if (standings.length === 0) {
         throw new Error(`start.gg completed event missing final standings: ${normalizedSlug}`);
       }
-      finalStandings = { standings };
-      finalPhaseTrackingPending = true;
-      changed += 1;
+      if (eventRow.final_phase_tracking_completed === 0) {
+        finalStandings = { standings };
+        finalPhaseTrackingPending = true;
+        changed += 1;
+      }
     }
   }
+
+  if (resolvedEventId === null) throw new Error(`start.gg unresolved event: ${normalizedSlug}`);
+  if (eventState !== null) {
+    updateStartggWatchEventFinalPhase({ eventRowId: eventRow.id, eventState, phaseId: finalPhaseId, phaseName: finalPhaseName, phaseNumSeeds: finalPhaseNumSeeds });
+  }
+  const observedAt = new Date().toISOString();
+  const dashboardSets = new Map<number, DashboardSet>();
+  const collect = (set: TrackedSetNode, sources: DashboardSet['sources']) => {
+    if (!Number.isInteger(set.id)) return;
+    const existing = dashboardSets.get(set.id);
+    dashboardSets.set(set.id, { eventId: resolvedEventId!, setId: set.id, roundLabel: set.fullRoundText,
+      displayScore: set.displayScore, state: set.state, startedAt: set.startedAt, completedAt: set.completedAt,
+      winnerId: set.winnerId, slots: set.slots.map(slot => ({ entrantId: slot.entrant?.id ?? null, name: slot.entrant?.name ?? null })),
+      sources: [...new Set([...(existing?.sources ?? []), ...sources])], observedAt,
+      url: `https://www.start.gg/${normalizedSlug}/set/${set.id}` });
+  };
+  for (const set of entrantSets) {
+    const sources: DashboardSet['sources'] = [];
+    if (set.slots.some(slot => slot.entrant && mappedEntrantIds.includes(slot.entrant.id))) sources.push('player');
+    if (set.slots.some(slot => slot.entrant && featuredEntrantIds.includes(slot.entrant.id))) sources.push('seed');
+    collect(set, sources);
+  }
+  for (const set of phaseTracking?.sets ?? []) collect(set, ['final']);
+  const dashboardSnapshot: DashboardSnapshot = {
+    players: dashboardPlayerRows, seeds: dashboardSeedRows, eventState,
+    finalPhase: finalPhaseId !== null && finalPhaseName && finalPhaseNumSeeds !== null
+      ? { id: finalPhaseId, name: finalPhaseName, numSeeds: finalPhaseNumSeeds, entrants: dashboardFinalEntrants, standings: dashboardFinalStandings }
+      : null,
+  };
+  saveDashboardSnapshot(eventRow.id, dashboardSnapshot, [...dashboardSets.values()], refreshEventMeta);
 
   const summary: StartggEventSummaryInput | null
     = playerUpdates.length > 0 || featuredSetResults.length > 0 || finalPhaseStarted !== null || finalPhaseSetResults.length > 0 || finalStandings !== null
@@ -779,14 +839,19 @@ export async function runStartggWatchOnce(bot?: Telegraf, options?: RunStartggWa
     ? events.filter((row) => normalizedEventFilter.has(normalizeEventSlug(row.event_slug)))
     : events;
 
-  const results = await Promise.all(
-    targetEvents.map((eventRow) => processEvent(
-      eventRow,
-      players,
-      options?.refreshEntrantMappings !== false,
-      options?.refreshEventMeta !== false,
-    )),
-  );
+  markDashboardAttempt('global');
+  const results: EventProcessResult[] = [];
+  for (const eventRow of targetEvents) {
+    markDashboardAttempt(String(eventRow.id));
+    try {
+      results.push(await processEvent(eventRow, players, options?.refreshEntrantMappings !== false, options?.refreshEventMeta !== false));
+    } catch (error) {
+      markDashboardError(String(eventRow.id), error);
+      markDashboardError('global', error);
+      throw error;
+    }
+  }
+  markDashboardSuccess('global', options?.refreshEventMeta !== false && targetEvents.length === events.length);
 
   let changed = 0;
   let activeSetCount = 0;
@@ -798,10 +863,18 @@ export async function runStartggWatchOnce(bot?: Telegraf, options?: RunStartggWa
       activeEventSlugs.push(normalizeEventSlug(targetEvents[index]!.event_slug));
     }
     if (result.summary) {
-      await sendStartggEventSummary(bot, targetEvents[index]!.id, result);
+      try {
+        await sendStartggEventSummary(bot, targetEvents[index]!.id, result);
+        clearDashboardNotificationError(String(targetEvents[index]!.id));
+      } catch (error) {
+        markDashboardError(String(targetEvents[index]!.id), error, true);
+        markDashboardError('global', error, true);
+        throw new StartggNotificationError(error instanceof Error ? error.message : String(error), { cause: error });
+      }
     }
   }
 
+  clearDashboardNotificationError('global');
   return {
     checkedPlayers: players.length,
     checkedEvents: targetEvents.length,

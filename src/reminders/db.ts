@@ -298,6 +298,29 @@ export function getDb(): Database.Database {
         created_at TEXT NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS startgg_dashboard_event_state (
+        watch_event_id INTEGER PRIMARY KEY REFERENCES startgg_watch_events(id) ON DELETE CASCADE,
+        snapshot_json TEXT NOT NULL,
+        snapshot_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS startgg_dashboard_sets (
+        watch_event_id INTEGER NOT NULL REFERENCES startgg_watch_events(id) ON DELETE CASCADE,
+        set_id INTEGER NOT NULL,
+        payload_json TEXT NOT NULL,
+        completed_at INTEGER,
+        current_scope INTEGER NOT NULL,
+        PRIMARY KEY (watch_event_id, set_id)
+      );
+      CREATE TABLE IF NOT EXISTS startgg_dashboard_sync_state (
+        scope TEXT PRIMARY KEY,
+        last_attempt_at TEXT,
+        last_success_at TEXT,
+        last_full_success_at TEXT,
+        last_error TEXT,
+        notification_error TEXT,
+        stop_reason TEXT
+      );
+
       CREATE TABLE IF NOT EXISTS masturbation_records (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         occurred_at TEXT NOT NULL,

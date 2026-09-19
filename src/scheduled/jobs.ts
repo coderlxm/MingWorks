@@ -29,7 +29,8 @@ import {
   formatBackupHealthAlert,
 } from '../formatters/index.js';
 import { sendTelegramMessage } from '../publishers/telegram.js';
-import { runStartggTask } from '../services/startgg/taskQueue.js';
+import { queueStartggTask } from '../services/startgg/taskQueue.js';
+import { markDashboardAttempt, markDashboardError, setDashboardStopReason } from '../services/startgg/dashboardRepository.js';
 
 const VITAMIN_WORKDAY_RANDOM_WINDOW_MS = 15 * 60 * 1000;
 const PHOTO_WORKDAY_RANDOM_WINDOW_MS = 65 * 60 * 1000;
@@ -68,7 +69,7 @@ function clearStartggFastWatch(): void {
 }
 
 export function updateStartggFastWatch(bot: Telegraf, activeEventSlugs: string[]): void {
-  if (activeEventSlugs.length === 0) {
+  if (!startggPollJob || activeEventSlugs.length === 0) {
     clearStartggFastWatch();
     return;
   }
@@ -85,48 +86,54 @@ export function updateStartggFastWatch(bot: Telegraf, activeEventSlugs: string[]
 async function runScheduledStartggFastWatch(bot: Telegraf, eventSlugs: string[]): Promise<void> {
   try {
     console.log(`Mode: start.gg Fast Watch (${eventSlugs.join(', ')})`);
-    const summary = await runStartggTask(() => runStartggWatchOnce(bot, {
-      eventSlugs,
-      refreshEntrantMappings: false,
-      refreshEventMeta: false,
-    }));
-    console.log(`start.gg fast watch finished. events=${summary.checkedEvents} players=${summary.checkedPlayers} changed=${summary.changed} active=${summary.activeSetCount}`);
-    updateStartggFastWatch(bot, summary.activeEventSlugs);
+    await queueStartggTask(async () => {
+      if (!isStartggPollingEnabled()) return;
+      const summary = await runStartggWatchOnce(bot, { eventSlugs, refreshEntrantMappings: false, refreshEventMeta: false });
+      console.log(`start.gg fast watch finished. events=${summary.checkedEvents} players=${summary.checkedPlayers} changed=${summary.changed} active=${summary.activeSetCount}`);
+      updateStartggFastWatch(bot, summary.activeEventSlugs);
+    });
   } catch (error) {
+    markDashboardError('global', error);
     console.error('start.gg fast watch failed.', error);
   }
 }
 
 async function runScheduledStartggWatch(bot: Telegraf): Promise<void> {
   try {
-    clearStartggFastWatch();
-    console.log('Mode: start.gg Watch');
-    const summary = await runStartggTask(() => runStartggWatchNow(bot));
-    console.log(`start.gg watch finished. events=${summary.checkedEvents} players=${summary.checkedPlayers} changed=${summary.changed} active=${summary.activeSetCount}`);
-    const subscribedEvents = listActiveStartggWatchEvents();
-    const now = dayjs();
-    const closedByDeadline = subscribedEvents.filter((event) =>
-      event.event_state !== 'COMPLETED'
-      && event.tournament_end_at !== null
-      && !now.isBefore(dayjs(event.tournament_end_at).add(STARTGG_TOURNAMENT_CLOSE_GRACE_HOURS, 'hour')),
-    );
-    const allEventsClosed = subscribedEvents.every((event) =>
-      event.event_state === 'COMPLETED'
-      || closedByDeadline.includes(event),
-    );
-    if (allEventsClosed) {
-      disableStartggPolling();
-      await bot.telegram.sendMessage(
-        config.tgChatId,
-        closedByDeadline.length > 0
-          ? `start.gg 存在未标记完成的订阅赛事已超过结束时间 ${STARTGG_TOURNAMENT_CLOSE_GRACE_HOURS} 小时，自动轮询已关闭。`
-          : 'start.gg 当前订阅赛事已结束，自动轮询已关闭。',
+    await queueStartggTask(async () => {
+      if (!isStartggPollingEnabled()) return;
+      markDashboardAttempt('global');
+      clearStartggFastWatch();
+      console.log('Mode: start.gg Watch');
+      const summary = await runStartggWatchNow(bot);
+      console.log(`start.gg watch finished. events=${summary.checkedEvents} players=${summary.checkedPlayers} changed=${summary.changed} active=${summary.activeSetCount}`);
+      const subscribedEvents = listActiveStartggWatchEvents();
+      const now = dayjs();
+      const closedByDeadline = subscribedEvents.filter((event) =>
+        event.event_state !== 'COMPLETED'
+        && event.tournament_end_at !== null
+        && !now.isBefore(dayjs(event.tournament_end_at).add(STARTGG_TOURNAMENT_CLOSE_GRACE_HOURS, 'hour')),
       );
-      return;
-    }
+      const allEventsClosed = subscribedEvents.every((event) =>
+        event.event_state === 'COMPLETED'
+        || closedByDeadline.includes(event),
+      );
+      if (allEventsClosed) {
+        disableStartggPolling();
+        setDashboardStopReason(subscribedEvents.length === 0 ? 'no_events' : closedByDeadline.length > 0 ? 'deadline' : 'completed');
+        await bot.telegram.sendMessage(
+          config.tgChatId,
+          closedByDeadline.length > 0
+            ? `start.gg 存在未标记完成的订阅赛事已超过结束时间 ${STARTGG_TOURNAMENT_CLOSE_GRACE_HOURS} 小时，自动轮询已关闭。`
+            : 'start.gg 当前订阅赛事已结束，自动轮询已关闭。',
+        );
+        return;
+      }
 
-    updateStartggFastWatch(bot, summary.activeEventSlugs);
+      updateStartggFastWatch(bot, summary.activeEventSlugs);
+    });
   } catch (error) {
+    markDashboardError('global', error);
     console.error('start.gg watch failed.', error);
   }
 }
@@ -140,11 +147,13 @@ export function enableStartggPolling(bot: Telegraf, resetState = true): boolean 
     await runScheduledStartggWatch(bot);
   });
   setStartggPollingPersistedEnabled(true);
+  setDashboardStopReason(null);
   return true;
 }
 
 export function disableStartggPolling(): boolean {
   setStartggPollingPersistedEnabled(false);
+  setDashboardStopReason('paused');
   clearStartggFastWatch();
   if (!startggPollJob) return false;
   startggPollJob.cancel();

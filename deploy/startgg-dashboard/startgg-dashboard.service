@@ -1,0 +1,16 @@
+[Unit]
+Description=start.gg personal match dashboard
+After=network-online.target docker.service notinews-bot.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/startgg-dashboard/current
+EnvironmentFile=/opt/startgg-dashboard/.env
+Environment=NODE_ENV=production
+Environment=STARTGG_DASHBOARD_HOST=172.18.0.1
+ExecStart=/usr/bin/env node server/server.mjs
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

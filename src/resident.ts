@@ -1,3 +1,4 @@
+import { startStartggDashboardApi } from './services/startgg/dashboardApi.js';
 import { createBot } from './bot/createBot.js';
 import { registerInteractiveHandlers } from './bot/interactive.js';
 import { config } from './config/index.js';
@@ -26,6 +27,7 @@ async function main() {
   schedulePendingRecurringRules(bot);
   registerFixedJobs(bot);
   restoreStartggPolling(bot);
+  await startStartggDashboardApi(bot);
   restoreVitaminLoop(bot);
   restoreBusReminderLoop(bot);
   await closeExpiredWorkCheckin(bot);
