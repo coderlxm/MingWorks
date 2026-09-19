@@ -4,6 +4,7 @@ import type { AssetView } from '../../types';
 
 const props = defineProps<{
   view: AssetView;
+  compact?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -16,12 +17,14 @@ function select(view: AssetView): void {
 </script>
 
 <template>
-  <section class="asset-view-switch" aria-label="资产展示方式">
+  <section class="asset-view-switch" :class="{ 'asset-view-switch--compact': compact }" aria-label="资产展示方式">
     <div class="asset-view-switch__options">
       <button
         class="asset-view-switch__option"
         :class="{ 'asset-view-switch__option--active': view === 'waterfall' }"
         type="button"
+        aria-label="瀑布视图"
+        title="瀑布视图"
         :aria-pressed="view === 'waterfall'"
         @click="select('waterfall')"
       >
@@ -32,6 +35,8 @@ function select(view: AssetView): void {
         class="asset-view-switch__option"
         :class="{ 'asset-view-switch__option--active': view === 'table' }"
         type="button"
+        aria-label="表格视图"
+        title="表格视图"
         :aria-pressed="view === 'table'"
         @click="select('table')"
       >
@@ -45,6 +50,7 @@ function select(view: AssetView): void {
 <style scoped>
 .asset-view-switch {
   display: flex;
+  flex: none;
   height: var(--asset-toolbar-control-height, 3rem);
   align-items: center;
 }
@@ -81,6 +87,10 @@ function select(view: AssetView): void {
   background: var(--accent-soft);
   color: var(--accent-strong);
   font-weight: 700;
+}
+
+.asset-view-switch--compact .asset-view-switch__option span {
+  display: none;
 }
 
 @media (max-width: 599px) {
