@@ -73,7 +73,7 @@ function forwardInteractionsChange(
 </script>
 
 <template>
-  <div ref="scrollContainer" class="app-scroll">
+  <div ref="scrollContainer" class="app-scroll" :class="{ 'app-scroll--resume': route.name === 'resume' }">
     <RouterView v-slot="{ Component }" :route="routedViewLocation">
       <KeepAlive v-if="ownerAuthenticated" :max="1">
         <component
@@ -198,6 +198,12 @@ function forwardInteractionsChange(
       />
       <component
         :is="Component"
+        v-else-if="route.name === 'about'"
+        :key="route.key"
+        @layout-ready="emit('layoutReady')"
+      />
+      <component
+        :is="Component"
         v-else-if="backgroundFeedRoute === null"
         :key="route.key"
       />
@@ -234,5 +240,14 @@ function forwardInteractionsChange(
 
 .app-scroll > * {
   flex-shrink: 0;
+}
+
+.app-scroll--resume {
+  overflow: hidden;
+}
+
+.app-scroll--resume > * {
+  flex: 1;
+  min-height: 0;
 }
 </style>

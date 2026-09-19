@@ -1,9 +1,12 @@
 <script setup lang="ts" name="AboutView">
 import { storeToRefs } from 'pinia';
-import { computed } from 'vue';
+import { computed, onMounted } from 'vue';
 import { useSiteProfileStore } from '../../stores/siteProfile';
 import AboutContactList from './AboutContactList.vue';
 import AboutResumeCard from './AboutResumeCard.vue';
+
+const emit = defineEmits<{ layoutReady: [] }>();
+onMounted(() => emit('layoutReady'));
 
 const siteProfile = useSiteProfileStore();
 const { profile, loadError } = storeToRefs(siteProfile);

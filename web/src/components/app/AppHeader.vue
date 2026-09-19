@@ -232,12 +232,8 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  padding: 0;
-  transition: transform 0.22s var(--ease-card, ease-out), box-shadow 0.22s ease;
-}
-
-.profile__home--has-stories .profile__avatar-ring {
   padding: 2.5px;
+  transition: transform 0.22s var(--ease-card, ease-out), box-shadow 0.22s ease;
 }
 
 .profile__home--unviewed .profile__avatar-ring {

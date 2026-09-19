@@ -16,7 +16,7 @@ const formattedDate = computed(() => new Intl.DateTimeFormat('zh-CN', {
 </script>
 
 <template>
-  <RouterLink class="about-resume-card" :to="resume.viewUrl">
+  <RouterLink class="about-resume-card" data-resume-link :to="resume.viewUrl">
     <span class="about-resume-card__copy">
       <span class="about-resume-card__title">个人简历</span>
       <span class="about-resume-card__meta">

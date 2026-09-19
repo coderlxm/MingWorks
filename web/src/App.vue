@@ -141,6 +141,7 @@ const guestbookActive = computed(() => route.value.name === 'guestbook');
 const photoImmersiveActive = computed(() => photosActive.value);
 const gameImmersiveActive = computed(() => gamesActive.value);
 const immersiveActive = computed(() => photosActive.value || gamesActive.value);
+const resumeImmersiveActive = computed(() => route.value.name === 'resume');
 
 function changePublicChannel(channel: JournalChannel): void {
   navigate(publicFeedPath(channel));
@@ -183,10 +184,12 @@ onUnmounted(() => {
     :class="{
       'app-shell--photo-immersive': photoImmersiveActive,
       'app-shell--game-immersive': gameImmersiveActive,
+      'app-shell--resume-immersive': resumeImmersiveActive,
     }"
   >
     <AppHeader
       v-if="!immersiveActive"
+      v-show="!resumeImmersiveActive"
       :profile="profile"
       :profile-load-error="profileLoadError"
       :public-mode="publicShellActive && route.name !== 'ai'"
@@ -201,13 +204,15 @@ onUnmounted(() => {
     <div
       class="app-main"
       :class="{
-        'app-main--public': publicShellActive,
+        'app-main--public': publicShellActive && !resumeImmersiveActive,
         'app-main--photo-immersive': photoImmersiveActive,
         'app-main--game-immersive': gameImmersiveActive,
+        'app-main--resume-immersive': resumeImmersiveActive,
       }"
     >
       <PublicChannelNavigation
         v-if="publicShellActive"
+        v-show="!resumeImmersiveActive"
         :key="immersiveActive ? 'immersive' : 'fixed'"
         :channel="publicFeedRoute?.channel ?? null"
         :about-active="route.name === 'about'"
@@ -302,6 +307,10 @@ onUnmounted(() => {
   background: #090a0f;
 }
 
+.app-shell--resume-immersive {
+  grid-template-rows: minmax(0, 1fr);
+}
+
 .app-main {
   display: grid;
   min-width: 0;
@@ -328,6 +337,11 @@ onUnmounted(() => {
 
 .app-main--game-immersive {
   background: #090a0f;
+}
+
+.app-main--resume-immersive {
+  width: 100%;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .app-main--photo-immersive > .app-route-viewport,

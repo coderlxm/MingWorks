@@ -10,6 +10,8 @@ export interface UseAppScrollRestorationOptions {
 export function useAppScrollRestoration(options: UseAppScrollRestorationOptions) {
   const feedScrollPositions = new Map<string, number>();
   let pendingFeedScrollTop: number | null = null;
+  let resumeReturnScrollTop: number | null = null;
+  let pendingResumeReturn = false;
 
   function handleRouteChange(nextPath: string, currentPath: string): void {
     if (currentPath === nextPath) return;
@@ -20,6 +22,19 @@ export function useAppScrollRestoration(options: UseAppScrollRestorationOptions)
       && nextUrl.search === currentUrl.search
     ) return;
     if (options.isOverlayTransition(currentPath, nextPath)) {
+      return;
+    }
+
+    if (nextUrl.pathname === '/resume' && currentUrl.pathname !== '/resume') {
+      resumeReturnScrollTop = currentUrl.pathname === '/about'
+        ? options.getScrollContainer()!.scrollTop
+        : null;
+    }
+    pendingResumeReturn = currentUrl.pathname === '/resume'
+      && nextUrl.pathname === '/about'
+      && resumeReturnScrollTop !== null;
+    if (pendingResumeReturn) {
+      pendingFeedScrollTop = null;
       return;
     }
 
@@ -40,6 +55,14 @@ export function useAppScrollRestoration(options: UseAppScrollRestorationOptions)
   }
 
   function restoreFeedScroll(): void {
+    if (pendingResumeReturn) {
+      const container = options.getScrollContainer()!;
+      container.scrollTo({ top: resumeReturnScrollTop!, behavior: 'auto' });
+      container.querySelector<HTMLElement>('[data-resume-link]')?.focus({ preventScroll: true });
+      pendingResumeReturn = false;
+      resumeReturnScrollTop = null;
+      return;
+    }
     if (pendingFeedScrollTop === null) return;
 
     const scrollTop = pendingFeedScrollTop;

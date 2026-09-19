@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia';
-import { computed, onMounted, shallowRef } from 'vue';
+import { computed, onBeforeUnmount, onMounted, shallowRef, useTemplateRef } from 'vue';
 import { onBeforeRouteUpdate, useRoute, useRouter } from 'vue-router';
 import {
   exchangeResumeShareToken,
@@ -28,6 +28,9 @@ const unlockError = shallowRef<string | null>(null);
 const loadError = shallowRef<string | null>(null);
 const content = shallowRef<JournalPublicResume | null>(null);
 const enteredViaShareToken = shallowRef(false);
+const view = useTemplateRef<HTMLElement>('view');
+const pdfViewer = useTemplateRef<InstanceType<typeof PdfResumeViewer>>('pdfViewer');
+let loadVersion = 0;
 
 const locked = computed(() => content.value?.kind === 'locked');
 const resume = computed(() => content.value?.kind === 'resume' ? content.value : null);
@@ -39,8 +42,21 @@ const fixedShareUrl = computed(() => (
 ));
 
 onMounted(() => {
+  view.value?.focus({ preventScroll: true });
   void load(route.hash);
 });
+onBeforeUnmount(() => { loadVersion += 1; });
+
+function exitReading(): void {
+  void router.push('/about');
+}
+
+function handleEscape(event: KeyboardEvent): void {
+  if (event.defaultPrevented || event.isComposing) return;
+  event.preventDefault();
+  event.stopPropagation();
+  if (!pdfViewer.value?.closeEnlargedPage()) exitReading();
+}
 
 onBeforeRouteUpdate((to, from) => {
   if (to.name === 'resume' && to.hash !== '' && to.hash !== from.hash) {
@@ -49,6 +65,7 @@ onBeforeRouteUpdate((to, from) => {
 });
 
 async function load(hash: string): Promise<void> {
+  const version = ++loadVersion;
   loading.value = true;
   loadError.value = null;
   content.value = null;
@@ -56,16 +73,21 @@ async function load(hash: string): Promise<void> {
   try {
     if (token !== null) {
       enteredViaShareToken.value = true;
-      content.value = await exchangeResumeShareToken(token);
+      const response = await exchangeResumeShareToken(token);
+      if (version !== loadVersion) return;
+      content.value = response;
       await router.replace({ path: route.path, query: route.query, hash: '' });
     } else {
-      content.value = await fetchPublicResume();
+      const response = await fetchPublicResume();
+      if (version !== loadVersion) return;
+      content.value = response;
     }
   } catch (reason) {
+    if (version !== loadVersion) return;
     handleLoadFailure(reason);
     return;
   }
-  loading.value = false;
+  if (version === loadVersion) loading.value = false;
 }
 
 function readShareToken(hash: string): string | null {
@@ -83,11 +105,15 @@ function handleLoadFailure(reason: unknown): void {
 }
 
 async function unlock(password: string): Promise<void> {
+  const version = loadVersion;
   busy.value = true;
   unlockError.value = null;
   try {
-    content.value = await unlockResume(password);
+    const response = await unlockResume(password);
+    if (version !== loadVersion) return;
+    content.value = response;
   } catch (reason) {
+    if (version !== loadVersion) return;
     if (reason instanceof JournalRequestError && reason.status === 401) {
       unlockError.value = '简历访问口令不正确';
     } else if (reason instanceof JournalRequestError && reason.status === 404) {
@@ -96,85 +122,144 @@ async function unlock(password: string): Promise<void> {
       unlockError.value = reason instanceof Error ? reason.message : String(reason);
     }
   } finally {
-    busy.value = false;
+    if (version === loadVersion) busy.value = false;
   }
 }
 </script>
 
 <template>
-  <main class="resume-view">
-    <div v-if="loading" class="resume-view__loading">
-      <JournalLoading variant="reading" label="正在打开简历…" />
-    </div>
+  <main ref="view" class="resume-view" tabindex="-1" @keydown.esc="handleEscape">
+    <header class="resume-view__bar">
+      <span class="resume-view__title">个人简历</span>
+      <RouterLink class="resume-view__exit" to="/about" title="退出阅读（Esc）">
+        退出阅读 <span aria-hidden="true">×</span>
+      </RouterLink>
+    </header>
 
-    <ResumeAccessGate
-      v-else-if="locked"
-      :busy="busy"
-      :error="unlockError"
-      @unlock="unlock"
-    />
+    <div class="resume-view__body">
+      <div v-if="loading" class="resume-view__message">
+        <JournalLoading variant="reading" label="正在打开简历…" />
+      </div>
 
-    <template v-else-if="resume">
-      <ResumeHero :profile="profile" :resume="resume" />
+      <div v-else-if="locked" class="resume-view__message">
+        <ResumeAccessGate :busy="busy" :error="unlockError" @unlock="unlock" />
+      </div>
 
-      <section class="resume-view__content">
-        <MarkdownResumeViewer
-          v-if="resume.format === 'markdown'"
-          :html="resume.renderedHtml"
-        />
-        <PdfResumeViewer
-          v-else
-          :pages="resume.previewPages"
-          :content-url="resume.contentUrl"
-          :download-url="resume.downloadUrl"
-          :original-name="resume.originalName"
-          :updated-at="resume.updatedAt"
-          :share-url="fixedShareUrl"
-          :contacts="profile?.contactItems"
-        />
-      </section>
-
-      <ResumeFloatingDock
-        :format="resume.format"
+      <PdfResumeViewer
+        v-else-if="resume?.format === 'pdf'"
+        ref="pdfViewer"
+        :key="resume.updatedAt"
+        :pages="resume.previewPages"
+        :content-url="resume.contentUrl"
         :download-url="resume.downloadUrl"
+        :original-name="resume.originalName"
+        :updated-at="resume.updatedAt"
         :share-url="fixedShareUrl"
-        :content-url="resume.format === 'pdf' ? resume.contentUrl : undefined"
+        :contacts="profile?.contactItems"
       />
-    </template>
 
-    <div v-else-if="loadError" class="resume-view__error" role="alert">
-      {{ loadError }}
+      <div v-else-if="resume?.format === 'markdown'" class="resume-view__markdown-scroll">
+        <div class="resume-view__markdown">
+          <ResumeHero :profile="profile" :resume="resume" />
+          <MarkdownResumeViewer :html="resume.renderedHtml" />
+          <ResumeFloatingDock
+            format="markdown"
+            :download-url="resume.downloadUrl"
+            :share-url="fixedShareUrl"
+          />
+        </div>
+      </div>
+
+      <div v-else-if="loadError" class="resume-view__message">
+        <p class="resume-view__error" role="alert">{{ loadError }}</p>
+      </div>
     </div>
   </main>
 </template>
 
 <style scoped>
 .resume-view {
-  width: min(calc(100% - (var(--page-gutter) * 2)), 960px);
-  margin: 0 auto;
-  padding: clamp(1.8rem, 4vw, 3.2rem) 0 3.5rem;
-}
-
-.resume-view__loading {
   display: grid;
-  min-height: 55vh;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0.35rem;
+  padding: max(0.35rem, env(safe-area-inset-top)) max(0.75rem, env(safe-area-inset-right)) max(0.75rem, env(safe-area-inset-bottom)) max(0.75rem, env(safe-area-inset-left));
+  background: var(--surface-page);
 }
 
-.resume-view__content {
-  width: 100%;
+.resume-view__bar {
+  display: flex;
+  min-height: 2.5rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.resume-view__title {
+  color: var(--text-muted);
+  font-family: var(--font-serif);
+  font-size: 0.85rem;
+}
+
+.resume-view__exit {
+  display: inline-flex;
+  min-height: 2.25rem;
+  flex: none;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.75rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--surface-card);
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  text-decoration: none;
+}
+
+.resume-view__exit:hover { border-color: var(--accent); color: var(--accent-strong); }
+
+.resume-view__body {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.resume-view__message,
+.resume-view__markdown-scroll {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.resume-view__message {
+  display: grid;
+  align-items: start;
+  justify-items: center;
+}
+
+.resume-view__markdown {
+  width: min(100%, 960px);
+  margin: 0 auto;
+  padding: 1.5rem 0;
 }
 
 .resume-view__error {
-  margin: 2rem auto 0;
+  margin: 2rem 0;
   max-width: var(--reading-width);
   color: var(--danger);
   font-size: 0.9rem;
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 599px) {
   .resume-view {
-    padding-top: 1.2rem;
-    padding-bottom: 2rem;
+    padding-right: max(0.5rem, env(safe-area-inset-right));
+    padding-left: max(0.5rem, env(safe-area-inset-left));
   }
 }
 </style>
