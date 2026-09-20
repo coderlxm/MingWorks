@@ -54,7 +54,10 @@ app.route({
   method: ['GET', 'POST', 'PUT', 'DELETE'],
   url: '/api/startgg/*',
   handler: async (request, reply) => {
-    if (!authenticated(request)) return reply.code(401).send({ error: '请先输入站点口令' })
+    const isAdmin = authenticated(request)
+    const path = request.url.split('?')[0]
+    const publicRead = request.method === 'GET' && /^\/api\/startgg\/(?:board|following|events\/\d+(?:\/sets)?)$/.test(path)
+    if (!isAdmin && !publicRead) return reply.code(401).send({ error: '请先输入站点口令' })
     const response = await fetch(`http://127.0.0.1:3411${request.url}`, {
       method: request.method,
       headers: { authorization: `Bearer ${apiToken}`, 'content-type': 'application/json' },
@@ -62,6 +65,11 @@ app.route({
       signal: AbortSignal.timeout(15000),
     })
     reply.code(response.status).type(response.headers.get('content-type') || 'application/json')
+    if (!isAdmin && path === '/api/startgg/board' && response.ok) {
+      const board = await response.json()
+      board.operation = null
+      return reply.send(board)
+    }
     return reply.send(Buffer.from(await response.arrayBuffer()))
   },
 })

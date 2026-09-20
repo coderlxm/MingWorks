@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import type { EventSummary } from '../types'
 import { eventStatus } from '../format'
-const props = defineProps<{ events: EventSummary[]; selected: string; pendingCount: number }>()
+const props = defineProps<{ events: EventSummary[]; selected: string; pendingCount: number; canManage: boolean }>()
 defineEmits<{ manage: [] }>()
 const groups = computed(() => {
   const result = new Map<string, EventSummary[]>()
@@ -23,7 +23,7 @@ const groups = computed(() => {
       </template>
     </div>
     <p v-if="!events.length" class="empty small">还没有已采集的项目</p>
-    <button v-if="pendingCount" class="pending-link" @click="$emit('manage')">{{ pendingCount }} 个项目待确认 →</button>
+    <button v-if="canManage && pendingCount" class="pending-link" @click="$emit('manage')">{{ pendingCount }} 个项目待确认 →</button>
     <div class="nav-note">仅展示已采集范围<br>关注选手 · 种子 · 决赛</div>
   </nav>
 </template>

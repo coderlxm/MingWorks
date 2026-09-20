@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, shallowRef, useTemplateRef } from 'vue'
+import { computed, onBeforeUnmount, onMounted, shallowRef, useTemplateRef } from 'vue'
 import type { BoardData } from '../composables/useBoardData'
 import type { Discovered } from '../types'
 import { stopReason, time } from '../format'
@@ -26,10 +26,14 @@ function open(target = 'discover') {
   pendingChoice.value = null
   if (!dialog.value?.open) { history.pushState({ ...history.state, ftgDrawer: true }, '', location.href); dialog.value?.showModal() }
 }
-function close() { dialog.value?.close(); if (history.state?.ftgDrawer) history.back() }
+function close() {
+  if (!dialog.value?.open) return
+  dialog.value.close()
+  if (history.state?.ftgDrawer) history.back()
+}
 function popstate() { if (dialog.value?.open) dialog.value.close() }
 onMounted(() => window.addEventListener('popstate', popstate))
-onUnmounted(() => window.removeEventListener('popstate', popstate))
+onBeforeUnmount(() => { window.removeEventListener('popstate', popstate); close() })
 defineExpose({ open })
 async function start() { const eventSlug = selected.value?.eventSlug ?? eventLink.value.trim(); await props.data.run('/monitoring/start', { eventSlug, ...(selected.value ? { interest: discoveredInterest.value } : {}) }) }
 async function interest() { const value = pendingChoice.value!; await props.data.run(`/interests/${value.id}`, { action: value.action }); pendingChoice.value = null }

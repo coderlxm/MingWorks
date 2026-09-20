@@ -6,6 +6,9 @@ import type { Board, Candidate, Detail, Discovered, Following, Operation } from 
 export function useBoardData() {
   const router = useRouter()
   const authenticated = shallowRef<boolean | null>(null)
+  const sessionGeneration = shallowRef(0)
+  const sessionError = shallowRef('')
+  const sessionSubmitting = shallowRef(false)
   const board = shallowRef<Board | null>(null)
   const following = shallowRef<Following | null>(null)
   const details = reactive<Record<string, Detail>>({})
@@ -19,31 +22,38 @@ export function useBoardData() {
   const busy = computed(() => submitting.value || operation.value?.status === 'running' || operation.value?.status === 'queued')
   let timer: ReturnType<typeof setTimeout> | undefined
   let reading = false
+  let checkingSession = false
   let disposed = false
   let activeOperationId: string | null = null
-  let sessionGeneration = 0
-  let handledOperationId: string | null = null
 
   function stopTimer() { clearTimeout(timer) }
+  function clearManagement() {
+    sessionGeneration.value += 1
+    submitting.value = false
+    operation.value = null
+    activeOperationId = null
+    discovered.value = null
+    candidates.value = null
+    actionError.value = ''
+    if (board.value) board.value = { ...board.value, operation: null }
+  }
+  function expireSession() {
+    clearManagement()
+    authenticated.value = false
+    sessionError.value = '管理会话已过期，请重新登录；比赛仍可继续浏览。'
+  }
   function showFailure(cause: unknown) {
     error.value = cause instanceof Error ? cause.message : String(cause)
-    if (cause instanceof ApiError && cause.status === 401) {
-      sessionGeneration += 1
-      authenticated.value = false
-      submitting.value = false
-      operation.value = null
-      activeOperationId = null
-    }
     stopTimer()
   }
-  async function readDetail(eventId: string, generation: number) {
+  async function readDetail(eventId: string) {
     try {
       const value = await api<Detail>(`/events/${encodeURIComponent(eventId)}`)
-      if (generation !== sessionGeneration) return
+      if (disposed) return
       details[eventId] = value
       delete detailErrors[eventId]
     } catch (cause) {
-      if (generation !== sessionGeneration) return
+      if (disposed) return
       if (cause instanceof ApiError && cause.status === 404) {
         delete details[eventId]
         detailErrors[eventId] = '记录已不存在，可能已在 Telegram 中清空。'
@@ -52,11 +62,11 @@ export function useBoardData() {
       throw cause
     }
   }
-  function acceptOperation(value: Operation | null) {
+  function acceptOperation(value: Operation | null, applyResult = false) {
     if (!value) return
     operation.value = value
-    if (value.status === 'succeeded' && handledOperationId !== value.id) {
-      handledOperationId = value.id
+    // Only actions issued in this session populate management choices.
+    if (value.status === 'succeeded' && applyResult) {
       const intent = value.type
       if (intent === '/discover' || intent === 'discover') discovered.value = (value.result as { events: Discovered[] }).events
       if (intent === 'resolve-player') candidates.value = (value.result as { candidates: Candidate[] }).candidates
@@ -67,108 +77,124 @@ export function useBoardData() {
     }
     if (value.status === 'succeeded' || value.status === 'failed') activeOperationId = null
   }
+  async function readOperation(latest: Operation | null, generation: number) {
+    if (authenticated.value !== true || generation !== sessionGeneration.value || actionError.value) return
+    const operationId = activeOperationId
+    if (!operationId) { acceptOperation(latest); return }
+    try {
+      const value = await api<Operation>(`/operations/${operationId}`)
+      if (disposed || generation !== sessionGeneration.value || operationId !== activeOperationId) return
+      acceptOperation(value, true)
+    } catch (cause) {
+      if (disposed || generation !== sessionGeneration.value || operationId !== activeOperationId) return
+      if (cause instanceof ApiError && cause.status === 401) { expireSession(); return }
+      if (cause instanceof ApiError && cause.status === 404) {
+        activeOperationId = null
+        operation.value = null
+        actionError.value = '操作结果不可用，请重新读取当前状态；不会自动重放操作。'
+      } else actionError.value = cause instanceof Error ? cause.message : String(cause)
+    }
+  }
   async function refresh() {
     stopTimer()
-    if (reading || disposed || authenticated.value !== true || error.value || document.hidden) return
+    if (reading || disposed || error.value || document.hidden) return
     reading = true
-    const generation = sessionGeneration
+    const generation = sessionGeneration.value
     const eventId = String(router.currentRoute.value.params.eventId ?? '')
+    if (authenticated.value === true && !sessionError.value) void checkSession()
     try {
       const nextBoard = await api<Board>('/board')
-      if (generation !== sessionGeneration) return
-      board.value = nextBoard
-      if (activeOperationId) {
-        try {
-          const value = await api<Operation>(`/operations/${activeOperationId}`)
-          if (generation !== sessionGeneration) return
-          acceptOperation(value)
-        } catch (cause) {
-          if (generation !== sessionGeneration) return
-          if (cause instanceof ApiError && cause.status === 404) {
-            activeOperationId = null
-            operation.value = null
-            actionError.value = '操作结果不可用，请重新读取当前状态；不会自动重放操作。'
-          } else throw cause
-        }
-      } else acceptOperation(nextBoard.operation)
+      if (disposed) return
+      board.value = { ...nextBoard, operation: authenticated.value === true && generation === sessionGeneration.value ? nextBoard.operation : null }
       const value = await api<Following>('/following')
-      if (generation !== sessionGeneration) return
+      if (disposed) return
       following.value = value
-      if (eventId) await readDetail(eventId, generation)
-    } catch (cause) { if (generation === sessionGeneration) showFailure(cause) }
+      if (eventId) await readDetail(eventId)
+      if (!disposed) await readOperation(nextBoard.operation, generation)
+    } catch (cause) { if (!disposed) showFailure(cause) }
     finally {
       reading = false
-      if (!disposed && !error.value && authenticated.value && !document.hidden) {
-        const changed = generation !== sessionGeneration || eventId !== String(router.currentRoute.value.params.eventId ?? '')
+      if (!disposed && !error.value && !document.hidden) {
+        const changed = generation !== sessionGeneration.value || eventId !== String(router.currentRoute.value.params.eventId ?? '')
         timer = setTimeout(refresh, changed ? 0 : 5000)
       }
     }
   }
-  async function reconnect() { error.value = ''; await refresh() }
+  async function reconnect() { error.value = ''; actionError.value = ''; await refresh() }
   async function run(path: string, body: unknown = {}, method = 'POST') {
-    if (submitting.value || (busy.value && path !== '/monitoring/pause')) return
-    const generation = sessionGeneration
+    if (authenticated.value !== true) { sessionError.value = '请先管理登录。'; return }
+    if (sessionSubmitting.value || submitting.value || (busy.value && path !== '/monitoring/pause')) return
+    const generation = sessionGeneration.value
     submitting.value = true
     actionError.value = ''
     try {
       const result = await api<{ operationId: string }>(path, method, body)
-      if (generation !== sessionGeneration) return
+      if (disposed || generation !== sessionGeneration.value) return
       activeOperationId = result.operationId
       operation.value = { id: result.operationId, type: path, status: 'queued', createdAt: null, startedAt: null, finishedAt: null, result: null, error: null }
       await refresh()
     } catch (cause) {
-      if (generation !== sessionGeneration) return
-      actionError.value = cause instanceof Error ? cause.message : String(cause)
-      if (cause instanceof ApiError && cause.status === 401) showFailure(cause)
-    } finally { if (generation === sessionGeneration) submitting.value = false }
+      if (disposed || generation !== sessionGeneration.value) return
+      if (cause instanceof ApiError && cause.status === 401) expireSession()
+      else actionError.value = cause instanceof Error ? cause.message : String(cause)
+    } finally { if (generation === sessionGeneration.value) submitting.value = false }
   }
-  async function login(password: string) {
-    const generation = ++sessionGeneration
-    submitting.value = true
-    actionError.value = ''
+  async function login(password: string): Promise<boolean> {
+    if (sessionSubmitting.value) return false
+    clearManagement()
+    const generation = sessionGeneration.value
+    sessionSubmitting.value = true
+    sessionError.value = ''
     try {
       const session = await request<{ authenticated: boolean }>('/api/session', 'POST', { password })
-      if (generation !== sessionGeneration) return
+      if (disposed || generation !== sessionGeneration.value) return false
       authenticated.value = session.authenticated
-      error.value = ''
-      await refresh()
-    } catch (cause) { if (generation === sessionGeneration) actionError.value = cause instanceof Error ? cause.message : String(cause) }
-    finally { if (generation === sessionGeneration) submitting.value = false }
+      void refresh()
+      return session.authenticated
+    } catch (cause) {
+      if (!disposed && generation === sessionGeneration.value) sessionError.value = cause instanceof Error ? cause.message : String(cause)
+      return false
+    } finally { if (generation === sessionGeneration.value) sessionSubmitting.value = false }
   }
   async function logout() {
-    const generation = ++sessionGeneration
-    stopTimer()
+    if (sessionSubmitting.value) return
+    clearManagement()
+    const generation = sessionGeneration.value
+    authenticated.value = null
+    sessionSubmitting.value = true
+    sessionError.value = ''
     try {
       await request('/api/session', 'DELETE')
-      if (generation !== sessionGeneration) return
-      stopTimer()
-      authenticated.value = false
-      submitting.value = false
-      board.value = null
-      following.value = null
-      operation.value = null
-      activeOperationId = null
-      discovered.value = null
-      candidates.value = null
-      error.value = ''
-      actionError.value = ''
-      for (const key of Object.keys(details)) delete details[key]
-    } catch (cause) { if (generation === sessionGeneration) showFailure(cause) }
+      if (!disposed && generation === sessionGeneration.value) authenticated.value = false
+    } catch (cause) {
+      if (!disposed && generation === sessionGeneration.value) sessionError.value = cause instanceof Error ? cause.message : String(cause)
+    } finally { if (generation === sessionGeneration.value) sessionSubmitting.value = false }
+  }
+  async function checkSession() {
+    if (disposed || checkingSession || sessionSubmitting.value) return
+    checkingSession = true
+    const generation = sessionGeneration.value
+    sessionError.value = ''
+    try {
+      const session = await request<{ authenticated: boolean }>('/api/session')
+      if (disposed || generation !== sessionGeneration.value) return
+      if (!session.authenticated && authenticated.value === true) expireSession()
+      else authenticated.value = session.authenticated
+    } catch (cause) {
+      if (disposed || generation !== sessionGeneration.value) return
+      clearManagement()
+      authenticated.value = null
+      sessionError.value = cause instanceof Error ? cause.message : String(cause)
+    } finally { checkingSession = false }
   }
   function visibility() { if (document.hidden) stopTimer(); else if (!error.value) void refresh() }
   const removeHook = router.afterEach(() => { if (!error.value) void refresh() })
-  async function loadSession() {
-    const generation = ++sessionGeneration
-    error.value = ''
-    try {
-      const session = await request<{ authenticated: boolean }>('/api/session')
-      if (generation !== sessionGeneration) return
-      authenticated.value = session.authenticated
-      await refresh()
-    } catch (cause) { if (generation === sessionGeneration) { showFailure(cause); authenticated.value = false } }
-  }
-  onMounted(() => { document.addEventListener('visibilitychange', visibility); void loadSession() })
+  onMounted(() => {
+    document.addEventListener('visibilitychange', visibility)
+    void checkSession()
+    void refresh()
+  })
   onUnmounted(() => { disposed = true; stopTimer(); removeHook(); document.removeEventListener('visibilitychange', visibility) })
-  return { authenticated, board, following, details, detailErrors, error, actionError, submitting, operation, discovered, candidates, busy, reconnect, run, login, logout, loadSession }
+  return { authenticated, sessionGeneration, sessionError, sessionSubmitting, board, following, details, detailErrors, error, actionError, submitting, operation, discovered, candidates, busy, reconnect, run, login, logout, checkSession }
 }
 export type BoardData = ReturnType<typeof useBoardData>
