@@ -66,7 +66,7 @@ Journal 是仓库里的另一位主角：由 Telegram 采集、Fastify 服务和
 | 常驻 Bot | `src/resident.ts` | Telegraf long polling、提醒恢复、固定任务、交互命令与 Journal Telegram 采集 | `data/notinews.sqlite` 及 `data/` 下状态文件 |
 | 一次性分发器 | `src/index.ts` | 按当前北京时间选择一项推送模式；保留给手动或 GitHub Actions 场景 | 共用 Bot 数据 |
 | Journal 服务 | `src/journal-server/index.ts` | Fastify API、附件存储、公开 Feed、静态 Web 托管 | `JOURNAL_DATA_DIR/journal.sqlite` 与 `assets/` |
-| Journal 前端 | `web/` | Vue 3 单页应用，提供公开记录、管理后台和文章编辑器 | 构建产物由 Journal 服务托管 |
+| Journal 前端 | `apps/journal-web/` | Vue 3 单页应用，提供公开记录、管理后台和文章编辑器 | 构建产物由 Journal 服务托管 |
 
 常驻 Bot 启动后会接回未完成提醒、循环规则、已持久化的 start.gg 轮询和维生素提醒循环，然后把固定任务安排好；以下时间均为北京时间：
 
@@ -121,7 +121,7 @@ src/
 ├── journal-bot/         Telegram Journal 采集和 API 客户端
 ├── journal-server/      Fastify、Journal 数据库、媒体和 Feed
 └── shared/              Bot、服务端与前端共用的 Journal 协议
-web/                     Vue 3 + Vite + Pinia + Vue Router Journal 前端
+apps/journal-web/        Vue 3 + Vite + Pinia + Vue Router Journal 前端
 deploy/                  systemd、Bot 备份与 Journal Docker 部署资产
 data/                    受版本控制的日历、监控目标与预置选手数据
 ```

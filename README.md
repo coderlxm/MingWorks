@@ -55,7 +55,7 @@ Every Telegram interaction is limited to the single chat identified by TG_CHAT_I
 | Resident bot | src/resident.ts | Telegraf long polling, reminder recovery, scheduled jobs, interactive commands, and Telegram Journal capture | data/notinews.sqlite and state files under data/ |
 | One-shot dispatcher | src/index.ts | Chooses one push mode from the current Beijing time; retained for manual and GitHub Actions use cases | Shared bot data |
 | Journal service | src/journal-server/index.ts | Fastify API, asset storage, public feeds, and static web hosting | JOURNAL_DATA_DIR/journal.sqlite and assets/ |
-| Journal frontend | web/ | Vue 3 single-page app for the public journal, private archive, and article editor | Built assets are served by the Journal service |
+| Journal frontend | apps/journal-web/ | Vue 3 single-page app for the public journal, private archive, and article editor | Built assets are served by the Journal service |
 
 On startup, the resident bot restores incomplete reminders, recurring rules, persisted start.gg polling, and vitamin reminder loops, then registers its scheduled jobs. Times below are Beijing time:
 
@@ -109,7 +109,7 @@ Database initialization and migrations are handled by src/reminders/db.ts, src/r
     ├── journal-bot/         Telegram Journal capture and API client
     ├── journal-server/      Fastify, Journal database, media, and feeds
     └── shared/              Journal protocol shared by bot, server, and frontend
-    web/                     Vue 3 + Vite + Pinia + Vue Router Journal frontend
+    apps/journal-web/        Vue 3 + Vite + Pinia + Vue Router Journal frontend
     deploy/                  systemd, bot backup, and Journal Docker deployment assets
     data/                    Versioned calendar, monitoring-target, and preset-player data
 

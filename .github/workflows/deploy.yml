@@ -61,7 +61,7 @@ jobs:
               - 'src/ai/models.ts'
               - 'src/journal-server/**'
               - 'src/shared/**'
-              - 'web/**'
+              - 'apps/journal-web/**'
               - 'deploy/journal/**'
               - 'scripts/journal-backup'
               - 'tsconfig.json'

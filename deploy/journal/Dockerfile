@@ -15,9 +15,9 @@ RUN pnpm install --frozen-lockfile
 
 FROM dependencies AS web-builder
 
-COPY web ./web
+COPY apps/journal-web ./apps/journal-web
 COPY src/shared ./src/shared
-RUN pnpm exec vite build web --config web/vite.config.ts
+RUN pnpm exec vite build apps/journal-web --config apps/journal-web/vite.config.ts
 
 FROM node:24-bookworm-slim AS runtime
 
@@ -26,7 +26,7 @@ ENV TZ=Asia/Shanghai
 ENV JOURNAL_WEB_HOST=0.0.0.0
 ENV JOURNAL_WEB_PORT=3100
 ENV JOURNAL_DATA_DIR=/data
-ENV JOURNAL_WEB_ROOT=/app/web/dist
+ENV JOURNAL_WEB_ROOT=/app/apps/journal-web/dist
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ffmpeg libheif-examples poppler-utils \
@@ -43,7 +43,7 @@ RUN chown node:node /app
 
 COPY --from=dependencies --chown=node:node /app/node_modules ./node_modules
 COPY --from=dependencies --chown=node:node /app/package.json ./package.json
-COPY --from=web-builder --chown=node:node /app/web/dist ./web/dist
+COPY --from=web-builder --chown=node:node /app/apps/journal-web/dist ./apps/journal-web/dist
 COPY --chown=node:node src/ai/models.ts ./src/ai/models.ts
 COPY --chown=node:node src/journal-server ./src/journal-server
 COPY --chown=node:node src/shared ./src/shared

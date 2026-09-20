@@ -10,7 +10,7 @@ services:
       JOURNAL_WEB_HOST: 0.0.0.0
       JOURNAL_WEB_PORT: "3100"
       JOURNAL_DATA_DIR: /data
-      JOURNAL_WEB_ROOT: /app/web/dist
+      JOURNAL_WEB_ROOT: /app/apps/journal-web/dist
     volumes:
       - /opt/journal/data:/data
     ports:

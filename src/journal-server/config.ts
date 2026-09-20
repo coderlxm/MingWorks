@@ -20,7 +20,7 @@ const environmentSchema = z.object({
   JOURNAL_WEB_PORT: z.coerce.number().int().min(1).max(65535).default(3100),
   JOURNAL_WEB_HOST: z.string().min(1).default('0.0.0.0'),
   JOURNAL_DATA_DIR: z.string().min(1).default('/data'),
-  JOURNAL_WEB_ROOT: z.string().min(1).default(path.resolve(process.cwd(), 'web/dist')),
+  JOURNAL_WEB_ROOT: z.string().min(1).default(path.resolve(process.cwd(), 'apps/journal-web/dist')),
 });
 
 export function loadJournalServerConfig(environment = process.env): JournalServerConfig {
