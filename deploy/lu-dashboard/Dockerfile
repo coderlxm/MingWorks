@@ -9,8 +9,7 @@ ENV HUSKY=0
 RUN apt-get update \
   && apt-get install -y --no-install-recommends build-essential python3 \
   && rm -rf /var/lib/apt/lists/* \
-  && corepack enable \
-  && corepack prepare pnpm@11.15.0 --activate
+  && npm install -g pnpm@12.5.1
 
 WORKDIR /app
 

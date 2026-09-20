@@ -6,8 +6,7 @@ ENV PNPM_HOME=/pnpm
 ENV PATH=${PNPM_HOME}:${PATH}
 ENV HUSKY=0
 
-RUN corepack enable \
-  && corepack prepare pnpm@11.15.0 --activate
+RUN npm install -g pnpm@12.5.1
 
 WORKDIR /app
 

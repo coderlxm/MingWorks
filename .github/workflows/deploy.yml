@@ -147,7 +147,8 @@ jobs:
 
           scopes = dict(zip(('journal', 'bot', 'lu_dashboard', 'startgg_dashboard'), (value == 'true' for value in sys.argv[1:])))
           def version_file(revision, path):
-              return yaml.safe_load(subprocess.check_output(['git', 'show', f'{revision}:{path}'], text=True))
+              # pnpm may prepend an environment document before the dependency lockfile.
+              return list(yaml.safe_load_all(subprocess.check_output(['git', 'show', f'{revision}:{path}'], text=True)))[-1]
 
           before = version_file(os.environ['BASE_SHA'], 'pnpm-lock.yaml')
           after = version_file(os.environ['GITHUB_SHA'], 'pnpm-lock.yaml')
@@ -431,6 +432,7 @@ jobs:
       - name: Install bot dependencies on server
         run: |
           PORT="${SERVER_PORT:-22}"
+          PNPM_PACKAGE="$(jq -r .packageManager package.json)"
           ssh -p "$PORT" "$SERVER_USER@$SERVER_HOST" "
             set -e
             cd '$SERVER_PROJECT_DIR'
@@ -438,9 +440,7 @@ jobs:
               echo 'Node.js is missing on server' >&2
               exit 1
             fi
-            if ! command -v pnpm >/dev/null 2>&1; then
-              timeout 180 npm install -g pnpm@11.15.0 --registry=https://registry.npmmirror.com --fetch-retries=1 --fetch-timeout=30000 --loglevel warn
-            fi
+            timeout 180 npm install -g '$PNPM_PACKAGE' --registry=https://registry.npmmirror.com --fetch-retries=1 --fetch-timeout=30000 --loglevel warn
             export npm_config_disturl=https://npmmirror.com/mirrors/node
             pnpm install --frozen-lockfile
           "
@@ -521,10 +521,11 @@ jobs:
         with:
           node-version: '24'
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
       - name: Prepare independent dashboard artifact
         run: |
-          corepack enable
-          corepack prepare pnpm@11.15.0 --activate
           pnpm install --frozen-lockfile --filter @notinews/startgg-dashboard...
           pnpm --filter @notinews/startgg-dashboard build
           pnpm --filter @notinews/startgg-dashboard --config.inject-workspace-packages=true deploy --prod /tmp/startgg-dashboard-release
