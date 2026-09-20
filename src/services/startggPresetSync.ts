@@ -320,8 +320,11 @@ export async function runStartggWatchNow(bot?: Telegraf): Promise<{
 }> {
   await syncStartggPresetPlayers();
   const players = listEnabledStartggWatchPlayers();
+  const subscribedSlugs = new Set(listActiveStartggWatchEvents().map(event => normalizeEventSlug(event.event_slug)));
   const discoveredEvents = await discoverStartggActiveEventsForPlayers(players);
-  const { allowedEvents } = await filterDiscoveredEventsByInterest(bot, discoveredEvents, players);
+  // Discovery adds new subscriptions; existing subscriptions keep their own lifecycle.
+  const newEvents = discoveredEvents.filter(event => !subscribedSlugs.has(normalizeEventSlug(event.eventSlug)));
+  const { allowedEvents } = await filterDiscoveredEventsByInterest(bot, newEvents, players);
   syncAutoDiscoveredStartggWatchEvents(allowedEvents.map(toWatchEventInput));
   await syncFeaturedEntrantsForActiveEvents();
   const watchSummary = await runStartggWatchOnce(bot);

@@ -109,7 +109,9 @@ export function dashboardFollowing() {
   const pending = db.prepare('SELECT * FROM startgg_pending_events WHERE tournament_end_at > ? ORDER BY id').all(new Date().toISOString()) as StartggPendingEvent[];
   return { servedAt: new Date().toISOString(), players: dashboardPlayers(),
     preferences: db.prepare(`SELECT videogame_id AS videogameId,videogame_name AS videogameName FROM startgg_videogame_preferences WHERE preference='follow'`).all(),
-    eventInterests: db.prepare('SELECT event_slug AS eventSlug,tournament_end_at AS expiresAt FROM startgg_event_interest_overrides WHERE tournament_end_at > ?').all(new Date().toISOString()),
+    eventInterests: db.prepare(`SELECT event_slug AS eventSlug FROM startgg_event_interest_overrides
+      WHERE NOT EXISTS (SELECT 1 FROM startgg_watch_events
+        WHERE event_slug = startgg_event_interest_overrides.event_slug AND event_state = 'COMPLETED')`).all(),
     pending: pending.map(item => ({ id: item.id, eventSlug: item.event_slug, eventName: item.event_name, tournamentName: item.tournament_name, videogameName: item.videogame_name, playerNames: JSON.parse(item.player_names) as string[] })),
     featuredSeedCount: getFeaturedSeedCount() };
 }

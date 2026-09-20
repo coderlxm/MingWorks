@@ -55,9 +55,14 @@ export function hasStartggEventInterestOverride(eventSlug: string): boolean {
   return Boolean(getDb().prepare(`
     SELECT 1
     FROM startgg_event_interest_overrides
-    WHERE event_slug = ? AND tournament_end_at > ?
+    WHERE event_slug = ?
+      AND NOT EXISTS (
+        SELECT 1 FROM startgg_watch_events
+        WHERE event_slug = startgg_event_interest_overrides.event_slug
+          AND event_state = 'COMPLETED'
+      )
     LIMIT 1
-  `).get(eventSlug, new Date().toISOString()));
+  `).get(eventSlug));
 }
 
 export function addStartggEventInterestOverride(
@@ -203,8 +208,12 @@ export function deleteExpiredStartggInterestState(): void {
     `).run(now);
     db.prepare(`
       DELETE FROM startgg_event_interest_overrides
-      WHERE tournament_end_at <= ?
-    `).run(now);
+      WHERE EXISTS (
+        SELECT 1 FROM startgg_watch_events
+        WHERE event_slug = startgg_event_interest_overrides.event_slug
+          AND event_state = 'COMPLETED'
+      )
+    `).run();
     db.prepare(`
       DELETE FROM startgg_event_interest_dismissals
       WHERE tournament_end_at <= ?
