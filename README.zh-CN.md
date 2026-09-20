@@ -1,12 +1,12 @@
-# NotiNewsForXiaoming
+# MingWorks
 
 <p align="right">
   <a href="README.md">English</a> · <strong>简体中文</strong>
 </p>
 
-> 小明的个人 Telegram 提醒 Bot 与 Journal ✨
+> 小明的个人 Telegram Bot 与自用应用集合 ✨
 
-这是一个给自己用的日常信息与记录工具，不打算做成通用 SaaS。提醒、定时推送、订阅追踪和生活记录都汇集在同一条个人工作流里：在 Telegram 收通知、发指令、随手存内容；Journal 再把这些记录整理成可回看的私有资产和公开动态。
+MingWorks 是小明的个人工具集合，包括 Telegram Bot、Journal、Lu Dashboard 和 start.gg Dashboard，不打算做成通用 SaaS。Bot 负责提醒、定时推送、订阅追踪和生活记录，各个应用则为个人记录和日常兴趣提供独立的操作界面。
 
 ```text
 Telegram

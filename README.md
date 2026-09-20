@@ -1,12 +1,12 @@
-# NotiNewsForXiaoming
+# MingWorks
 
 <p align="right">
   <strong>English</strong> · <a href="README.zh-CN.md">🇨🇳 简体中文</a>
 </p>
 
-> A personal Telegram helper and Journal for Xiaoming ✨
+> Xiaoming's personal Telegram bot and self-hosted apps ✨
 
-This is a daily information and personal-recording tool for one Telegram chat—not a general-purpose SaaS. Reminders, scheduled updates, subscriptions, and lightweight life tracking live in one personal workflow: receive notifications, send instructions, and save things from Telegram; Journal turns those moments into private records and public posts worth revisiting.
+MingWorks is Xiaoming's collection of personal tools: a Telegram bot, Journal, Lu Dashboard, and the start.gg dashboard—not a general-purpose SaaS. The bot handles reminders, scheduled updates, subscriptions, and lightweight life tracking; the apps provide dedicated interfaces for personal records and everyday interests.
 
 ## What it can do 🧰
 
