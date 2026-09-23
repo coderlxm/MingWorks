@@ -27,7 +27,7 @@ function closeLogin() { loginOpen.value = false; sessionError.value = '' }
 <template>
   <div class="app-shell">
     <header class="topbar">
-      <RouterLink to="/" class="brand"><span class="brand-mark">F<span>T</span>G</span><span class="brand-caption">比赛看板<span>POWERED BY START.GG</span></span></RouterLink>
+      <RouterLink to="/" class="brand"><span class="brand-mark">F<span>T</span>G</span><span class="brand-caption">小明同学的比赛看板<span>POWERED BY START.GG</span></span></RouterLink>
       <nav class="main-nav" aria-label="主导航"><RouterLink to="/" :class="{ active: !isFollowing }">比赛总览</RouterLink><RouterLink to="/following" :class="{ active: isFollowing }">{{ canManage ? '关注管理' : '关注信息' }}</RouterLink></nav>
       <div class="top-actions">
         <span class="timezone">北京时间 · UTC+8</span>
