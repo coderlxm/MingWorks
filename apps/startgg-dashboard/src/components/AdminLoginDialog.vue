@@ -21,8 +21,8 @@ onBeforeUnmount(() => dialog.value?.close())
   </dialog>
 </template>
 <style scoped>
-.login-dialog{width:min(440px,calc(100% - 32px));max-height:calc(100dvh - 32px);margin:auto;padding:28px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:inherit;box-shadow:0 12px 40px #0005}
-.login-dialog::backdrop{background:#080c13b3}
+.login-dialog{width:min(440px,calc(100% - 32px));max-height:calc(100dvh - 32px);margin:auto;padding:28px;border:1px solid var(--line-hi);border-top:3px solid var(--accent);border-radius:2px;background:linear-gradient(180deg,#15151e,#0d0d13);color:inherit;box-shadow:0 24px 60px #000a}
+.login-dialog::backdrop{background:#030306cc;backdrop-filter:blur(3px)}
 .login-dialog>.muted{font-size:13px;line-height:1.8;margin-top:20px}
 @media(max-width:680px){.login-dialog{padding:22px}}
 </style>
