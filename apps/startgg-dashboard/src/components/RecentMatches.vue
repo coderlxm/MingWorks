@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, shallowRef } from 'vue'
 import type { Board, Match } from '../types'
+import { isEventSnapshotStale } from '../format'
 import MatchCard from './MatchCard.vue'
 
-const props = defineProps<{ board: Board }>()
+const props = defineProps<{ board: Board; stale: boolean }>()
 const key = (match: Match) => `${match.eventId}:${match.setId}`
 const incoming = computed(() => [...props.board.recentSets, ...props.board.liveSets])
 const accepted = shallowRef(incoming.value)
@@ -26,7 +27,7 @@ function followed(eventId: number) {
     <div v-if="visible.length" class="live-grid">
       <div v-for="match in visible" :key="key(match)">
         <RouterLink :to="`/events/${match.eventId}`" class="match-event">{{ events.get(match.eventId)?.tournamentName }} · {{ events.get(match.eventId)?.eventName }} →</RouterLink>
-        <MatchCard :match="match" :followed-entrants="followed(match.eventId)" />
+        <MatchCard :match="match" :stale="isEventSnapshotStale(events.get(match.eventId)!, stale)" :followed-entrants="followed(match.eventId)" />
       </div>
     </div>
     <p v-else class="empty">{{ hasNew ? '已有新对局，点击上方提示查看' : '尚无已采集对局' }}<span>采集覆盖关注选手、种子与已识别决赛阶段。</span></p>

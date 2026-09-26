@@ -2,12 +2,13 @@
 import { computed } from 'vue'
 import type { Match } from '../types'
 import { sourceLabels, time } from '../format'
-const props = defineProps<{ match: Match; followedEntrants?: number[]; compact?: boolean }>()
+const props = defineProps<{ match: Match; stale: boolean; followedEntrants?: number[]; compact?: boolean }>()
 const live = computed(() => props.match.startedAt !== null && props.match.completedAt === null)
+const currentLive = computed(() => live.value && !props.stale)
 </script>
 <template>
-  <article class="match-card" :class="{ compact, 'is-live': live }">
-    <header class="match-heading"><span>{{ match.roundLabel || '轮次未提供' }}</span><span :class="{ live }">{{ live ? '● 进行中' : match.completedAt ? '已结束' : '尚未开赛' }}</span></header>
+  <article class="match-card" :class="{ compact, 'is-live': currentLive }">
+    <header class="match-heading"><span>{{ match.roundLabel || '轮次未提供' }}</span><span :class="{ live: currentLive }">{{ live ? stale ? '上次采集时进行中' : '● 进行中' : match.completedAt ? '已结束' : '尚未开赛' }}</span></header>
     <div class="opponents">
       <template v-for="(slot, index) in match.slots" :key="index">
         <span v-if="index" class="versus">VS</span>

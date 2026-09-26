@@ -1,7 +1,8 @@
-import { computed, onMounted, onUnmounted, reactive, shallowRef } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, shallowRef } from 'vue'
 import { useRouter } from 'vue-router'
 import { api, ApiError, request } from '../api'
 import type { Board, Candidate, Detail, Discovered, Following, Operation } from '../types'
+import { finishInitialBoardRead } from '../initialBoardRead'
 
 export function useBoardData() {
   const router = useRouter()
@@ -14,6 +15,7 @@ export function useBoardData() {
   const details = reactive<Record<string, Detail>>({})
   const detailErrors = reactive<Record<string, string>>({})
   const error = shallowRef('')
+  const connected = shallowRef(false)
   const actionError = shallowRef('')
   const submitting = shallowRef(false)
   const operation = shallowRef<Operation | null>(null)
@@ -24,6 +26,7 @@ export function useBoardData() {
   let reading = false
   let checkingSession = false
   let disposed = false
+  let initialReadPending = true
   let activeOperationId: string | null = null
 
   function stopTimer() { clearTimeout(timer) }
@@ -43,6 +46,7 @@ export function useBoardData() {
     sessionError.value = '管理会话已过期，请重新登录；比赛仍可继续浏览。'
   }
   function showFailure(cause: unknown) {
+    connected.value = false
     error.value = cause instanceof Error ? cause.message : String(cause)
     stopTimer()
   }
@@ -96,6 +100,7 @@ export function useBoardData() {
     }
   }
   async function refresh() {
+    await router.isReady()
     stopTimer()
     if (reading || disposed || error.value || document.hidden) return
     reading = true
@@ -110,13 +115,23 @@ export function useBoardData() {
       if (disposed) return
       following.value = value
       if (eventId) await readDetail(eventId)
-      if (!disposed) await readOperation(nextBoard.operation, generation)
+      if (!disposed) {
+        await readOperation(nextBoard.operation, generation)
+        connected.value = true
+      }
     } catch (cause) { if (!disposed) showFailure(cause) }
     finally {
       reading = false
       if (!disposed && !error.value && !document.hidden) {
         const changed = generation !== sessionGeneration.value || eventId !== String(router.currentRoute.value.params.eventId ?? '')
         timer = setTimeout(refresh, changed ? 0 : 5000)
+      }
+      if (initialReadPending && !disposed) {
+        await nextTick()
+        if (error.value || eventId === String(router.currentRoute.value.params.eventId ?? '')) {
+          initialReadPending = false
+          await finishInitialBoardRead()
+        }
       }
     }
   }
@@ -195,6 +210,6 @@ export function useBoardData() {
     void refresh()
   })
   onUnmounted(() => { disposed = true; stopTimer(); removeHook(); document.removeEventListener('visibilitychange', visibility) })
-  return { authenticated, sessionGeneration, sessionError, sessionSubmitting, board, following, details, detailErrors, error, actionError, submitting, operation, discovered, candidates, busy, reconnect, run, login, logout, checkSession }
+  return { authenticated, sessionGeneration, sessionError, sessionSubmitting, board, following, details, detailErrors, error, connected, actionError, submitting, operation, discovered, candidates, busy, reconnect, run, login, logout, checkSession }
 }
 export type BoardData = ReturnType<typeof useBoardData>

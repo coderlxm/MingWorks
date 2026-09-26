@@ -1,12 +1,21 @@
 import dayjs from 'dayjs'
 import utc from 'dayjs/plugin/utc'
 import timezone from 'dayjs/plugin/timezone'
-import type { Timestamp } from './types'
+import type { Board, EventSummary, Timestamp } from './types'
 dayjs.extend(utc)
 dayjs.extend(timezone)
 export function time(value: Timestamp) {
   if (value === null || value === undefined) return '尚无记录'
   return dayjs(typeof value === 'number' && value < 100000000000 ? value * 1000 : value).tz('Asia/Shanghai').format('MM-DD HH:mm:ss')
+}
+export function isEventSnapshotStale(event: EventSummary, stale: boolean) {
+  return stale || !event.active || Boolean(event.lastError) || event.eventState === 'COMPLETED'
+}
+export function nextCollectionTime(runtime: Board['runtime']) {
+  const scheduled = [runtime.nextPollAt, runtime.nextFastPollAt]
+    .filter((value): value is string | number => value !== null)
+    .sort((a, b) => dayjs(a).valueOf() - dayjs(b).valueOf())
+  return scheduled.length ? time(scheduled[0]!) : '未安排'
 }
 export function playerStatus(value: string | null) {
   const labels: Record<string, string> = { in_winners: '胜者组', in_losers: '败者组', winners: '胜者组', losers: '败者组', eliminated: '已淘汰', completed: '已完成', finished: '已完成', not_entered: '未匹配到参赛记录', not_registered: '未参赛', not_started: '尚未开赛', unknown: '待确认', active: '比赛中' }

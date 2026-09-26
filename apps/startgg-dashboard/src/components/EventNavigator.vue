@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { EventSummary } from '../types'
-import { eventStatus } from '../format'
-const props = defineProps<{ events: EventSummary[]; selected: string; pendingCount: number; canManage: boolean }>()
+import { eventStatus, isEventSnapshotStale } from '../format'
+import { eventLocation } from '../eventNavigation'
+const props = defineProps<{ events: EventSummary[]; stale: boolean; selected: string; pendingCount: number; canManage: boolean }>()
 defineEmits<{ manage: [] }>()
 const groups = computed(() => {
   const result = new Map<string, EventSummary[]>()
@@ -18,7 +19,7 @@ const groups = computed(() => {
     <div v-for="group in groups" :key="group.name" class="event-group">
       <h3>{{ group.name }}</h3>
       <template v-for="event in group.events" :key="event.eventSlug">
-        <RouterLink v-if="event.eventId !== null" :to="`/events/${event.eventId}`" class="event-link" :class="{ selected: selected === String(event.eventId) }"><strong>{{ event.eventName }}</strong><span><span v-if="event.liveCount" class="live">● {{ event.liveCount }} 场进行中</span><span v-else>{{ eventStatus(event.eventState) }}</span></span></RouterLink>
+        <RouterLink v-if="event.eventId !== null" :to="eventLocation(event.eventId)" class="event-link" :class="{ selected: selected === String(event.eventId) }"><strong>{{ event.eventName }}</strong><span><span v-if="event.liveCount" :class="isEventSnapshotStale(event, stale) ? 'muted' : 'live'">{{ isEventSnapshotStale(event, stale) ? '上次采集时' : '●' }} {{ event.liveCount }} 场进行中</span><span v-else>{{ eventStatus(event.eventState) }}</span></span></RouterLink>
         <div v-else class="event-link"><strong>{{ event.eventName }}</strong><span>等待解析</span></div>
       </template>
     </div>

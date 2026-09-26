@@ -153,7 +153,10 @@ export function disableStartggPolling(): boolean {
 
 export function restoreStartggPolling(bot: Telegraf): void {
   if (!isStartggPollingPersistedEnabled()) return;
-  enableStartggPolling(bot, false);
+  if (!enableStartggPolling(bot, false)) return;
+  updateStartggFastWatch(bot, listActiveStartggWatchEvents()
+    .filter(event => event.event_state === 'ACTIVE')
+    .map(event => event.event_slug));
 }
 
 export function isStartggPollingEnabled(): boolean {

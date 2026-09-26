@@ -395,6 +395,7 @@ function selectSetsToPush(
 interface EventProcessResult {
   changed: number;
   activeSetCount: number;
+  shouldFastPoll: boolean;
   summary: StartggEventSummaryInput | null;
   pendingInitialMessagePlayerIds: number[];
   pendingPlayerSetMarks: Array<{ watchPlayerId: number; setId: number }>;
@@ -484,8 +485,8 @@ async function processEvent(
     allEntrantIds.length > 0
       ? fetchEventSetsByEntrants(normalizedSlug, allEntrantIds)
       : Promise.resolve([]),
-    mappedEntrantIds.length > 0
-      ? fetchEntrantStandings(mappedEntrantIds)
+    allEntrantIds.length > 0
+      ? fetchEntrantStandings(allEntrantIds)
       : Promise.resolve([]),
   ]);
 
@@ -618,18 +619,18 @@ async function processEvent(
   let finalPhaseId = eventRow.final_phase_id;
   let finalPhaseName = eventRow.final_phase_name;
   let finalPhaseNumSeeds = eventRow.final_phase_num_seeds;
-  let eventState = eventRow.event_state;
+  const phaseMeta = await fetchEventFinalPhaseMeta(normalizedSlug);
+  if (!phaseMeta) {
+    throw new Error(`start.gg event phase metadata missing: ${normalizedSlug}`);
+  }
+  let eventState = phaseMeta.state;
+  let finalPhaseStartedFlag = false;
   let finalEntrantsFetched = false;
   let dashboardFinalEntrants = previousDashboard?.snapshot.finalPhase?.entrants ?? [];
   let dashboardFinalStandings = previousDashboard?.snapshot.finalPhase?.standings ?? [];
   let phaseTracking: Awaited<ReturnType<typeof fetchPhaseTracking>> | null = null;
 
   if (refreshEventMeta) {
-    const phaseMeta = await fetchEventFinalPhaseMeta(normalizedSlug);
-    if (!phaseMeta) {
-      throw new Error(`start.gg event phase metadata missing: ${normalizedSlug}`);
-    }
-    eventState = phaseMeta.state;
     for (const seed of dashboardSeedRows) seed.phaseName = phaseMeta.phases.find(phase => phase.id === seed.phaseId)?.name ?? null;
     const discoveredPhase = finalPhaseId === null ? selectFinalPhase(phaseMeta.phases) : null;
     updateStartggWatchEventFinalPhase({
@@ -683,9 +684,9 @@ async function processEvent(
     eventState = phaseTracking.eventState;
     const phaseSets = phaseTracking.sets;
     const activePhaseSetCount = phaseSets.filter((set) => set.startedAt !== null && set.completedAt === null).length;
-    const phaseStartedFlag = phaseSets.some((set) => set.startedAt !== null);
-    if (phaseStartedFlag && eventState !== 'COMPLETED') {
-      activeSetCount += Math.max(1, activePhaseSetCount);
+    finalPhaseStartedFlag = phaseSets.some((set) => set.startedAt !== null);
+    if (eventState !== 'COMPLETED') {
+      activeSetCount += activePhaseSetCount;
     }
 
     const completedSets = phaseSets
@@ -788,6 +789,12 @@ async function processEvent(
   return {
     changed,
     activeSetCount,
+    // Keep watching between matches while a followed entrant still has a non-final standing.
+    shouldFastPoll: eventState !== 'COMPLETED' && (
+      activeSetCount > 0
+      || (eventState === 'ACTIVE' && eventStandings.some(standing => standing.isFinal === false))
+      || finalPhaseStartedFlag
+    ),
     summary,
     pendingInitialMessagePlayerIds,
     pendingPlayerSetMarks,
@@ -851,7 +858,7 @@ export async function runStartggWatchOnce(bot?: Telegraf, options?: RunStartggWa
   for (const [index, result] of results.entries()) {
     changed += result.changed;
     activeSetCount += result.activeSetCount;
-    if (result.activeSetCount > 0) {
+    if (result.shouldFastPoll) {
       activeEventSlugs.push(normalizeEventSlug(targetEvents[index]!.event_slug));
     }
     if (result.summary) {
