@@ -249,10 +249,6 @@ export class JournalPhotoLibraryService {
     private readonly rootFolderId: string,
   ) {}
 
-  async initialize(): Promise<void> {
-    await this.ensureCurrent();
-  }
-
   async ensureCurrent(): Promise<PhotoLibraryOverview> {
     const index = await this.getCurrentIndex();
     return index.overview;
@@ -269,7 +265,8 @@ export class JournalPhotoLibraryService {
     variant: PhotoImageVariantName,
     signal: AbortSignal,
   ): Promise<JournalPhotoMedia | null> {
-    const photo = this.currentIndex?.photosById.get(photoId);
+    const index = await this.getCurrentIndex();
+    const photo = index.photosById.get(photoId);
     if (!photo || photo.contentRevision !== contentRevision) return null;
     const specification = variantSpecifications[variant];
     return {

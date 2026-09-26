@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PROJECT_DIR=${1:?Project directory is required}
+RELEASE_DIR=${2:?Prepared release directory is required}
+DEPLOY_COMMIT=${3:?Commit is required}
+
+# Downloads and backups use the same lock and must finish before activation.
+exec 9>/run/lock/notinews-download.lock
+flock --exclusive --nonblock 9
+
+install -m 755 "$RELEASE_DIR/scripts/install-video-download-tools" /usr/local/sbin/install-video-download-tools
+/usr/local/sbin/install-video-download-tools
+
+systemctl stop notinews.timer || true
+systemctl disable notinews.timer || true
+install -m 644 "$RELEASE_DIR/deploy/notinews-bot.service" /etc/systemd/system/notinews-bot.service
+install -m 644 "$RELEASE_DIR/deploy/notinews-failure-notify@.service" /etc/systemd/system/notinews-failure-notify@.service
+install -m 755 "$RELEASE_DIR/scripts/notinews-backup" /usr/local/sbin/notinews-backup
+install -m 644 "$RELEASE_DIR/deploy/notinews-backup.service" /etc/systemd/system/notinews-backup.service
+install -m 644 "$RELEASE_DIR/deploy/notinews-backup.timer" /etc/systemd/system/notinews-backup.timer
+systemctl daemon-reload
+systemctl enable notinews-bot.service
+systemctl enable --now notinews-backup.timer
+
+systemctl stop notinews-bot.service
+cd "$PROJECT_DIR"
+find . -mindepth 1 -maxdepth 1 \
+  ! -name '.env' ! -name '.npmrc' ! -name 'data' ! -name '.deploy-commit' \
+  -exec rm -rf -- {} +
+tar --exclude=.npmrc -xf "$RELEASE_DIR/source.tar" -C "$PROJECT_DIR"
+
+# pnpm's bin shims contain installation paths, so installed packages stay put.
+ln -s "$RELEASE_DIR/node_modules" "$PROJECT_DIR/node_modules"
+for workspace in apps/lu-dashboard apps/startgg-dashboard; do
+  ln -s "$RELEASE_DIR/$workspace/node_modules" "$PROJECT_DIR/$workspace/node_modules"
+done
+
+systemctl start notinews-bot.service
+sleep 2
+systemctl is-active --quiet notinews-bot.service
+printf '%s\n' "$DEPLOY_COMMIT" > "$PROJECT_DIR/.deploy-commit"
+systemctl status notinews-bot.service --no-pager -l | sed -n '1,20p'
+
+find "$PROJECT_DIR.releases" -mindepth 1 -maxdepth 1 -type d \
+  ! -path "$RELEASE_DIR" -exec rm -rf -- {} +

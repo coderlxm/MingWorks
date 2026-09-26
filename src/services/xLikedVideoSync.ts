@@ -22,31 +22,20 @@ const syncResultSchema = z.object({
 
 export type XLikedVideoSyncResult = z.infer<typeof syncResultSchema>;
 
-let running = false;
-
-export function isXLikedVideoSyncRunning(): boolean {
-  return running;
-}
-
 export async function runXLikedVideoSync(): Promise<XLikedVideoSyncResult> {
-  running = true;
-  try {
-    const { stdout } = await execFileAsync('/usr/bin/docker', [
-      'compose',
-      '--project-directory', projectDirectory,
-      '--env-file', `${projectDirectory}/.env`,
-      '-f', `${projectDirectory}/current/compose.yml`,
-      'run', '--rm', 'app', 'sync',
-    ], {
-      cwd: projectDirectory,
-      timeout: 30 * 60 * 1000,
-      maxBuffer: 1024 * 1024,
-    });
+  const { stdout } = await execFileAsync('/usr/bin/docker', [
+    'compose',
+    '--project-directory', projectDirectory,
+    '--env-file', `${projectDirectory}/.env`,
+    '-f', `${projectDirectory}/current/compose.yml`,
+    'run', '--rm', 'app', 'sync',
+  ], {
+    cwd: projectDirectory,
+    timeout: 30 * 60 * 1000,
+    maxBuffer: 1024 * 1024,
+  });
 
-    return syncResultSchema.parse(JSON.parse(stdout));
-  } finally {
-    running = false;
-  }
+  return syncResultSchema.parse(JSON.parse(stdout));
 }
 
 export function formatXLikedVideoSyncResult(result: XLikedVideoSyncResult): string {

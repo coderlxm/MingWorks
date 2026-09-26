@@ -164,7 +164,6 @@ export async function createJournalServer(config: JournalServerConfig): Promise<
   await new JournalVideoPreviewBackfillService(repository, storage, videoPreviews).run();
   await new JournalResumePreviewBackfillService(repository, resumePreviews).run();
   await siteProfileService.initialize(path.join(config.webRoot, 'avatar-ming.png'));
-  await photoLibrary.initialize();
 
   await server.register(fastifyCookie, { secret: config.cookieSecret });
   await server.register(fastifyMultipart, {

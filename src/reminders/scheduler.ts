@@ -65,7 +65,12 @@ export function schedulePendingReminders(bot: Telegraf): void {
 }
 
 function scheduleRecurringRule(bot: Telegraf, rule: RecurringRule): void {
-  const triggerAt = new Date(rule.next_trigger_at);
+  let triggerAt = new Date(rule.next_trigger_at);
+  const now = new Date();
+  if (triggerAt <= now) {
+    triggerAt = getNextTrigger(rule.rrule_text, rule.timezone, now, false, rule.calendar_filter);
+    repo.updateRecurringNextTrigger(rule.id, triggerAt);
+  }
 
   const job = schedule.scheduleJob(triggerAt, async () => {
     const current = repo.findRecurringRuleById(rule.id);
@@ -104,6 +109,9 @@ function scheduleRecurringRule(bot: Telegraf, rule: RecurringRule): void {
     }
   });
 
+  if (!job) {
+    throw new Error(`Failed to schedule recurring rule id=${rule.id} trigger_at=${triggerAt.toISOString()}`);
+  }
   recurJobs.set(rule.id, job);
 }
 

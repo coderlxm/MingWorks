@@ -347,20 +347,12 @@ function computePlayerSnapshot(
   const standing = standings.find((node) => node.entrant?.id === entrantId) ?? null;
 
   let status: StartggWatchStatus;
-  if (latestSet && latestSetLost) {
-    if (activeSetExists || inLosersSignal || !standing?.isFinal) {
-      status = 'in_losers';
-    } else {
-      status = 'eliminated';
-    }
-  } else if (inLosersSignal) {
+  if (standing?.isFinal && !activeSetExists) {
+    status = standing.placement === 1 ? 'completed' : 'eliminated';
+  } else if (latestSetLost || inLosersSignal) {
     status = 'in_losers';
   } else {
     status = 'in_winners';
-  }
-
-  if (standing?.placement === 1 && standing.isFinal && !activeSetExists) {
-    status = 'completed';
   }
 
   const setId = latestSet?.id ?? null;

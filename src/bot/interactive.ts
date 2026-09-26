@@ -99,13 +99,9 @@ import { escapeHtml } from '../utils/html.js';
 import { bjFormat } from '../utils/time.js';
 import {
   formatXLikedVideoSyncResult,
-  isXLikedVideoSyncRunning,
   runXLikedVideoSync,
 } from '../services/xLikedVideoSync.js';
-import {
-  isVideoDownloadRunning,
-  runVideoDownload,
-} from '../services/videoDownload.js';
+import { runVideoDownload } from '../services/videoDownload.js';
 import {
   disableStartggPolling,
   enableStartggPolling,
@@ -304,6 +300,9 @@ function formatAvSubscriptionList(targets: TrackedTarget[]): string {
 }
 
 export function registerInteractiveHandlers(bot: Telegraf): void {
+  let xLikedVideoSyncRunning = false;
+  let videoDownloadRunning = false;
+
   bot.use(async (ctx, next) => {
     const text = ctx.message && 'text' in ctx.message ? ctx.message.text : '';
     const callback = ctx.callbackQuery && 'data' in ctx.callbackQuery ? ctx.callbackQuery.data : '';
@@ -354,29 +353,41 @@ export function registerInteractiveHandlers(bot: Telegraf): void {
 
   bot.command('syncx', async (ctx) => {
     if (!isAuthorized(ctx)) return;
-    if (isXLikedVideoSyncRunning()) {
+    if (xLikedVideoSyncRunning) {
       await ctx.reply('X 点赞视频同步正在运行中。');
       return;
     }
 
-    await ctx.reply('开始检查 X 点赞视频...');
-    try {
-      const summary = await runXLikedVideoSync();
-      if (summary.discovered === 0 && summary.downloaded === 0 && summary.uploaded === 0) {
-        await ctx.reply('同步完成：没有发现新的点赞视频。');
+    xLikedVideoSyncRunning = true;
+    void (async () => {
+      const statusMessage = await ctx.reply('开始检查 X 点赞视频...');
+      const chatId = String(ctx.chat.id);
+      let summary: Awaited<ReturnType<typeof runXLikedVideoSync>>;
+      try {
+        summary = await runXLikedVideoSync();
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        await ctx.telegram.editMessageText(
+          chatId,
+          statusMessage.message_id,
+          undefined,
+          `X 点赞视频同步失败：${detail.slice(0, 3000)}`,
+        );
         return;
       }
-      await ctx.reply(formatXLikedVideoSyncResult(summary), {
+      const message = summary.discovered === 0 && summary.downloaded === 0 && summary.uploaded === 0
+        ? '同步完成：没有发现新的点赞视频。'
+        : formatXLikedVideoSyncResult(summary);
+      await ctx.telegram.editMessageText(chatId, statusMessage.message_id, undefined, message, {
         parse_mode: 'HTML',
         link_preview_options: { is_disabled: true },
       });
-    } catch (e) {
-      if (e instanceof Error) {
-        await ctx.reply(`X 点赞视频同步失败：${e.message}`);
-        return;
-      }
-      throw e;
-    }
+    })().finally(() => {
+      xLikedVideoSyncRunning = false;
+    }).catch(error => {
+      console.error('X liked video task notification failed:', error);
+      process.exit(1);
+    });
   });
 
   bot.command('dld', async (ctx) => {
@@ -387,23 +398,36 @@ export function registerInteractiveHandlers(bot: Telegraf): void {
       await ctx.reply('用法：/dld <视频链接>');
       return;
     }
-    if (isVideoDownloadRunning()) {
+    if (videoDownloadRunning) {
       await ctx.reply('已有视频下载任务正在运行。');
       return;
     }
 
-    const statusMessage = await ctx.reply('正在解析并下载视频…');
-    const chatId = String(ctx.chat.id);
-    try {
-      const result = await runVideoDownload(url, async (stage) => {
-        if (stage !== 'uploading') return;
+    videoDownloadRunning = true;
+    void (async () => {
+      const statusMessage = await ctx.reply('正在解析并下载视频…');
+      const chatId = String(ctx.chat.id);
+      let result: Awaited<ReturnType<typeof runVideoDownload>>;
+      try {
+        result = await runVideoDownload(url, async (stage) => {
+          if (stage !== 'uploading') return;
+          await ctx.telegram.editMessageText(
+            chatId,
+            statusMessage.message_id,
+            undefined,
+            '视频已下载，正在上传到 Google Drive…',
+          );
+        });
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
         await ctx.telegram.editMessageText(
           chatId,
           statusMessage.message_id,
           undefined,
-          '视频已下载，正在上传到 Google Drive…',
+          `视频下载失败：${detail.slice(0, 3000)}`,
         );
-      });
+        return;
+      }
       await ctx.telegram.editMessageText(
         chatId,
         statusMessage.message_id,
@@ -420,18 +444,12 @@ export function registerInteractiveHandlers(bot: Telegraf): void {
           `路径：${result.drivePath}`,
         ].join('\n'),
       );
-    } catch (e) {
-      if (e instanceof Error) {
-        await ctx.telegram.editMessageText(
-          chatId,
-          statusMessage.message_id,
-          undefined,
-          `视频下载失败：${e.message.slice(0, 3000)}`,
-        );
-        return;
-      }
-      throw e;
-    }
+    })().finally(() => {
+      videoDownloadRunning = false;
+    }).catch(error => {
+      console.error('Video download task notification failed:', error);
+      process.exit(1);
+    });
   });
 
   bot.command('fetchav', async (ctx) => {

@@ -86,6 +86,7 @@ jobs:
               - 'deploy/notinews-failure-notify@.service'
               - 'scripts/install-video-download-tools'
               - 'scripts/notinews-backup'
+              - 'scripts/notinews-deploy-release'
               - 'scripts/notinews-video-worker'
               - 'tsconfig.json'
             lu_dashboard:
@@ -415,63 +416,42 @@ jobs:
           ssh-keyscan -p "$PORT" -H "$SERVER_HOST" >> ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Ensure bot project directory exists
+      - name: Prepare bot release directory
         run: |
           PORT="${SERVER_PORT:-22}"
-          ssh -p "$PORT" "$SERVER_USER@$SERVER_HOST" "mkdir -p '$SERVER_PROJECT_DIR'"
+          BOT_RELEASE_DIR="$SERVER_PROJECT_DIR.releases/$GITHUB_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          echo "BOT_RELEASE_DIR=$BOT_RELEASE_DIR" >> "$GITHUB_ENV"
+          ssh -p "$PORT" "$SERVER_USER@$SERVER_HOST" "mkdir -p '$SERVER_PROJECT_DIR' '$BOT_RELEASE_DIR'"
 
-      - name: Sync tracked bot files
+      - name: Upload tracked bot release files
         run: |
           PORT="${SERVER_PORT:-22}"
-          ssh -p "$PORT" "$SERVER_USER@$SERVER_HOST" "cd '$SERVER_PROJECT_DIR' && \
-            find . -mindepth 1 -maxdepth 1 ! -name '.env' ! -name '.npmrc' ! -name 'data' -exec rm -rf {} +"
           git archive --format=tar HEAD | \
-            ssh -p "$PORT" "$SERVER_USER@$SERVER_HOST" "tar -xf - -C '$SERVER_PROJECT_DIR'"
-          ssh -p "$PORT" "$SERVER_USER@$SERVER_HOST" "printf '%s\n' '$GITHUB_SHA' > '$SERVER_PROJECT_DIR/.deploy-commit'"
+            ssh -p "$PORT" "$SERVER_USER@$SERVER_HOST" \
+              "cat > '$BOT_RELEASE_DIR/source.tar' && tar -xf '$BOT_RELEASE_DIR/source.tar' -C '$BOT_RELEASE_DIR' && \
+              cp '$SERVER_PROJECT_DIR/.npmrc' '$BOT_RELEASE_DIR/.npmrc'"
 
       - name: Install bot dependencies on server
         run: |
           PORT="${SERVER_PORT:-22}"
-          PNPM_PACKAGE="$(jq -r .packageManager package.json)"
           ssh -p "$PORT" "$SERVER_USER@$SERVER_HOST" "
             set -e
-            cd '$SERVER_PROJECT_DIR'
+            cd '$BOT_RELEASE_DIR'
             if ! command -v node >/dev/null 2>&1; then
               echo 'Node.js is missing on server' >&2
               exit 1
             fi
-            timeout 180 npm install -g '$PNPM_PACKAGE' --registry=https://registry.npmmirror.com --fetch-retries=1 --fetch-timeout=30000 --loglevel warn
             export npm_config_disturl=https://npmmirror.com/mirrors/node
-            pnpm install --frozen-lockfile
+            export HUSKY=0
+            /usr/local/bin/pnpm install --frozen-lockfile
           "
 
-      - name: Install bot media tools
+      - name: Activate bot release
         run: |
           PORT="${SERVER_PORT:-22}"
           ssh -p "$PORT" "$SERVER_USER@$SERVER_HOST" "
             set -e
-            install -m 755 '$SERVER_PROJECT_DIR/scripts/install-video-download-tools' /usr/local/sbin/install-video-download-tools
-            /usr/local/sbin/install-video-download-tools
-          "
-
-      - name: Setup bot service
-        run: |
-          PORT="${SERVER_PORT:-22}"
-          ssh -p "$PORT" "$SERVER_USER@$SERVER_HOST" "
-            set -e
-            systemctl stop notinews.timer || true
-            systemctl disable notinews.timer || true
-            cp '$SERVER_PROJECT_DIR/deploy/notinews-bot.service' /etc/systemd/system/notinews-bot.service
-            cp '$SERVER_PROJECT_DIR/deploy/notinews-failure-notify@.service' /etc/systemd/system/notinews-failure-notify@.service
-            install -m 755 '$SERVER_PROJECT_DIR/scripts/notinews-backup' /usr/local/sbin/notinews-backup
-            install -m 644 '$SERVER_PROJECT_DIR/deploy/notinews-backup.service' /etc/systemd/system/notinews-backup.service
-            install -m 644 '$SERVER_PROJECT_DIR/deploy/notinews-backup.timer' /etc/systemd/system/notinews-backup.timer
-            systemctl daemon-reload
-            systemctl enable notinews-bot.service
-            systemctl enable --now notinews-backup.timer
-            systemctl restart notinews-bot.service
-            sleep 2
-            systemctl status notinews-bot.service --no-pager -l | sed -n '1,20p'
+            bash '$BOT_RELEASE_DIR/scripts/notinews-deploy-release' '$SERVER_PROJECT_DIR' '$BOT_RELEASE_DIR' '$GITHUB_SHA'
           "
 
       - name: Notify bot deploy success to Telegram

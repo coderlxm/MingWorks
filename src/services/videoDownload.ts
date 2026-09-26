@@ -9,23 +9,12 @@ const projectDirectory = '/root/NotiNewsForXiaoming';
 const downloadLock = '/run/lock/notinews-download.lock';
 const jobTimeout = 6 * 60 * 60 * 1000;
 
-let running = false;
-
-export function isVideoDownloadRunning(): boolean {
-  return running;
-}
-
 export async function runVideoDownload(
   rawUrl: string,
   onStage: (stage: VideoDownloadStage) => void | Promise<void>,
 ): Promise<VideoDownloadResult> {
   const url = parseVideoUrl(rawUrl);
-  running = true;
-  try {
-    return await runDownloadJob(url.toString(), onStage);
-  } finally {
-    running = false;
-  }
+  return runDownloadJob(url.toString(), onStage);
 }
 
 function parseVideoUrl(rawUrl: string): URL {
@@ -76,7 +65,10 @@ function runDownloadJob(
         try {
           const event = videoDownloadEventSchema.parse(JSON.parse(line));
           if (event.type === 'stage') {
-            stageUpdates = stageUpdates.then(() => onStage(event.stage));
+            stageUpdates = stageUpdates.then(() => onStage(event.stage)).catch(error => {
+              protocolError = error instanceof Error ? error : new Error(String(error));
+              child.kill();
+            });
           } else {
             result = event;
           }
