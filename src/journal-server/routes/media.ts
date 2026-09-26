@@ -2,7 +2,7 @@ import { create as contentDisposition } from 'content-disposition';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { JournalAuth } from '../auth.js';
-import type { JournalRepository } from '../repository.js';
+import type { JournalRepository } from '../data/repository.js';
 import type { JournalAssetAccess } from '../types.js';
 
 const assetParamsSchema = z.object({

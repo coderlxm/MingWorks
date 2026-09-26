@@ -12,10 +12,10 @@ import {
   journalWebEntryCreateFieldsSchema,
 } from '../../shared/journalProtocol.js';
 import { hashAccessPassword, type JournalAuth } from '../auth.js';
-import type { JournalDeletionService } from '../deletion.js';
-import type { JournalRepository } from '../repository.js';
-import type { JournalWebEntryService } from '../webEntryService.js';
-import type { JournalWebEntryUploadService } from '../webEntryUploadService.js';
+import type { JournalDeletionService } from '../entries/deletion.js';
+import type { JournalRepository } from '../data/repository.js';
+import type { JournalWebEntryService } from '../entries/webEntryService.js';
+import type { JournalWebEntryUploadService } from '../entries/webEntryUploadService.js';
 
 const privateEntriesQuerySchema = z.object({
   cursor: z.string().min(1).optional(),

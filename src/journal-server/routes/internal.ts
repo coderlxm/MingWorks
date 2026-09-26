@@ -4,9 +4,9 @@ import {
   journalIngestRequestSchema,
 } from '../../shared/journalProtocol.js';
 import type { JournalAuth } from '../auth.js';
-import type { JournalDeletionService } from '../deletion.js';
-import type { JournalIngestService } from '../ingest.js';
-import type { JournalRepository } from '../repository.js';
+import type { JournalDeletionService } from '../entries/deletion.js';
+import type { JournalIngestService } from '../telegram/ingest.js';
+import type { JournalRepository } from '../data/repository.js';
 
 const publicIdParamsSchema = z.object({
   publicId: z.string().uuid(),

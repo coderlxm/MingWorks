@@ -6,8 +6,8 @@ import {
   type JournalProtectedEntryPreview,
 } from '../../shared/journalProtocol.js';
 import { accessPasswordMatches, type JournalAuth } from '../auth.js';
-import { journalVisitorClientHash } from '../interactionIdentity.js';
-import type { JournalPublishedAccess, JournalRepository } from '../repository.js';
+import { journalVisitorClientHash } from '../interactions/interactionIdentity.js';
+import type { JournalPublishedAccess, JournalRepository } from '../data/repository.js';
 
 const publicFeedQuerySchema = z.object({
   cursor: z.string().min(1).optional(),

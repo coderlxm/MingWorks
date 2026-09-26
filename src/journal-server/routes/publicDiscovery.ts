@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { JournalAuth } from '../auth.js';
-import type { JournalRepository } from '../repository.js';
+import type { JournalRepository } from '../data/repository.js';
 
 const normalizedSearchQuerySchema = z.string()
   .transform(value => value.trim().replace(/\s+/gu, ' '))

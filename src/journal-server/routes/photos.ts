@@ -3,7 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import sharp from 'sharp';
 import { z } from 'zod';
 import { photoImageVariantNames } from '../../shared/photoLibraryProtocol.js';
-import type { JournalPhotoLibraryService } from '../photoLibraryService.js';
+import type { JournalPhotoLibraryService } from '../photos/photoLibraryService.js';
 
 const publicIdSchema = z.string().regex(/^[0-9a-f]{64}$/);
 const albumParamsSchema = z.object({ albumId: publicIdSchema });

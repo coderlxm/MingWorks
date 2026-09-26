@@ -10,37 +10,37 @@ import Fastify, {
 } from 'fastify';
 import { ZodError } from 'zod';
 import { JournalAiSuggestionService } from './aiSuggestionService.js';
-import { JournalArticleService } from './articleService.js';
+import { JournalArticleService } from './articles/articleService.js';
 import { JournalAuth } from './auth.js';
-import { JournalContributionError } from './contributionError.js';
-import { JournalContributionLinkService } from './contributionLinkService.js';
-import { JournalContributionMediaService } from './contributionMedia.js';
-import { JournalContributionNotificationService } from './contributionNotification.js';
-import { JournalContributionService } from './contributionService.js';
-import { openJournalDatabase } from './database.js';
-import { JournalDeletionService } from './deletion.js';
-import { GameRepository } from './gameRepository.js';
-import { GameService } from './gameService.js';
-import { GuestbookRepository } from './guestbookRepository.js';
-import { GuestbookService } from './guestbookService.js';
-import { JournalGuestbookNotificationService } from './guestbookNotification.js';
-import { JournalIngestService } from './ingest.js';
-import { JournalCommentNotificationService } from './interactionNotification.js';
-import { JournalInteractionService } from './interactionService.js';
-import { JournalKnowledgeAgentService } from './knowledgeAgentService.js';
-import { JournalKnowledgeRepository } from './knowledgeRepository.js';
-import { JournalPhotoDriveClient } from './photoDriveClient.js';
-import { JournalPhotoLibraryService } from './photoLibraryService.js';
+import { JournalContributionError } from './contributions/contributionError.js';
+import { JournalContributionLinkService } from './contributions/contributionLinkService.js';
+import { JournalContributionMediaService } from './contributions/contributionMedia.js';
+import { JournalContributionNotificationService } from './contributions/contributionNotification.js';
+import { JournalContributionService } from './contributions/contributionService.js';
+import { openJournalDatabase } from './data/database.js';
+import { JournalDeletionService } from './entries/deletion.js';
+import { GameRepository } from './games/gameRepository.js';
+import { GameService } from './games/gameService.js';
+import { GuestbookRepository } from './guestbook/guestbookRepository.js';
+import { GuestbookService } from './guestbook/guestbookService.js';
+import { JournalGuestbookNotificationService } from './guestbook/guestbookNotification.js';
+import { JournalIngestService } from './telegram/ingest.js';
+import { JournalCommentNotificationService } from './interactions/interactionNotification.js';
+import { JournalInteractionService } from './interactions/interactionService.js';
+import { JournalKnowledgeAgentService } from './knowledge/knowledgeAgentService.js';
+import { JournalKnowledgeRepository } from './knowledge/knowledgeRepository.js';
+import { JournalPhotoDriveClient } from './photos/photoDriveClient.js';
+import { JournalPhotoLibraryService } from './photos/photoLibraryService.js';
 import {
   JournalImagePreviewBackfillService,
   JournalImagePreviewService,
-} from './imagePreview.js';
-import { JournalRepository } from './repository.js';
+} from './media/imagePreview.js';
+import { JournalRepository } from './data/repository.js';
 import {
   JournalResumePreviewBackfillService,
   JournalResumePreviewService,
-} from './resumePreview.js';
-import { JournalResumeService } from './resumeService.js';
+} from './resume/resumePreview.js';
+import { JournalResumeService } from './resume/resumeService.js';
 import { registerArticleRoutes } from './routes/articles.js';
 import { registerAutomationArticleRoutes } from './routes/automationArticles.js';
 import { registerContributionRoutes } from './routes/contributions.js';
@@ -62,16 +62,16 @@ import { registerTagSuggestionRoutes } from './routes/tagSuggestions.js';
 import { registerTopicSuggestionRoutes } from './routes/topicSuggestions.js';
 import { registerWeatherRoutes } from './routes/weather.js';
 import { JournalSiteProfileService } from './siteProfileService.js';
-import { JournalStorage } from './storage.js';
-import { TelegramFileDownloader } from './telegramFiles.js';
+import { JournalStorage } from './media/storage.js';
+import { TelegramFileDownloader } from './telegram/telegramFiles.js';
 import type { JournalServerConfig } from './types.js';
-import { JournalVideoNormalizationService } from './videoNormalization.js';
+import { JournalVideoNormalizationService } from './media/videoNormalization.js';
 import {
   JournalVideoPreviewBackfillService,
   JournalVideoPreviewService,
-} from './videoPreview.js';
-import { JournalWebEntryService } from './webEntryService.js';
-import { JournalWebEntryUploadService } from './webEntryUploadService.js';
+} from './media/videoPreview.js';
+import { JournalWebEntryService } from './entries/webEntryService.js';
+import { JournalWebEntryUploadService } from './entries/webEntryUploadService.js';
 import { JournalWeatherService } from './weatherService.js';
 
 export async function createJournalServer(config: JournalServerConfig): Promise<FastifyInstance> {

@@ -1,8 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { JournalAuth } from '../auth.js';
-import { JournalArticleService } from '../articleService.js';
-import { markdownToRichDocument, richDocumentToMarkdown } from '../articleMarkdown.js';
+import { JournalArticleService } from '../articles/articleService.js';
+import { markdownToRichDocument, richDocumentToMarkdown } from '../articles/articleMarkdown.js';
 import { journalRichDocumentSchema } from '../../shared/journalProtocol.js';
 
 const idParamsSchema = z.object({

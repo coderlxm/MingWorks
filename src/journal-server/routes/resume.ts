@@ -11,7 +11,7 @@ import {
   JournalResumeNotFoundError,
   JournalResumePasswordError,
   type JournalResumeService,
-} from '../resumeService.js';
+} from '../resume/resumeService.js';
 
 const maxResumeUploadBytes = 10 * 1024 * 1024;
 

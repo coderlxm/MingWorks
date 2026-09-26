@@ -92,7 +92,7 @@ The data lives in clear, separate homes:
 - data/fitness_status.json: fitness-module state.
 - JOURNAL_DATA_DIR/journal.sqlite and JOURNAL_DATA_DIR/assets/: Journal entries, attachments, and image previews.
 
-Database initialization and migrations are handled by src/reminders/db.ts, src/reminders/migrations.ts, and src/journal-server/migrations.ts.
+Database initialization and migrations are handled by src/reminders/db.ts, src/reminders/migrations.ts, and src/journal-server/data/migrations.ts.
 
 ## Code map 🗺️
 

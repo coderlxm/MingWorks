@@ -6,9 +6,9 @@ import {
   journalVisitorCommentRequestSchema,
 } from '../../shared/journalProtocol.js';
 import type { JournalAuth } from '../auth.js';
-import { journalVisitorClientHash } from '../interactionIdentity.js';
-import type { JournalInteractionService } from '../interactionService.js';
-import type { JournalPublishedAccess, JournalRepository } from '../repository.js';
+import { journalVisitorClientHash } from '../interactions/interactionIdentity.js';
+import type { JournalInteractionService } from '../interactions/interactionService.js';
+import type { JournalPublishedAccess, JournalRepository } from '../data/repository.js';
 
 const visitorIdSchema = z.string().uuid();
 

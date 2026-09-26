@@ -1,8 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { Feed } from 'feed';
 import type { JournalEntry } from '../../shared/journalProtocol.js';
-import type { JournalRepository } from '../repository.js';
-import { generateArticleHtml } from '../richText.js';
+import type { JournalRepository } from '../data/repository.js';
+import { generateArticleHtml } from '../articles/richText.js';
 import type { JournalSiteProfileService } from '../siteProfileService.js';
 
 function itemTitle(entry: JournalEntry): string {

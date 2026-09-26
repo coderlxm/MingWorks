@@ -103,7 +103,7 @@ Journal 是仓库里的另一位主角：由 Telegram 采集、Fastify 服务和
 - `data/fitness_status.json`：健身模块状态。
 - `JOURNAL_DATA_DIR/journal.sqlite` 与 `JOURNAL_DATA_DIR/assets/`：Journal 条目、附件和图片预览。
 
-数据库初始化和迁移分别由 `src/reminders/db.ts`、`src/reminders/migrations.ts` 与 `src/journal-server/migrations.ts` 管理。
+数据库初始化和迁移分别由 `src/reminders/db.ts`、`src/reminders/migrations.ts` 与 `src/journal-server/data/migrations.ts` 管理。
 
 ## 代码地图 🗺️
 

@@ -3,9 +3,9 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { journalContributionPublishRequestSchema } from '../../shared/journalProtocol.js';
 import type { JournalAuth } from '../auth.js';
-import type { JournalContributionLinkService } from '../contributionLinkService.js';
-import type { JournalContributionService } from '../contributionService.js';
-import type { JournalRepository } from '../repository.js';
+import type { JournalContributionLinkService } from '../contributions/contributionLinkService.js';
+import type { JournalContributionService } from '../contributions/contributionService.js';
+import type { JournalRepository } from '../data/repository.js';
 
 const contributionParamsSchema = z.object({
   publicId: z.string().uuid(),

@@ -7,7 +7,7 @@ import {
   guestbookVisitorCreateRequestSchema,
 } from '../../shared/guestbookProtocol.js';
 import type { JournalAuth } from '../auth.js';
-import type { GuestbookService } from '../guestbookService.js';
+import type { GuestbookService } from '../guestbook/guestbookService.js';
 
 const visitorIdSchema = z.string().uuid();
 

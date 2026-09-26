@@ -1,11 +1,11 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { JournalContributionError } from '../contributionError.js';
-import type { JournalContributionLinkService } from '../contributionLinkService.js';
-import type { JournalContributionNotificationService } from '../contributionNotification.js';
-import type { JournalContributionService } from '../contributionService.js';
-import { JournalContributionUploadService } from '../contributionUploadService.js';
-import type { JournalStorage } from '../storage.js';
+import { JournalContributionError } from '../contributions/contributionError.js';
+import type { JournalContributionLinkService } from '../contributions/contributionLinkService.js';
+import type { JournalContributionNotificationService } from '../contributions/contributionNotification.js';
+import type { JournalContributionService } from '../contributions/contributionService.js';
+import { JournalContributionUploadService } from '../contributions/contributionUploadService.js';
+import type { JournalStorage } from '../media/storage.js';
 
 const maxAssets = 30;
 const maxVideos = 5;

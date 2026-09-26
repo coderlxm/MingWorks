@@ -4,7 +4,7 @@ import { encode } from 'eventsource-encoder';
 import { z } from 'zod';
 import { journalAiSendMessageRequestSchema } from '../../shared/journalProtocol.js';
 import type { JournalAuth } from '../auth.js';
-import { JournalKnowledgeAgentService } from '../knowledgeAgentService.js';
+import { JournalKnowledgeAgentService } from '../knowledge/knowledgeAgentService.js';
 
 const sessionParamsSchema = z.object({
   id: z.coerce.number().int().positive(),

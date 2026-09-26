@@ -3,9 +3,9 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { gameImageRoleSchema } from '../../shared/gameProtocol.js';
 import type { JournalAuth } from '../auth.js';
-import type { GameRepository } from '../gameRepository.js';
-import type { GameService } from '../gameService.js';
-import { maxWebImageBytes } from '../webImage.js';
+import type { GameRepository } from '../games/gameRepository.js';
+import type { GameService } from '../games/gameService.js';
+import { maxWebImageBytes } from '../media/webImage.js';
 
 const gameParamsSchema = z.object({ id: z.string().uuid() });
 const gameImageParamsSchema = z.object({ assetId: z.string().uuid() });

@@ -10,8 +10,8 @@ import {
   type JournalTagSuggestionResponse,
   type JournalTopicSuggestionResponse,
 } from '../shared/journalProtocol.js';
-import { extractJournalTags } from './repository.js';
-import { extractContentText } from './richText.js';
+import { extractJournalTags } from './data/repository.js';
+import { extractContentText } from './articles/richText.js';
 
 const deepSeekBaseUrl = 'https://api.deepseek.com';
 const articleContentSchema = z.string().trim().min(1, {

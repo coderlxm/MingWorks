@@ -10,8 +10,8 @@ import {
   journalSiteProfileAboutIntroSchema,
   journalSiteProfileBioSchema,
 } from '../shared/journalProtocol.js';
-import type { JournalRepository, JournalSiteProfileRecord } from './repository.js';
-import type { JournalResumeService } from './resumeService.js';
+import type { JournalRepository, JournalSiteProfileRecord } from './data/repository.js';
+import type { JournalResumeService } from './resume/resumeService.js';
 
 export const maxSiteProfileAvatarBytes = 5 * 1024 * 1024;
 

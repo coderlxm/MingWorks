@@ -1,13 +1,13 @@
 import type { FastifyInstance } from 'fastify';
 import { journalAutomationArticleResponseSchema } from '../../shared/journalProtocol.js';
-import type { ArticleFileInput, JournalArticleService } from '../articleService.js';
+import type { ArticleFileInput, JournalArticleService } from '../articles/articleService.js';
 import { createWriteStream } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { Transform } from 'node:stream';
-import { JournalArticleInputError } from '../articleMarkdown.js';
+import { JournalArticleInputError } from '../articles/articleMarkdown.js';
 import type { JournalAuth } from '../auth.js';
 
 export async function registerAutomationArticleRoutes(
