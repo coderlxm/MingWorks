@@ -1,0 +1,16 @@
+[Unit]
+Description=Shishi personal reminder dashboard
+After=network-online.target docker.service notinews-bot.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/reminder-dashboard/current
+EnvironmentFile=/opt/reminder-dashboard/.env
+Environment=NODE_ENV=production
+Environment=REMINDER_DASHBOARD_HOST=172.18.0.1
+ExecStart=/usr/bin/env node server/server.mjs
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

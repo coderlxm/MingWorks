@@ -4,7 +4,7 @@ import { fetchGameNews } from '../fetchers/games.js';
 import { fetchGithubTrending } from '../fetchers/github.js';
 import { fetchEnglishContent } from '../fetchers/english.js';
 import { fetchV2exHot } from '../fetchers/v2ex.js';
-import { isChinaWorkday } from '../calendar/chinaWorkday.js';
+import { isChinaWorkday, isChinaWorkdayStrict } from '../calendar/chinaWorkday.js';
 import {
   summarizeNewsWithAI,
   summarizeGithubWithAI,
@@ -31,14 +31,16 @@ import { getFitnessContext, markFitnessWorkoutGenerated } from '../services/fitn
 import { checkServerHealth } from '../services/serverHealth.js';
 import { runAvFetchOnce } from '../services/avTracker.js';
 import { bufferHolidayV2exTopics, pushBufferedV2exIfNeeded } from '../services/v2exBufferedPush.js';
-import { isVitaminEatenToday, triggerVitaminReminder } from '../services/vitaminReminder.js';
+import { triggerVitaminReminder } from '../services/vitaminReminder.js';
 import { runStartggWatchNow } from '../services/startggPresetSync.js';
 import { runStartggTask } from '../services/startgg/taskQueue.js';
 import {
   formatXLikedVideoStatusMessage,
   readXLikedVideoStatus,
 } from '../services/xLikedVideoStatus.js';
-import { beginWorkCheckin, sendMorningNewsWithWorkCheckin } from '../services/workCheckinReminder.js';
+import { beginWorkCheckin, recordWorkCheckinError, sendMorningNewsWithWorkCheckin } from '../services/workCheckinReminder.js';
+import { getLifeDay, getLifeSettings, lifeDayIsClosed } from '../reminders/lifeSettings.js';
+import { bjDate } from '../utils/time.js';
 
 export type PushMode = 'sleep' | 'wakeup' | 'server_health' | 'news' | 'github' | 'v2ex' | 'v2ex_buffered_push' | 'fitness' | 'vitamin' | 'english' | 'av_update' | 'startgg_watch' | 'coffee';
 
@@ -86,18 +88,24 @@ export async function runMode(mode: PushMode, chinaDayOfWeek: number, bot?: Tele
 
   if (mode === 'news') {
     console.log('Mode: Morning News');
-    const workday = isChinaWorkday(new Date());
-    if (workday) beginWorkCheckin();
-    const [weather, rawNews] = await Promise.all([
-      fetchWeather(),
-      fetchGameNews()
-    ]);
-    const aiProcessedNews = await summarizeNewsWithAI(rawNews);
-    const message = formatTelegramMessage(weather, aiProcessedNews);
-    if (workday) {
-      await sendMorningNewsWithWorkCheckin(message, bot);
-    } else {
-      await sendTelegramMessage(message, bot);
+    const workday = isChinaWorkdayStrict(new Date());
+    const checkinDate = bjDate();
+    if (workday) beginWorkCheckin(checkinDate);
+    try {
+      const [weather, rawNews] = await Promise.all([
+        fetchWeather(),
+        fetchGameNews()
+      ]);
+      const aiProcessedNews = await summarizeNewsWithAI(rawNews);
+      const message = formatTelegramMessage(weather, aiProcessedNews);
+      if (workday) {
+        await sendMorningNewsWithWorkCheckin(message, bot);
+      } else {
+        await sendTelegramMessage(message, bot);
+      }
+    } catch (error) {
+      if (workday) recordWorkCheckinError(error, checkinDate);
+      throw error;
     }
     return;
   }
@@ -161,8 +169,9 @@ export async function runMode(mode: PushMode, chinaDayOfWeek: number, bot?: Tele
 
   if (mode === 'vitamin') {
     console.log('Mode: Vitamin Reminder');
-    if (isVitaminEatenToday()) {
-      console.log('Vitamin already eaten today. Skip reminder.');
+    const day = getLifeDay('vitamin', bjDate());
+    if (!getLifeSettings('vitamin').enabled || (day && lifeDayIsClosed(day))) {
+      console.log('Vitamin reminder is disabled or finished today.');
       return;
     }
     if (bot) {

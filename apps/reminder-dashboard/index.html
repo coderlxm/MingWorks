@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f5f3ed">
+    <meta name="color-scheme" content="light">
+    <meta name="robots" content="noindex,nofollow">
+    <title>拾时 · 我的提醒</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <style>
+      body{margin:0;background:#f5f3ed}#boot{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;background:#f5f3ed;color:#24382f;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;text-align:center}#boot svg{width:52px;height:52px;stroke:#476650;fill:none;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}#boot strong{display:block;font-size:28px;font-weight:500;letter-spacing:.16em;margin:18px 0 8px}#boot p{font-size:13px;color:#75816b;margin:0}
+    </style>
+  </head>
+  <body>
+    <div id="boot" role="status" aria-live="polite"><div><svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="20"/><path d="M24 11v13l8 5M17 33c-4-9 3-15 14-14 0 9-5 15-14 14Zm0 0 10-10"/></svg><strong>拾时</strong><p>正在展开你的日程…</p></div></div>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

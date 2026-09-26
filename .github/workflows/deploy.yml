@@ -31,6 +31,12 @@ on:
         type: boolean
         default: true
 
+      deploy_reminder_dashboard:
+        description: Deploy reminder dashboard to bwgdc01
+        required: true
+        type: boolean
+        default: true
+
 permissions:
   contents: read
 
@@ -46,6 +52,7 @@ jobs:
       bot: ${{ steps.scope.outputs.bot }}
       lu_dashboard: ${{ steps.scope.outputs.lu_dashboard }}
       startgg_dashboard: ${{ steps.scope.outputs.startgg_dashboard }}
+      reminder_dashboard: ${{ steps.scope.outputs.reminder_dashboard }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -95,6 +102,9 @@ jobs:
             startgg_dashboard:
               - 'apps/startgg-dashboard/**'
               - 'deploy/startgg-dashboard/**'
+            reminder_dashboard:
+              - 'apps/reminder-dashboard/**'
+              - 'deploy/reminder-dashboard/**'
 
       - name: Detect root manifest deployment scope
         id: root-manifest
@@ -117,6 +127,7 @@ jobs:
           root_bot=false
           root_lu=false
           root_startgg=false
+          root_reminder=false
 
           if manifest_changed '.scripts | with_entries(select(.key | endswith(":journal")))'; then
             root_journal=true
@@ -137,16 +148,17 @@ jobs:
             root_bot=true
             root_lu=true
             root_startgg=true
+            root_reminder=true
           fi
 
           python3 -m pip install --quiet --target "$RUNNER_TEMP/deploy-scope" PyYAML==6.0.3
-          PYTHONPATH="$RUNNER_TEMP/deploy-scope" python3 - "$root_journal" "$root_bot" "$root_lu" "$root_startgg" <<'PYTHON'
+          PYTHONPATH="$RUNNER_TEMP/deploy-scope" python3 - "$root_journal" "$root_bot" "$root_lu" "$root_startgg" "$root_reminder" <<'PYTHON'
           import os
           import subprocess
           import sys
           import yaml
 
-          scopes = dict(zip(('journal', 'bot', 'lu_dashboard', 'startgg_dashboard'), (value == 'true' for value in sys.argv[1:])))
+          scopes = dict(zip(('journal', 'bot', 'lu_dashboard', 'startgg_dashboard', 'reminder_dashboard'), (value == 'true' for value in sys.argv[1:])))
           def version_file(revision, path):
               # pnpm may prepend an environment document before the dependency lockfile.
               return list(yaml.safe_load_all(subprocess.check_output(['git', 'show', f'{revision}:{path}'], text=True)))[-1]
@@ -158,6 +170,7 @@ jobs:
               '.': ('journal', 'bot'),
               'apps/lu-dashboard': ('lu_dashboard',),
               'apps/startgg-dashboard': ('startgg_dashboard',),
+              'apps/reminder-dashboard': ('reminder_dashboard',),
           }
           for importer, services in affected.items():
               if before_importers.get(importer) != after_importers.get(importer):
@@ -187,25 +200,30 @@ jobs:
           PUSH_BOT: ${{ steps.paths.outputs.bot }}
           PUSH_LU_DASHBOARD: ${{ steps.paths.outputs.lu_dashboard }}
           PUSH_STARTGG_DASHBOARD: ${{ steps.paths.outputs.startgg_dashboard }}
+          PUSH_REMINDER_DASHBOARD: ${{ steps.paths.outputs.reminder_dashboard }}
           ROOT_JOURNAL: ${{ steps.root-manifest.outputs.root_journal }}
           ROOT_BOT: ${{ steps.root-manifest.outputs.root_bot }}
           ROOT_LU_DASHBOARD: ${{ steps.root-manifest.outputs.root_lu_dashboard }}
           ROOT_STARTGG_DASHBOARD: ${{ steps.root-manifest.outputs.root_startgg_dashboard }}
+          ROOT_REMINDER_DASHBOARD: ${{ steps.root-manifest.outputs.root_reminder_dashboard }}
           MANUAL_JOURNAL: ${{ inputs.deploy_journal }}
           MANUAL_BOT: ${{ inputs.deploy_bot }}
           MANUAL_LU_DASHBOARD: ${{ inputs.deploy_lu_dashboard }}
           MANUAL_STARTGG_DASHBOARD: ${{ inputs.deploy_startgg_dashboard }}
+          MANUAL_REMINDER_DASHBOARD: ${{ inputs.deploy_reminder_dashboard }}
         run: |
           if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
             echo "journal=$MANUAL_JOURNAL" >> "$GITHUB_OUTPUT"
             echo "bot=$MANUAL_BOT" >> "$GITHUB_OUTPUT"
             echo "lu_dashboard=$MANUAL_LU_DASHBOARD" >> "$GITHUB_OUTPUT"
             echo "startgg_dashboard=$MANUAL_STARTGG_DASHBOARD" >> "$GITHUB_OUTPUT"
+            echo "reminder_dashboard=$MANUAL_REMINDER_DASHBOARD" >> "$GITHUB_OUTPUT"
           else
             journal=false
             bot=false
             lu_dashboard=false
             startgg_dashboard=false
+            reminder_dashboard=false
             [ "$PUSH_JOURNAL" = "true" ] && journal=true
             [ "$PUSH_BOT" = "true" ] && bot=true
             [ "$PUSH_LU_DASHBOARD" = "true" ] && lu_dashboard=true
@@ -214,6 +232,9 @@ jobs:
             [ "$ROOT_LU_DASHBOARD" = "true" ] && lu_dashboard=true
             [ "$PUSH_STARTGG_DASHBOARD" = "true" ] && startgg_dashboard=true
             [ "$ROOT_STARTGG_DASHBOARD" = "true" ] && startgg_dashboard=true
+            [ "$PUSH_REMINDER_DASHBOARD" = "true" ] && reminder_dashboard=true
+            [ "$ROOT_REMINDER_DASHBOARD" = "true" ] && reminder_dashboard=true
+            echo "reminder_dashboard=$reminder_dashboard" >> "$GITHUB_OUTPUT"
             echo "startgg_dashboard=$startgg_dashboard" >> "$GITHUB_OUTPUT"
             echo "journal=$journal" >> "$GITHUB_OUTPUT"
             echo "bot=$bot" >> "$GITHUB_OUTPUT"
@@ -531,3 +552,59 @@ jobs:
         run: |
           PORT="${SERVER_PORT:-22}"
           ssh -p "$PORT" "$SERVER_USER@$SERVER_HOST" "install -m 755 /var/lib/startgg-dashboard-deploy/incoming/deploy-release /usr/local/sbin/startgg-dashboard-deploy-release && /usr/local/sbin/startgg-dashboard-deploy-release '$GITHUB_SHA'"
+
+  reminder-dashboard:
+    needs:
+      - changes
+      - bot
+    if: >-
+      always() &&
+      needs.changes.result == 'success' &&
+      needs.changes.outputs.reminder_dashboard == 'true' &&
+      (needs.bot.result == 'success' || needs.changes.outputs.bot != 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SERVER_HOST: ${{ secrets.SERVER_HOST }}
+      SERVER_PORT: ${{ secrets.SERVER_PORT }}
+      SERVER_USER: ${{ secrets.SERVER_USER }}
+      HUSKY: '0'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Prepare independent reminder dashboard artifact
+        run: |
+          pnpm install --frozen-lockfile --filter @notinews/reminder-dashboard...
+          pnpm --filter @notinews/reminder-dashboard build
+          pnpm --filter @notinews/reminder-dashboard --config.inject-workspace-packages=true deploy --prod /tmp/reminder-dashboard-release
+          install -d /tmp/reminder-dashboard-release/deploy
+          cp deploy/reminder-dashboard/reminder-dashboard.service deploy/reminder-dashboard/remind.xmcloud.buzz.conf /tmp/reminder-dashboard-release/deploy/
+          tar -C /tmp/reminder-dashboard-release -cf "/tmp/reminder-dashboard-$GITHUB_SHA.tar" .
+
+      - name: Setup reminder dashboard SSH agent
+        uses: webfactory/ssh-agent@v0.10.0
+        with:
+          ssh-private-key: ${{ secrets.SERVER_SSH_KEY }}
+
+      - name: Upload reminder dashboard release
+        run: |
+          PORT="${SERVER_PORT:-22}"
+          mkdir -p ~/.ssh
+          ssh-keyscan -p "$PORT" -H "$SERVER_HOST" >> ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          ssh -p "$PORT" "$SERVER_USER@$SERVER_HOST" "install -d -m 700 /var/lib/reminder-dashboard-deploy/incoming"
+          scp -P "$PORT" "/tmp/reminder-dashboard-$GITHUB_SHA.tar" deploy/reminder-dashboard/deploy-release "$SERVER_USER@$SERVER_HOST:/var/lib/reminder-dashboard-deploy/incoming/"
+
+      - name: Activate reminder dashboard release
+        run: |
+          PORT="${SERVER_PORT:-22}"
+          ssh -p "$PORT" "$SERVER_USER@$SERVER_HOST" "install -m 755 /var/lib/reminder-dashboard-deploy/incoming/deploy-release /usr/local/sbin/reminder-dashboard-deploy-release && /usr/local/sbin/reminder-dashboard-deploy-release '$GITHUB_SHA'"

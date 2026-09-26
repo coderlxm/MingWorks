@@ -1,23 +1,28 @@
 export interface CallbackData {
   type: 'cancel' | 'done' | 'snooze5';
   id: number;
+  revision: number;
+  legacy: boolean;
 }
 
 export function parseCallbackData(data: string | undefined): CallbackData | null {
   if (!data) return null;
   const parts = data.split(':');
-  if (parts.length !== 3 || parts[0] !== 'reminder') return null;
+  if ((parts.length !== 3 && parts.length !== 4) || parts[0] !== 'reminder') return null;
   const [, action, idStr] = parts;
   const id = parseInt(idStr!, 10);
   if (isNaN(id)) return null;
   if (action !== 'cancel' && action !== 'done' && action !== 'snooze5') return null;
-  return { type: action as CallbackData['type'], id };
+  const revision = parts[3] === undefined ? 1 : Number(parts[3]);
+  if (!Number.isInteger(revision) || revision < 1) return null;
+  return { type: action as CallbackData['type'], id, revision, legacy: parts.length === 3 };
 }
 
 export interface RecurringCallbackData {
   type: 'pause' | 'cancel' | 'done' | 'skip';
   ruleId: number;
   runId: number | null;
+  revision: number;
 }
 
 export function parseRecurringCallbackData(data: string | undefined): RecurringCallbackData | null {
@@ -27,20 +32,22 @@ export function parseRecurringCallbackData(data: string | undefined): RecurringC
   const [, action, ruleIdStr, runIdStr] = parts;
   const ruleId = parseInt(ruleIdStr!, 10);
   if (isNaN(ruleId)) return null;
+  const revision = parts[4] === undefined ? 1 : Number(parts[4]);
+  if (!Number.isInteger(revision) || revision < 1) return null;
 
   if (action === 'pause') {
-    return { type: 'pause', ruleId, runId: null };
+    return { type: 'pause', ruleId, runId: null, revision };
   }
 
   if (action === 'cancel') {
     const runId = runIdStr ? parseInt(runIdStr, 10) : null;
-    return { type: 'cancel', ruleId, runId: runId === 0 ? null : runId };
+    return { type: 'cancel', ruleId, runId: runId === 0 ? null : runId, revision };
   }
 
   if (action === 'done' || action === 'skip') {
     const runId = runIdStr ? parseInt(runIdStr, 10) : null;
     if (runId === null || isNaN(runId)) return null;
-    return { type: action, ruleId, runId };
+    return { type: action, ruleId, runId, revision };
   }
 
   return null;
@@ -49,38 +56,41 @@ export function parseRecurringCallbackData(data: string | undefined): RecurringC
 export interface NaturalCancelCallbackData {
   kind: 'once' | 'recurring';
   id: number;
+  revision: number;
 }
 
 export function parseNaturalCancelCallbackData(data: string | undefined): NaturalCancelCallbackData | null {
   if (!data) return null;
   const parts = data.split(':');
-  if (parts.length !== 3 || parts[0] !== 'nlcancel') return null;
+  if ((parts.length !== 3 && parts.length !== 4) || parts[0] !== 'nlcancel') return null;
   const [, kind, idStr] = parts;
   if (kind !== 'once' && kind !== 'recur') return null;
   const id = parseInt(idStr!, 10);
   if (isNaN(id)) return null;
-  return { kind: kind === 'once' ? 'once' : 'recurring', id };
+  const revision = parts[3] === undefined ? 1 : Number(parts[3]);
+  if (!Number.isInteger(revision) || revision < 1) return null;
+  return { kind: kind === 'once' ? 'once' : 'recurring', id, revision };
 }
 
-export type VitaminAction = 'eaten' | 'snooze';
+export type VitaminAction = { action: 'confirm' | 'snooze' | 'stop'; date: string | null };
 
 export function parseVitaminCallbackData(data: string | undefined): VitaminAction | null {
   if (!data) return null;
-  if (data === 'vitamin:eaten') return 'eaten';
-  if (data === 'vitamin:snooze') return 'snooze';
-  return null;
+  const match = /^vitamin:(eaten|snooze|stop)(?::(\d{4}-\d{2}-\d{2}))?$/.exec(data);
+  if (!match) return null;
+  return { action: match[1] === 'eaten' ? 'confirm' : match[1] as 'snooze' | 'stop', date: match[2] ?? null };
 }
 
-export function parseWorkCheckinCallbackData(data: string | undefined): string | null {
+export function parseWorkCheckinCallbackData(data: string | undefined): { date: string; action: 'confirm' | 'stop' } | null {
   if (!data) return null;
-  const match = /^work-checkin:done:(\d{4}-\d{2}-\d{2})$/.exec(data);
-  return match?.[1] ?? null;
+  const match = /^work-checkin:(done|stop):(\d{4}-\d{2}-\d{2})$/.exec(data);
+  return match ? { date: match[2]!, action: match[1] === 'done' ? 'confirm' : 'stop' } : null;
 }
 
-export function parseBusReminderCallbackData(data: string | undefined): string | null {
+export function parseBusReminderCallbackData(data: string | undefined): { date: string; action: 'confirm' | 'stop' } | null {
   if (!data) return null;
-  const match = /^bus-reminder:done:(\d{4}-\d{2}-\d{2})$/.exec(data);
-  return match?.[1] ?? null;
+  const match = /^bus-reminder:(done|stop):(\d{4}-\d{2}-\d{2})$/.exec(data);
+  return match ? { date: match[2]!, action: match[1] === 'done' ? 'confirm' : 'stop' } : null;
 }
 
 export interface StartggWatchCallbackData {

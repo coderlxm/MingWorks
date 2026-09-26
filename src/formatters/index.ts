@@ -179,6 +179,7 @@ export function buildWorkCheckinButtons(dateKey: string): { reply_markup: Inline
     reply_markup: {
       inline_keyboard: [[
         { text: '✅ 我已打卡', callback_data: `work-checkin:done:${dateKey}` },
+        { text: '今天不再提醒', callback_data: `work-checkin:stop:${dateKey}` },
       ]],
     },
   };
@@ -193,17 +194,20 @@ export function buildBusReminderButtons(dateKey: string): { reply_markup: Inline
     reply_markup: {
       inline_keyboard: [[
         { text: '✅ 已下车', callback_data: `bus-reminder:done:${dateKey}` },
+        { text: '今天不再提醒', callback_data: `bus-reminder:stop:${dateKey}` },
       ]],
     },
   };
 }
 
-export function buildVitaminButtons(): { reply_markup: InlineKeyboardMarkup } {
+export function buildVitaminButtons(dateKey: string): { reply_markup: InlineKeyboardMarkup } {
   return {
     reply_markup: {
       inline_keyboard: [[
-        { text: '💊 已吃', callback_data: 'vitamin:eaten' },
-        { text: '⏰ 未吃，30分钟后再提醒', callback_data: 'vitamin:snooze' },
+        { text: '💊 已吃', callback_data: `vitamin:eaten:${dateKey}` },
+        { text: '⏰ 未吃，30分钟后再提醒', callback_data: `vitamin:snooze:${dateKey}` },
+      ], [
+        { text: '今天不再提醒', callback_data: `vitamin:stop:${dateKey}` },
       ]]
     }
   };

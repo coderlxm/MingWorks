@@ -81,7 +81,7 @@ export function formatReminderList(reminders: Reminder[]): string {
 export function buildReminderListButtons(reminders: Reminder[]): { reply_markup: InlineKeyboardMarkup } {
   const rows = reminders.map((r, i) => [{
     text: `取消 ${i + 1}`,
-    callback_data: `reminder:cancel:${r.id}`
+    callback_data: `reminder:cancel:${r.id}:${r.revision}`
   }]);
 
   return { reply_markup: { inline_keyboard: rows } };
@@ -113,22 +113,22 @@ export function formatReminderCancelled(reminder: Reminder): string {
   return `🗑️ 提醒「<b>${escapeHtml(reminder.text)}</b>」已从清单中移除。`;
 }
 
-export function buildCancelButton(reminderId: number): { reply_markup: InlineKeyboardMarkup } {
+export function buildCancelButton(reminderId: number, revision: number): { reply_markup: InlineKeyboardMarkup } {
   return {
     reply_markup: {
       inline_keyboard: [[
-        { text: '取消提醒', callback_data: `reminder:cancel:${reminderId}` }
+        { text: '取消提醒', callback_data: `reminder:cancel:${reminderId}:${revision}` }
       ]]
     }
   };
 }
 
-export function buildReminderButtons(reminderId: number): { reply_markup: InlineKeyboardMarkup } {
+export function buildReminderButtons(reminderId: number, revision: number): { reply_markup: InlineKeyboardMarkup } {
   return {
     reply_markup: {
       inline_keyboard: [[
-        { text: '✅ 已完成', callback_data: `reminder:done:${reminderId}` },
-        { text: '💤 晚点再说', callback_data: `reminder:snooze5:${reminderId}` }
+        { text: '✅ 已完成', callback_data: `reminder:done:${reminderId}:${revision}` },
+        { text: '💤 晚点再说', callback_data: `reminder:snooze5:${reminderId}:${revision}` }
       ]]
     }
   };
@@ -158,25 +158,25 @@ export function formatRecurringReminderMessage(rule: RecurringRule): string {
   ].join('\n');
 }
 
-export function buildRecurringRuleButtons(ruleId: number): { reply_markup: InlineKeyboardMarkup } {
+export function buildRecurringRuleButtons(ruleId: number, revision: number): { reply_markup: InlineKeyboardMarkup } {
   return {
     reply_markup: {
       inline_keyboard: [[
-        { text: '⏸️ 暂停循环', callback_data: `recur:pause:${ruleId}` },
-        { text: '🗑️ 取消规则', callback_data: `recur:cancel:${ruleId}` },
+        { text: '⏸️ 暂停循环', callback_data: `recur:pause:${ruleId}:0:${revision}` },
+        { text: '🗑️ 取消规则', callback_data: `recur:cancel:${ruleId}:0:${revision}` },
       ]]
     }
   };
 }
 
-export function buildRecurringReminderButtons(ruleId: number, runId: number): { reply_markup: InlineKeyboardMarkup } {
+export function buildRecurringReminderButtons(ruleId: number, runId: number, ruleRevision: number, runRevision = 1): { reply_markup: InlineKeyboardMarkup } {
   return {
     reply_markup: {
       inline_keyboard: [[
-        { text: '✅ 已完成', callback_data: `recur:done:${ruleId}:${runId}` },
-        { text: '⏭️ 跳过本次', callback_data: `recur:skip:${ruleId}:${runId}` },
+        { text: '✅ 已完成', callback_data: `recur:done:${ruleId}:${runId}:${runRevision}` },
+        { text: '⏭️ 跳过本次', callback_data: `recur:skip:${ruleId}:${runId}:${runRevision}` },
       ], [
-        { text: '🛑 停止循环', callback_data: `recur:cancel:${ruleId}:0` },
+        { text: '🛑 停止循环', callback_data: `recur:cancel:${ruleId}:0:${ruleRevision}` },
       ]]
     }
   };
@@ -207,6 +207,7 @@ export interface ReminderListItem {
 export interface CancelCandidate {
   kind: 'once' | 'recurring';
   id: number;
+  revision: number;
   text: string;
   triggerAt: Date;
 }
@@ -263,7 +264,7 @@ export function buildCancelCandidateButtons(
     const prefix = c.kind === 'once' ? 'nlcancel:once' : 'nlcancel:recur';
     return [{
       text: `取消「${c.text.slice(0, 10)}${c.text.length > 10 ? '...' : ''}」`,
-      callback_data: `${prefix}:${c.id}`,
+      callback_data: `${prefix}:${c.id}:${c.revision}`,
     }];
   });
   return { reply_markup: { inline_keyboard: rows } };

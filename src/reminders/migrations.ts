@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3';
+import { migrateLifeDashboard } from './lifeSettings.js';
 
 interface DbMigration {
   version: number;
@@ -419,6 +420,63 @@ const MIGRATIONS: DbMigration[] = [
       `);
     },
   },
+  {
+    version: 22,
+    up(db) {
+      db.transaction(() => {
+        db.exec(`
+          ALTER TABLE reminders ADD COLUMN delivery_status TEXT NOT NULL DEFAULT 'unknown';
+          ALTER TABLE reminders ADD COLUMN sent_at TEXT;
+          ALTER TABLE reminders ADD COLUMN last_error TEXT;
+          ALTER TABLE reminders ADD COLUMN revision INTEGER NOT NULL DEFAULT 1;
+          ALTER TABLE reminders ADD COLUMN last_action TEXT;
+          ALTER TABLE reminders ADD COLUMN updated_at TEXT;
+          ALTER TABLE recurring_reminder_rules ADD COLUMN revision INTEGER NOT NULL DEFAULT 1;
+          ALTER TABLE recurring_reminder_rules ADD COLUMN last_error TEXT;
+          ALTER TABLE recurring_reminder_runs ADD COLUMN text_snapshot TEXT;
+          ALTER TABLE recurring_reminder_runs ADD COLUMN timezone_snapshot TEXT;
+          ALTER TABLE recurring_reminder_runs ADD COLUMN rule_snapshot TEXT;
+          ALTER TABLE recurring_reminder_runs ADD COLUMN snapshot_note TEXT;
+          ALTER TABLE recurring_reminder_runs ADD COLUMN delivery_status TEXT NOT NULL DEFAULT 'unknown';
+          ALTER TABLE recurring_reminder_runs ADD COLUMN sent_at TEXT;
+          ALTER TABLE recurring_reminder_runs ADD COLUMN last_error TEXT;
+          ALTER TABLE recurring_reminder_runs ADD COLUMN revision INTEGER NOT NULL DEFAULT 1;
+          CREATE TABLE reminder_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            kind TEXT NOT NULL,
+            entity_id INTEGER NOT NULL,
+            rule_id INTEGER,
+            chat_id TEXT NOT NULL,
+            text TEXT NOT NULL,
+            trigger_at TEXT NOT NULL,
+            occurred_at TEXT,
+            action TEXT NOT NULL,
+            delivery_status TEXT NOT NULL,
+            note TEXT,
+            error TEXT
+          );
+          CREATE INDEX idx_reminder_history_date ON reminder_history(chat_id, trigger_at, id);
+          INSERT INTO reminder_history (kind, entity_id, chat_id, text, trigger_at, occurred_at, action, delivery_status, note)
+          SELECT 'once', id, chat_id, text, trigger_at, COALESCE(done_at, cancelled_at),
+            status, 'unknown', CASE WHEN status = 'cancelled' THEN '旧记录未保存取消原因，可能由系统关闭。' ELSE '旧记录未保存本次发送结果和完整处理经过。' END
+          FROM reminders;
+          INSERT INTO reminder_history (kind, entity_id, rule_id, chat_id, text, trigger_at, occurred_at, action, delivery_status, note)
+          SELECT 'run', r.id, r.rule_id, p.chat_id, p.text, r.trigger_at, r.acted_at, r.action, 'unknown',
+            '旧实例未保存当时内容快照和发送结果，内容为现存规则。'
+          FROM recurring_reminder_runs r JOIN recurring_reminder_rules p ON p.id = r.rule_id;
+          UPDATE recurring_reminder_runs SET
+            text_snapshot = (SELECT text FROM recurring_reminder_rules WHERE id = rule_id),
+            timezone_snapshot = (SELECT timezone FROM recurring_reminder_rules WHERE id = rule_id),
+            rule_snapshot = (SELECT rrule_text FROM recurring_reminder_rules WHERE id = rule_id),
+            snapshot_note = '旧实例未保存当时内容，显示升级时的规则内容。';
+        `);
+        const now = new Date().toISOString();
+        db.prepare(`UPDATE reminders SET delivery_status = 'waiting', sent_message_id = NULL
+          WHERE status = 'pending' AND trigger_at > ?`).run(now);
+      })();
+    },
+  },
+  { version: 23, up: migrateLifeDashboard },
 ];
 
 export function runDbMigrations(db: Database.Database): void {
@@ -427,8 +485,12 @@ export function runDbMigrations(db: Database.Database): void {
     if (migration.version <= currentVersion) {
       continue;
     }
-    migration.up(db);
-    db.pragma(`user_version = ${migration.version}`);
+    const apply = () => {
+      migration.up(db);
+      db.pragma(`user_version = ${migration.version}`);
+    };
+    if (migration.version >= 22) db.transaction(apply)();
+    else apply();
     currentVersion = migration.version;
   }
 }

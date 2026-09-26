@@ -1,4 +1,5 @@
 import { startStartggDashboardApi } from './services/startgg/dashboardApi.js';
+import { startReminderDashboardApi } from './reminders/dashboardApi.js';
 import { createBot } from './bot/createBot.js';
 import { registerInteractiveHandlers } from './bot/interactive.js';
 import { config } from './config/index.js';
@@ -6,9 +7,7 @@ import { registerJournalBotHandlers } from './journal-bot/index.js';
 import { getDb } from './reminders/db.js';
 import { schedulePendingReminders, schedulePendingRecurringRules } from './reminders/scheduler.js';
 import { registerFixedJobs, restoreStartggPolling } from './scheduled/jobs.js';
-import { restoreVitaminLoop } from './services/vitaminReminder.js';
 import { closeExpiredWorkCheckin } from './services/workCheckinReminder.js';
-import { restoreBusReminderLoop } from './services/busReminder.js';
 
 async function main() {
   if (!config.journalApiBaseUrl || !config.journalIngestToken || !config.journalPublicBaseUrl) {
@@ -28,9 +27,8 @@ async function main() {
   registerFixedJobs(bot);
   restoreStartggPolling(bot);
   await startStartggDashboardApi(bot);
-  restoreVitaminLoop(bot);
-  restoreBusReminderLoop(bot);
   await closeExpiredWorkCheckin(bot);
+  await startReminderDashboardApi(bot);
 
   bot.launch({
     allowedUpdates: ['message', 'callback_query'],

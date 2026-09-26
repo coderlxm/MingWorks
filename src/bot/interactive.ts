@@ -11,7 +11,8 @@ import {
   type ParsedCancelReminder,
 } from '../reminders/parser.js';
 import * as repo from '../reminders/repository.js';
-import { scheduleReminder, cancelScheduledReminder, scheduleRecurringRule, cancelRecurringJob } from '../reminders/scheduler.js';
+import { actOnceReminder, actRuleReminder, actReminderRun, createOnceReminder, createRuleReminder, reminderError, requireRun, requireOnce } from '../reminders/actions.js';
+import { actLife } from '../reminders/lifeDashboard.js';
 import { buildRRuleText, getNextTrigger, describeRecurrence, getOccurrencesInRange } from '../reminders/recurring.js';
 import {
   formatStartMessage,
@@ -19,14 +20,9 @@ import {
   formatReminderCreated,
   formatEmptyReminderList,
   formatReminderList,
-  formatReminderSnoozed,
-  formatReminderCancelled,
   buildCancelButton,
   buildReminderListButtons,
   formatRecurringCreated,
-  formatRecurringCancelled,
-  formatRecurringPaused,
-  formatRecurringRunSkipped,
   buildRecurringRuleButtons,
   formatReminderRangeList,
   formatCancelCandidates,
@@ -52,9 +48,6 @@ import type { TrackedTarget } from '../services/avRepository.js';
 import { resolveAvSubscription } from '../services/avSubscriptionService.js';
 import { runAvFetchOnce } from '../services/avTracker.js';
 import { buildAvTargetUrl, getAvTargetTypeLabel } from '../services/avTargets.js';
-import { markVitaminEatenToday, scheduleVitaminSnooze, getAndClearVitaminSentMessages } from '../services/vitaminReminder.js';
-import { completeWorkCheckin } from '../services/workCheckinReminder.js';
-import { completeBusReminder } from '../services/busReminder.js';
 import { findPresetByText, STARTGG_GO_SHORTCUT } from '../reminders/presets.js';
 import {
   buildStartggWatchCandidateButtons,
@@ -1141,7 +1134,7 @@ export function registerInteractiveHandlers(bot: Telegraf): void {
       if (recurringResult && !('error' in recurringResult)) {
         const rruleText = buildRRuleText(recurringResult.spec, now);
         const nextTrigger = getNextTrigger(rruleText, recurringResult.spec.timezone, now, true, recurringResult.spec.calendarFilter);
-        const rule = repo.createRecurringRule({
+        const rule = createRuleReminder(bot, {
           chat_id: String(ctx.chat!.id),
           text: recurringResult.text,
           timezone: recurringResult.spec.timezone,
@@ -1150,11 +1143,10 @@ export function registerInteractiveHandlers(bot: Telegraf): void {
           next_trigger_at: nextTrigger,
           source: recurringResult.source,
         });
-        scheduleRecurringRule(bot, rule);
         const description = describeRecurrence(recurringResult.spec);
         const createdMessage = await ctx.reply(
           formatRecurringCreated(rule, description),
-          { parse_mode: 'HTML', ...buildRecurringRuleButtons(rule.id) }
+          { parse_mode: 'HTML', ...buildRecurringRuleButtons(rule.id, rule.revision) }
         );
         repo.setRecurringSourceMessageId(rule.id, createdMessage.message_id);
         return;
@@ -1178,17 +1170,16 @@ export function registerInteractiveHandlers(bot: Telegraf): void {
       return;
     }
 
-    const reminder = repo.createReminder({
+    const reminder = createOnceReminder(bot, {
       chat_id: String(ctx.chat!.id),
       text: result.text,
       trigger_at: result.triggerAt
     });
 
-    scheduleReminder(bot, reminder);
 
     const createdMessage = await ctx.reply(
       formatReminderCreated(reminder, result.source),
-      { parse_mode: 'HTML', ...buildCancelButton(reminder.id) }
+      { parse_mode: 'HTML', ...buildCancelButton(reminder.id, reminder.revision) }
     );
     repo.setSourceMessageId(reminder.id, createdMessage.message_id);
   });
@@ -1248,15 +1239,14 @@ export function registerInteractiveHandlers(bot: Telegraf): void {
     if (preset) {
       const receivedAt = new Date();
       const triggerAt = new Date(receivedAt.getTime() + preset.minutes * 60 * 1000);
-      const reminder = repo.createReminder({
+      const reminder = createOnceReminder(bot, {
         chat_id: String(ctx.chat!.id),
         text: preset.reminderText,
         trigger_at: triggerAt,
       });
-      scheduleReminder(bot, reminder);
       const createdMessage = await ctx.reply(
         formatReminderCreated(reminder, 'preset'),
-        { parse_mode: 'HTML', ...buildCancelButton(reminder.id) }
+        { parse_mode: 'HTML', ...buildCancelButton(reminder.id, reminder.revision) }
       );
       repo.setSourceMessageId(reminder.id, createdMessage.message_id);
       return;
@@ -1283,7 +1273,7 @@ export function registerInteractiveHandlers(bot: Telegraf): void {
     if ('spec' in result) {
       const rruleText = buildRRuleText(result.spec, receivedAt);
       const nextTrigger = getNextTrigger(rruleText, result.spec.timezone, receivedAt, true, result.spec.calendarFilter);
-      const rule = repo.createRecurringRule({
+      const rule = createRuleReminder(bot, {
         chat_id: String(ctx.chat!.id),
         text: result.text,
         timezone: result.spec.timezone,
@@ -1292,54 +1282,40 @@ export function registerInteractiveHandlers(bot: Telegraf): void {
         next_trigger_at: nextTrigger,
         source: result.source,
       });
-      scheduleRecurringRule(bot, rule);
       const description = describeRecurrence(result.spec);
       const createdMessage = await ctx.reply(
         formatRecurringCreated(rule, description),
-        { parse_mode: 'HTML', ...buildRecurringRuleButtons(rule.id) }
+        { parse_mode: 'HTML', ...buildRecurringRuleButtons(rule.id, rule.revision) }
       );
       repo.setRecurringSourceMessageId(rule.id, createdMessage.message_id);
       return;
     }
 
-    const reminder = repo.createReminder({
+    const reminder = createOnceReminder(bot, {
       chat_id: String(ctx.chat!.id),
       text: result.text,
       trigger_at: result.triggerAt
     });
 
-    scheduleReminder(bot, reminder);
 
     const createdMessage = await ctx.reply(
       formatReminderCreated(reminder, result.source),
-      { parse_mode: 'HTML', ...buildCancelButton(reminder.id) }
+      { parse_mode: 'HTML', ...buildCancelButton(reminder.id, reminder.revision) }
     );
     repo.setSourceMessageId(reminder.id, createdMessage.message_id);
   });
 
-  async function clearSourceButtons(reminder: repo.Reminder): Promise<void> {
-    if (!reminder.source_message_id) return;
-    await bot.telegram.editMessageReplyMarkup(
-      reminder.chat_id,
-      reminder.source_message_id,
-      undefined,
-      { inline_keyboard: [] }
-    );
-  }
-
-  async function deleteSourceMessage(reminder: repo.Reminder, currentMessageId?: number): Promise<void> {
-    if (!reminder.source_message_id || reminder.source_message_id === currentMessageId) return;
-    await bot.telegram.deleteMessage(reminder.chat_id, reminder.source_message_id);
-  }
-
-  async function clearRecurringSourceButtons(rule: repo.RecurringRule): Promise<void> {
-    if (!rule.source_message_id) return;
-    await bot.telegram.editMessageReplyMarkup(
-      rule.chat_id,
-      rule.source_message_id,
-      undefined,
-      { inline_keyboard: [] }
-    );
+  async function handleReminderAction(ctx: Context, action: () => Promise<unknown>): Promise<void> {
+    let outcome = '已更新';
+    let failed = false;
+    try {
+      await action();
+    } catch (error) {
+      console.error('Reminder action failed:', error);
+      outcome = (error instanceof Error ? error.message : String(error)).slice(0, 180);
+      failed = true;
+    }
+    await ctx.answerCbQuery(outcome, { show_alert: failed });
   }
 
   bot.on('callback_query', async (ctx) => {
@@ -1347,18 +1323,15 @@ export function registerInteractiveHandlers(bot: Telegraf): void {
 
     const cbData = ctx.callbackQuery && 'data' in ctx.callbackQuery ? ctx.callbackQuery.data : undefined;
 
-    const workCheckinDate = parseWorkCheckinCallbackData(cbData);
-    if (workCheckinDate) {
-      const completed = await completeWorkCheckin(bot, workCheckinDate);
-      await ctx.answerCbQuery(completed ? '已记录打卡' : '这次打卡已经处理');
+    const workCheckin = parseWorkCheckinCallbackData(cbData);
+    if (workCheckin) {
+      await handleReminderAction(ctx, () => actLife(bot, 'work-checkin', workCheckin.date, workCheckin.action));
       return;
     }
 
-    const busReminderDate = parseBusReminderCallbackData(cbData);
-    if (busReminderDate) {
-      const completed = await completeBusReminder(bot, busReminderDate);
-      await ctx.answerCbQuery(completed ? '已记录下车' : '这次提醒已经处理');
-      if (completed) await ctx.deleteMessage();
+    const busReminder = parseBusReminderCallbackData(cbData);
+    if (busReminder) {
+      await handleReminderAction(ctx, () => actLife(bot, 'bus', busReminder.date, busReminder.action));
       return;
     }
 
@@ -1562,181 +1535,47 @@ export function registerInteractiveHandlers(bot: Telegraf): void {
 
     const vitaminAction = parseVitaminCallbackData(cbData);
     if (vitaminAction) {
-      await ctx.answerCbQuery();
-
-      if (vitaminAction === 'eaten') {
-        markVitaminEatenToday();
-        const chatId = String(ctx.chat!.id);
-        const messageIds = getAndClearVitaminSentMessages();
-        for (const messageId of messageIds) {
-          try {
-            await bot.telegram.deleteMessage(chatId, messageId);
-          } catch {
-            // message may already be deleted or not deletable
-          }
-        }
+      if (!vitaminAction.date) {
+        await ctx.answerCbQuery('这张旧卡片没有日期，已失效。请在提醒看板处理今天的提醒。', { show_alert: true });
         return;
       }
-
-      if (vitaminAction === 'snooze') {
-        try {
-          await ctx.editMessageText('💊 好的，30分钟后再提醒你。', { parse_mode: 'HTML' });
-        } catch {
-          await ctx.reply('💊 好的，30分钟后再提醒你。', { parse_mode: 'HTML' });
-        }
-        scheduleVitaminSnooze(bot);
-        return;
-      }
+      await handleReminderAction(ctx, () => actLife(bot, 'vitamin', vitaminAction.date!, vitaminAction.action));
+      return;
     }
 
     const nlCancelData = parseNaturalCancelCallbackData(cbData);
     if (nlCancelData) {
-      await ctx.answerCbQuery();
-      const chatId = String(ctx.chat!.id);
-
-      if (nlCancelData.kind === 'once') {
-        const reminder = repo.findReminderById(nlCancelData.id);
-        if (!reminder || reminder.status !== 'pending' || reminder.chat_id !== chatId) {
-          try {
-            await ctx.editMessageText('该提醒已不存在或已处理。', { parse_mode: 'HTML' });
-          } catch {
-            await ctx.reply('该提醒已不存在或已处理。', { parse_mode: 'HTML' });
-          }
-          return;
-        }
-        repo.cancelReminder(nlCancelData.id);
-        cancelScheduledReminder(nlCancelData.id);
-        await clearSourceButtons(reminder);
-        try {
-          await ctx.editMessageText(`已取消一次性提醒「<b>${escapeHtml(reminder.text)}</b>」。`, { parse_mode: 'HTML' });
-        } catch {
-          await ctx.reply(`已取消一次性提醒「<b>${escapeHtml(reminder.text)}</b>」。`, { parse_mode: 'HTML' });
-        }
-        return;
-      }
-
-      const rule = repo.findRecurringRuleById(nlCancelData.id);
-      if (!rule || rule.status !== 'active' || rule.chat_id !== chatId) {
-        try {
-          await ctx.editMessageText('该提醒已不存在或已处理。', { parse_mode: 'HTML' });
-        } catch {
-          await ctx.reply('该提醒已不存在或已处理。', { parse_mode: 'HTML' });
-        }
-        return;
-      }
-      repo.updateRecurringStatus(nlCancelData.id, 'cancelled');
-      cancelRecurringJob(nlCancelData.id);
-      await clearRecurringSourceButtons(rule);
-      try {
-        await ctx.editMessageText(`已取消循环提醒「<b>${escapeHtml(rule.text)}</b>」。`, { parse_mode: 'HTML' });
-      } catch {
-        await ctx.reply(`已取消循环提醒「<b>${escapeHtml(rule.text)}</b>》。`, { parse_mode: 'HTML' });
-      }
+      await handleReminderAction(ctx, async () => {
+        if (nlCancelData.kind === 'once') await actOnceReminder(bot, nlCancelData.id, nlCancelData.revision, 'cancel');
+        else await actRuleReminder(bot, nlCancelData.id, nlCancelData.revision, 'end');
+        await ctx.editMessageReplyMarkup({ inline_keyboard: [] });
+      });
       return;
     }
 
     const recurringData = parseRecurringCallbackData(cbData);
     if (recurringData) {
-      await ctx.answerCbQuery();
-
-      const rule = repo.findRecurringRuleById(recurringData.ruleId);
-      if (!rule) return;
-
-      switch (recurringData.type) {
-        case 'pause': {
-          repo.updateRecurringStatus(recurringData.ruleId, 'paused');
-          cancelRecurringJob(recurringData.ruleId);
-          await clearRecurringSourceButtons(rule);
-          try {
-            await ctx.editMessageText(formatRecurringPaused(rule), { parse_mode: 'HTML' });
-          } catch {
-            await ctx.reply(formatRecurringPaused(rule), { parse_mode: 'HTML' });
-          }
-          break;
+      await handleReminderAction(ctx, async () => {
+        if (recurringData.type === 'done' || recurringData.type === 'skip') {
+          const run = requireRun(recurringData.runId!);
+          if (run.rule_id !== recurringData.ruleId) throw reminderError('这张提醒卡片已失效。');
+          await actReminderRun(bot, run.id, recurringData.revision, recurringData.type);
+        } else {
+          await actRuleReminder(bot, recurringData.ruleId, recurringData.revision, recurringData.type === 'pause' ? 'pause' : 'end');
         }
-        case 'cancel': {
-          repo.updateRecurringStatus(recurringData.ruleId, 'cancelled');
-          cancelRecurringJob(recurringData.ruleId);
-          await clearRecurringSourceButtons(rule);
-          try {
-            await ctx.editMessageText(formatRecurringCancelled(rule), { parse_mode: 'HTML' });
-          } catch {
-            await ctx.reply(formatRecurringCancelled(rule), { parse_mode: 'HTML' });
-          }
-          break;
-        }
-        case 'done': {
-          if (recurringData.runId) {
-            repo.updateRecurringRunAction(recurringData.runId, 'done');
-          }
-          await ctx.deleteMessage();
-          break;
-        }
-        case 'skip': {
-          if (recurringData.runId) {
-            repo.updateRecurringRunAction(recurringData.runId, 'skip');
-          }
-          try {
-            await ctx.editMessageText(formatRecurringRunSkipped(), { parse_mode: 'HTML' });
-          } catch {
-            await ctx.reply(formatRecurringRunSkipped(), { parse_mode: 'HTML' });
-          }
-          break;
-        }
-      }
+      });
       return;
     }
 
     const data = parseCallbackData(cbData);
     if (!data) return;
-
-    await ctx.answerCbQuery();
-
-    const reminder = repo.findReminderById(data.id);
-    if (!reminder) return;
-
-    switch (data.type) {
-      case 'cancel': {
-        repo.cancelReminder(data.id);
-        cancelScheduledReminder(data.id);
-        await clearSourceButtons(reminder);
-        try {
-          await ctx.editMessageText(formatReminderCancelled(reminder), { parse_mode: 'HTML' });
-        } catch {
-          await ctx.reply(formatReminderCancelled(reminder), { parse_mode: 'HTML' });
-        }
-        break;
+    await handleReminderAction(ctx, () => {
+      if (data.legacy && data.type !== 'cancel' && requireOnce(data.id).sent_message_id !== ctx.callbackQuery.message?.message_id) {
+        throw reminderError('这张旧提醒卡片已失效，请从看板查看当前安排。');
       }
-      case 'done': {
-        repo.markReminderDone(data.id);
-        cancelScheduledReminder(data.id);
-        await deleteSourceMessage(reminder, ctx.callbackQuery.message?.message_id);
-        await ctx.deleteMessage();
-        break;
-      }
-      case 'snooze5': {
-        const newTriggerAt = new Date(Date.now() + 5 * 60 * 1000);
-        repo.updateReminderTriggerAt(data.id, newTriggerAt);
-        cancelScheduledReminder(data.id);
-
-        const updated = repo.findReminderById(data.id);
-        if (updated) {
-          scheduleReminder(bot, updated);
-        }
-
-        await clearSourceButtons(reminder);
-
-        const replyText = updated
-          ? formatReminderSnoozed(updated)
-          : '提醒已推迟 5 分钟。';
-        try {
-          await ctx.editMessageText(replyText, { parse_mode: 'HTML' });
-        } catch {
-          await ctx.reply(replyText, { parse_mode: 'HTML' });
-        }
-        break;
-      }
-    }
+      return actOnceReminder(bot, data.id, data.revision, data.type === 'snooze5' ? 'snooze' : data.type,
+        data.type === 'snooze5' ? new Date(Date.now() + 5 * 60 * 1000) : undefined);
+    });
   });
 
   async function handleListIntent(
@@ -1793,6 +1632,7 @@ export function registerInteractiveHandlers(bot: Telegraf): void {
         candidates.push({
           kind: 'once',
           id: r.id,
+          revision: r.revision,
           text: r.text,
           triggerAt: new Date(r.trigger_at),
         });
@@ -1805,6 +1645,7 @@ export function registerInteractiveHandlers(bot: Telegraf): void {
         candidates.push({
           kind: 'recurring',
           id: rule.id,
+          revision: rule.revision,
           text: rule.text,
           triggerAt: new Date(rule.next_trigger_at),
         });
@@ -1823,17 +1664,8 @@ export function registerInteractiveHandlers(bot: Telegraf): void {
 
     if (candidates.length === 1) {
       const c = candidates[0]!;
-      if (c.kind === 'once') {
-        const reminder = repo.findReminderById(c.id)!;
-        repo.cancelReminder(c.id);
-        cancelScheduledReminder(c.id);
-        await clearSourceButtons(reminder);
-      } else {
-        const rule = repo.findRecurringRuleById(c.id)!;
-        repo.updateRecurringStatus(c.id, 'cancelled');
-        cancelRecurringJob(c.id);
-        await clearRecurringSourceButtons(rule);
-      }
+      if (c.kind === 'once') await actOnceReminder(bot, c.id, c.revision, 'cancel');
+      else await actRuleReminder(bot, c.id, c.revision, 'end');
       await ctx.reply(
         formatCancelCandidates(intent.query, candidates),
         { parse_mode: 'HTML' },

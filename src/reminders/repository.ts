@@ -1,4 +1,5 @@
 import { getDb } from './db.js';
+import type { ReminderDeliveryStatus } from './dashboardTypes.js';
 
 export interface Reminder {
   id: number;
@@ -11,6 +12,12 @@ export interface Reminder {
   cancelled_at: string | null;
   source_message_id: number | null;
   sent_message_id: number | null;
+  delivery_status: ReminderDeliveryStatus;
+  sent_at: string | null;
+  last_error: string | null;
+  revision: number;
+  last_action: string | null;
+  updated_at: string | null;
 }
 
 export interface CreateReminderInput {
@@ -24,17 +31,19 @@ export function createReminder(input: CreateReminderInput): Reminder {
   const db = getDb();
   const now = new Date().toISOString();
   const stmt = db.prepare(`
-    INSERT INTO reminders (chat_id, text, trigger_at, status, created_at, source_message_id)
-    VALUES (?, ?, ?, 'pending', ?, ?)
+    INSERT INTO reminders (chat_id, text, trigger_at, status, created_at, source_message_id, delivery_status, last_action, updated_at)
+    VALUES (?, ?, ?, 'pending', ?, ?, 'waiting', 'created', ?)
   `);
   const result = stmt.run(
     input.chat_id,
     input.text,
     input.trigger_at.toISOString(),
     now,
-    input.source_message_id ?? null
+    input.source_message_id ?? null, now
   );
-  return findReminderById(Number(result.lastInsertRowid))!;
+  const reminder = findReminderById(Number(result.lastInsertRowid))!;
+  recordOnceHistory(reminder, 'created');
+  return reminder;
 }
 
 export function findPendingReminders(): Reminder[] {
@@ -67,35 +76,36 @@ export function markReminderDone(id: number): void {
   const db = getDb();
   const now = new Date().toISOString();
   const stmt = db.prepare(`
-    UPDATE reminders SET status = 'done', done_at = ?
+    UPDATE reminders SET status = 'done', done_at = ?, revision = revision + 1, last_action = 'done', updated_at = ?
     WHERE id = ? AND status = 'pending'
   `);
-  stmt.run(now, id);
+  stmt.run(now, now, id);
 }
 
 export function cancelReminder(id: number): void {
   const db = getDb();
   const now = new Date().toISOString();
   const stmt = db.prepare(`
-    UPDATE reminders SET status = 'cancelled', cancelled_at = ?
+    UPDATE reminders SET status = 'cancelled', cancelled_at = ?, revision = revision + 1, last_action = 'cancelled', updated_at = ?
     WHERE id = ? AND status = 'pending'
   `);
-  stmt.run(now, id);
+  stmt.run(now, now, id);
 }
 
 export function updateReminderTriggerAt(id: number, triggerAt: Date): void {
   const db = getDb();
   const stmt = db.prepare(`
-    UPDATE reminders SET trigger_at = ?
+    UPDATE reminders SET trigger_at = ?, delivery_status = 'waiting', sent_message_id = NULL,
+      sent_at = NULL, last_error = NULL, revision = revision + 1, last_action = 'snoozed', updated_at = ?
     WHERE id = ? AND status = 'pending'
   `);
-  stmt.run(triggerAt.toISOString(), id);
+  stmt.run(triggerAt.toISOString(), new Date().toISOString(), id);
 }
 
 export function setSentMessageId(id: number, messageId: number): void {
   const db = getDb();
-  const stmt = db.prepare('UPDATE reminders SET sent_message_id = ? WHERE id = ?');
-  stmt.run(messageId, id);
+  const stmt = db.prepare("UPDATE reminders SET sent_message_id = ?, sent_at = ?, delivery_status = 'sent', last_error = NULL WHERE id = ?");
+  stmt.run(messageId, new Date().toISOString(), id);
 }
 
 export function setSourceMessageId(id: number, messageId: number): void {
@@ -118,6 +128,8 @@ export interface RecurringRule {
   created_at: string;
   updated_at: string;
   last_triggered_at: string | null;
+  revision: number;
+  last_error: string | null;
 }
 
 export interface RecurringRun {
@@ -128,6 +140,14 @@ export interface RecurringRun {
   action: 'done' | 'skip' | 'none';
   acted_at: string | null;
   created_at: string;
+  text_snapshot: string | null;
+  timezone_snapshot: string | null;
+  rule_snapshot: string | null;
+  snapshot_note: string | null;
+  delivery_status: ReminderDeliveryStatus;
+  sent_at: string | null;
+  last_error: string | null;
+  revision: number;
 }
 
 export interface CreateRecurringRuleInput {
@@ -204,7 +224,7 @@ export function updateRecurringStatus(id: number, status: 'active' | 'paused' | 
   const db = getDb();
   const now = new Date().toISOString();
   const stmt = db.prepare(`
-    UPDATE recurring_reminder_rules SET status = ?, updated_at = ? WHERE id = ?
+    UPDATE recurring_reminder_rules SET status = ?, updated_at = ?, revision = revision + 1 WHERE id = ?
   `);
   stmt.run(status, now, id);
 }
@@ -212,13 +232,14 @@ export function updateRecurringStatus(id: number, status: 'active' | 'paused' | 
 export function createRecurringRun(input: { rule_id: number; trigger_at: Date; sent_message_id?: number }): RecurringRun {
   const db = getDb();
   const now = new Date().toISOString();
+  const rule = findRecurringRuleById(input.rule_id)!;
   const stmt = db.prepare(`
-    INSERT INTO recurring_reminder_runs (rule_id, trigger_at, sent_message_id, action, created_at)
-    VALUES (?, ?, ?, 'none', ?)
+    INSERT INTO recurring_reminder_runs (rule_id, trigger_at, sent_message_id, action, created_at, text_snapshot, timezone_snapshot, rule_snapshot, delivery_status)
+    VALUES (?, ?, ?, 'none', ?, ?, ?, ?, 'sending')
   `);
   const result = stmt.run(
     input.rule_id, input.trigger_at.toISOString(),
-    input.sent_message_id ?? null, now
+    input.sent_message_id ?? null, now, rule.text, rule.timezone, rule.rrule_text
   );
   return findRecurringRunById(Number(result.lastInsertRowid))!;
 }
@@ -233,15 +254,15 @@ export function updateRecurringRunAction(id: number, action: 'done' | 'skip'): v
   const db = getDb();
   const now = new Date().toISOString();
   const stmt = db.prepare(`
-    UPDATE recurring_reminder_runs SET action = ?, acted_at = ? WHERE id = ?
+    UPDATE recurring_reminder_runs SET action = ?, acted_at = ?, revision = revision + 1 WHERE id = ? AND action = 'none'
   `);
   stmt.run(action, now, id);
 }
 
 export function setRecurringRunSentMessageId(id: number, messageId: number): void {
   const db = getDb();
-  const stmt = db.prepare('UPDATE recurring_reminder_runs SET sent_message_id = ? WHERE id = ?');
-  stmt.run(messageId, id);
+  const stmt = db.prepare("UPDATE recurring_reminder_runs SET sent_message_id = ?, sent_at = ?, delivery_status = 'sent', last_error = NULL WHERE id = ?");
+  stmt.run(messageId, new Date().toISOString(), id);
 }
 
 export function findPendingRemindersInRange(
@@ -293,4 +314,55 @@ export function searchActiveRecurringRules(
 
 function escapeLikePattern(value: string): string {
   return value.replace(/[\\%_]/g, '\\$&');
+}
+
+export interface HistoryRow {
+  id: number; kind: 'once' | 'run' | 'rule'; entity_id: number; rule_id: number | null;
+  chat_id: string; text: string; trigger_at: string; occurred_at: string | null;
+  action: string; delivery_status: ReminderDeliveryStatus; note: string | null; error: string | null;
+}
+
+export function recordHistory(input: Omit<HistoryRow, 'id'>): void {
+  getDb().prepare(`INSERT INTO reminder_history
+    (kind, entity_id, rule_id, chat_id, text, trigger_at, occurred_at, action, delivery_status, note, error)
+    VALUES (@kind, @entity_id, @rule_id, @chat_id, @text, @trigger_at, @occurred_at, @action, @delivery_status, @note, @error)`).run(input);
+}
+
+export function recordOnceHistory(reminder: Reminder, action: string, note: string | null = null): void {
+  recordHistory({ kind: 'once', entity_id: reminder.id, rule_id: null, chat_id: reminder.chat_id,
+    text: reminder.text, trigger_at: reminder.trigger_at, occurred_at: new Date().toISOString(), action,
+    delivery_status: reminder.delivery_status, note, error: reminder.last_error });
+}
+
+export function recordRunHistory(run: RecurringRun, action: string): void {
+  const rule = findRecurringRuleById(run.rule_id)!;
+  recordHistory({ kind: 'run', entity_id: run.id, rule_id: rule.id, chat_id: rule.chat_id,
+    text: run.text_snapshot ?? rule.text, trigger_at: run.trigger_at, occurred_at: new Date().toISOString(), action,
+    delivery_status: run.delivery_status, note: run.snapshot_note, error: run.last_error });
+}
+
+export function recordRuleHistory(rule: RecurringRule, action: string): void {
+  recordHistory({ kind: 'rule', entity_id: rule.id, rule_id: rule.id, chat_id: rule.chat_id, text: rule.text,
+    trigger_at: new Date().toISOString(), occurred_at: new Date().toISOString(), action,
+    delivery_status: 'unknown', note: null, error: rule.last_error });
+}
+
+export function listReminders(chatId: string): Reminder[] {
+  return getDb().prepare('SELECT * FROM reminders WHERE chat_id = ? ORDER BY trigger_at DESC').all(chatId) as Reminder[];
+}
+export function listRecurringRules(chatId: string): RecurringRule[] {
+  return getDb().prepare('SELECT * FROM recurring_reminder_rules WHERE chat_id = ? ORDER BY next_trigger_at').all(chatId) as RecurringRule[];
+}
+export function listRecurringRuns(chatId: string, ruleId?: number): RecurringRun[] {
+  return getDb().prepare(`SELECT r.* FROM recurring_reminder_runs r JOIN recurring_reminder_rules p ON p.id = r.rule_id
+    WHERE p.chat_id = ? ${ruleId === undefined ? '' : 'AND r.rule_id = ?'} ORDER BY r.trigger_at DESC`)
+    .all(...(ruleId === undefined ? [chatId] : [chatId, ruleId])) as RecurringRun[];
+}
+
+export function markOnceDelivery(id: number, revision: number, status: ReminderDeliveryStatus, error: string | null = null): void {
+  getDb().prepare('UPDATE reminders SET delivery_status = ?, last_error = ? WHERE id = ? AND revision = ?')
+    .run(status, error, id, revision);
+}
+export function markRunDelivery(id: number, status: ReminderDeliveryStatus, error: string | null = null): void {
+  getDb().prepare('UPDATE recurring_reminder_runs SET delivery_status = ?, last_error = ? WHERE id = ?').run(status, error, id);
 }

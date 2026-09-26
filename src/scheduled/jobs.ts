@@ -3,7 +3,7 @@ import type { Telegraf } from 'telegraf';
 import { config } from '../config/index.js';
 import { runMode } from './runMode.js';
 import { bjDate, diffBjDays, getChinaDayOfWeek } from '../utils/time.js';
-import { isChinaWorkday } from '../calendar/chinaWorkday.js';
+import { isChinaWorkday, isChinaWorkdayStrict } from '../calendar/chinaWorkday.js';
 import { runStartggWatchNow } from '../services/startggPresetSync.js';
 import { runStartggWatchOnce } from '../services/startgg/index.js';
 import { runSteamPriceWatchOnce } from '../services/steamPriceTracker.js';
@@ -19,10 +19,10 @@ import {
   setStartggPollingPersistedEnabled,
 } from '../services/startggRepository.js';
 import {
-  completeWorkCheckin,
+  closeExpiredWorkCheckin,
   sendWorkCheckinFollowUpIfPending,
 } from '../services/workCheckinReminder.js';
-import { triggerBusReminder } from '../services/busReminder.js';
+import { startLifeDay } from '../reminders/lifeDashboard.js';
 import { checkBackupHealth, getNewBackupFailures, saveBackupAlertState } from '../services/backupHealth.js';
 import {
   formatBackupHealthAlert,
@@ -31,7 +31,6 @@ import { sendTelegramMessage } from '../publishers/telegram.js';
 import { queueStartggTask } from '../services/startgg/taskQueue.js';
 import { markDashboardAttempt, markDashboardError, setDashboardStopReason } from '../services/startgg/dashboardRepository.js';
 
-const VITAMIN_WORKDAY_RANDOM_WINDOW_MS = 15 * 60 * 1000;
 const PHOTO_WORKDAY_RANDOM_WINDOW_MS = 65 * 60 * 1000;
 const STARTGG_FAST_WATCH_INTERVAL_MS = 2 * 60 * 1000;
 const GITHUB_PUSH_ANCHOR_DATE = '1970-01-01';
@@ -42,13 +41,6 @@ let startggPollJob: schedule.Job | null = null;
 
 function isGithubPushDay(input = new Date()): boolean {
   return diffBjDays(GITHUB_PUSH_ANCHOR_DATE, input) % 2 === 0;
-}
-
-function scheduleWorkdayVitamin(bot: Telegraf): void {
-  const delay = Math.floor(Math.random() * VITAMIN_WORKDAY_RANDOM_WINDOW_MS);
-  setTimeout(async () => {
-    await runMode('vitamin', getChinaDayOfWeek(), bot);
-  }, delay);
 }
 
 function scheduleWorkdayPhotoReminder(bot: Telegraf): void {
@@ -178,6 +170,9 @@ export function getStartggPollingRuntimeStatus(): {
 }
 
 export function registerFixedJobs(bot: Telegraf): void {
+  startLifeDay(bot);
+  schedule.scheduleJob({ hour: 0, minute: 0, tz: 'Asia/Shanghai' }, () => startLifeDay(bot));
+
   // sleep: 00:10 Beijing time
   schedule.scheduleJob({ hour: 0, minute: 10, tz: 'Asia/Shanghai' }, async () => {
     await runMode('sleep', getChinaDayOfWeek(), bot);
@@ -200,7 +195,7 @@ export function registerFixedJobs(bot: Telegraf): void {
 
   // coffee: 08:58 on China workdays
   schedule.scheduleJob({ hour: 8, minute: 58, tz: 'Asia/Shanghai' }, async () => {
-    if (!isChinaWorkday(new Date())) return;
+    if (!isChinaWorkdayStrict(new Date())) return;
     await runMode('coffee', getChinaDayOfWeek(), bot);
   });
 
@@ -222,20 +217,14 @@ export function registerFixedJobs(bot: Telegraf): void {
 
   // work check-in follow-up: 09:59 on China workdays
   schedule.scheduleJob({ hour: 9, minute: 59, tz: 'Asia/Shanghai' }, async () => {
-    if (!isChinaWorkday(new Date())) return;
+    if (!isChinaWorkdayStrict(new Date())) return;
     await sendWorkCheckinFollowUpIfPending(bot);
-  });
-
-  // bus get-off reminder: 09:22 on China workdays
-  schedule.scheduleJob({ hour: 9, minute: 22, tz: 'Asia/Shanghai' }, async () => {
-    if (!isChinaWorkday(new Date())) return;
-    await triggerBusReminder(bot);
   });
 
   // work check-in closes automatically: 10:00 on China workdays
   schedule.scheduleJob({ hour: 10, minute: 0, tz: 'Asia/Shanghai' }, async () => {
-    if (!isChinaWorkday(new Date())) return;
-    await completeWorkCheckin(bot);
+    if (!isChinaWorkdayStrict(new Date())) return;
+    await closeExpiredWorkCheckin(bot);
   });
 
   // english: 10:30
@@ -250,7 +239,7 @@ export function registerFixedJobs(bot: Telegraf): void {
 
   // photo reminder: random between 12:55 and 14:00 on China workdays
   schedule.scheduleJob({ hour: 12, minute: 55, tz: 'Asia/Shanghai' }, () => {
-    if (!isChinaWorkday(new Date())) return;
+    if (!isChinaWorkdayStrict(new Date())) return;
     scheduleWorkdayPhotoReminder(bot);
   });
 
@@ -258,18 +247,6 @@ export function registerFixedJobs(bot: Telegraf): void {
   schedule.scheduleJob({ hour: 15, minute: 0, tz: 'Asia/Shanghai' }, async () => {
     if (!isGithubPushDay()) return;
     await runMode('github', getChinaDayOfWeek(), bot);
-  });
-
-  // vitamin dinner: 18:30 on non-workdays
-  schedule.scheduleJob({ hour: 18, minute: 30, tz: 'Asia/Shanghai' }, async () => {
-    if (isChinaWorkday(new Date())) return;
-    await runMode('vitamin', getChinaDayOfWeek(), bot);
-  });
-
-  // vitamin dinner: random between 20:45 and 21:00 on China workdays
-  schedule.scheduleJob({ hour: 20, minute: 45, tz: 'Asia/Shanghai' }, () => {
-    if (!isChinaWorkday(new Date())) return;
-    scheduleWorkdayVitamin(bot);
   });
 
   // v2ex: 20:00

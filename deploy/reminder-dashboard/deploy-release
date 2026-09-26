@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ $# != 1 || ! $1 =~ ^[0-9a-f]{40}$ ]]; then
+  echo 'usage: reminder-dashboard-deploy-release <commit-sha>' >&2
+  exit 64
+fi
+
+release_sha=$1
+project_dir=/opt/reminder-dashboard
+incoming_dir=/var/lib/reminder-dashboard-deploy/incoming
+release_dir=$project_dir/releases/$release_sha
+
+test -s "$project_dir/.env"
+test -s /home/web/certs/remind.xmcloud.buzz_cert.pem
+test -s /home/web/certs/remind.xmcloud.buzz_key.pem
+install -d -m 700 "$release_dir"
+tar -xf "$incoming_dir/reminder-dashboard-$release_sha.tar" -C "$release_dir"
+install -m 644 "$release_dir/deploy/reminder-dashboard.service" /etc/systemd/system/reminder-dashboard.service
+ln -sfn "$release_dir" "$project_dir/current"
+systemctl daemon-reload
+systemctl enable reminder-dashboard.service
+systemctl restart reminder-dashboard.service
+sleep 2
+systemctl is-active --quiet reminder-dashboard.service
+curl --fail --silent --show-error http://172.18.0.1:3420/api/session >/dev/null
+install -m 644 "$release_dir/deploy/remind.xmcloud.buzz.conf" /home/web/conf.d/remind.xmcloud.buzz.conf
+docker exec nginx nginx -t
+docker exec nginx nginx -s reload
+printf '%s\n' "$release_sha" > "$project_dir/.deploy-commit"
+rm "$incoming_dir/reminder-dashboard-$release_sha.tar"
