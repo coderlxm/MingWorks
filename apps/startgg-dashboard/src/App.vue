@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, shallowRef, useTemplateRef } from 'vue'
+import { computed, onMounted, onUnmounted, shallowRef, useTemplateRef } from 'vue'
 import { useRoute } from 'vue-router'
 import { useBoardData } from './composables/useBoardData'
 import { isEventSnapshotStale, nextCollectionTime, stopReason, time } from './format'
@@ -12,6 +12,15 @@ import OperationsDrawer from './components/OperationsDrawer.vue'
 const data = useBoardData()
 const { authenticated, board, following, details, detailErrors, error, connected, actionError, operation, busy, sessionError, sessionSubmitting, sessionGeneration } = data
 const route = useRoute()
+const topbar = useTemplateRef<HTMLElement>('topbar')
+const topbarObserver = new ResizeObserver(([entry]) => {
+  document.documentElement.style.setProperty('--topbar-height', `${entry!.borderBoxSize[0]!.blockSize}px`)
+})
+onMounted(() => topbarObserver.observe(topbar.value!, { box: 'border-box' }))
+onUnmounted(() => {
+  topbarObserver.disconnect()
+  document.documentElement.style.removeProperty('--topbar-height')
+})
 const drawer = useTemplateRef<InstanceType<typeof OperationsDrawer>>('drawer')
 const loginOpen = shallowRef(false)
 const mobileNav = shallowRef(false)
@@ -37,7 +46,7 @@ function closeLogin() { loginOpen.value = false; sessionError.value = '' }
 </script>
 <template>
   <div class="app-shell">
-    <header class="topbar">
+    <header ref="topbar" class="topbar">
       <RouterLink to="/" class="brand"><span class="brand-mark">F<span>T</span>G</span><span class="brand-caption">小明同学的比赛看板<span>POWERED BY START.GG</span></span></RouterLink>
       <nav class="main-nav" aria-label="主导航"><RouterLink to="/" :class="{ active: !isFollowing }">比赛总览</RouterLink><RouterLink to="/following" :class="{ active: isFollowing }">{{ canManage ? '关注管理' : '关注信息' }}</RouterLink></nav>
       <div class="top-actions">
