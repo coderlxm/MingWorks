@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { listStartggWatchEvents } from '../startggRepository.js';
 import { getStartggPollingRuntimeStatus } from '../../scheduled/jobs.js';
 import { dashboardEvent, dashboardFollowing, dashboardEventPlayers, dashboardSeeds, findDashboardEvent, readDashboardSets, readRecentDashboardSets, readDashboardSnapshot, readDashboardSync, markDashboardError } from './dashboardRepository.js';
-import { dismissDiscoveredStartggEvent, addStartggDashboardPlayer, applyStartggInterest, discoverStartggDashboard, pauseStartggDashboard, resolveStartggDashboardPlayers, setStartggDashboardSeeds, startStartggDashboardEvent, syncStartggDashboard, type ResolvedDashboardPlayer } from './control.js';
+import { dismissDiscoveredStartggEvent, addStartggDashboardPlayer, removeStartggDashboardPlayer, applyStartggInterest, discoverStartggDashboard, pauseStartggDashboard, resolveStartggDashboardPlayers, setStartggDashboardSeeds, startStartggDashboardEvent, syncStartggDashboard, type ResolvedDashboardPlayer } from './control.js';
 import { queueStartggTask, getStartggTaskQueueStatus } from './taskQueue.js';
 
 interface Operation {
@@ -128,6 +128,10 @@ export async function startStartggDashboardApi(bot: Telegraf): Promise<void> {
     const candidate = resolvedPlayers.find(player => player.playerId === playerId);
     if (!candidate) return reply.code(409).send({ error: '候选选手已变化，请重新查找。' });
     return reply.code(202).send(submitOperation('add-player', async () => addStartggDashboardPlayer(candidate)));
+  });
+  api.delete<{ Params: { watchPlayerId: string } }>('/api/startgg/players/:watchPlayerId', async (request, reply) => {
+    const watchPlayerId = z.coerce.number().int().positive().parse(request.params.watchPlayerId);
+    return reply.code(202).send(submitOperation('remove-player', async () => removeStartggDashboardPlayer(watchPlayerId)));
   });
   api.put('/api/startgg/settings/featured-seeds', async (request, reply) => {
     const { count } = z.object({ count: z.union([z.literal(0), z.literal(16), z.literal(32)]) }).parse(request.body);

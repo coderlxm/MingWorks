@@ -85,6 +85,7 @@ import {
   listStartggSentMessageIds,
   clearStartggWatchState,
   updateStartggWatchPlayerIdentity,
+  setStartggWatchPlayerEnabled,
   getFeaturedSeedCount,
   listEventFeaturedEntrants,
   listActiveStartggWatchEvents,
@@ -839,8 +840,9 @@ export function registerInteractiveHandlers(bot: Telegraf): void {
             resolved.userId,
             resolved.gamerTag,
           );
+          setStartggWatchPlayerEnabled(existingPlayer.id, true);
           await ctx.reply(
-            `该选手已在监控中：${resolved.playerName} (player_id=${resolved.playerId})`,
+            `${existingPlayer.enabled === 1 ? '该选手已在监控中' : '已恢复关注'}：${resolved.playerName} (player_id=${resolved.playerId})`,
             { parse_mode: 'HTML' },
           );
           return;
@@ -911,8 +913,9 @@ export function registerInteractiveHandlers(bot: Telegraf): void {
             candidate.userId ?? existingPlayer.user_id,
             candidate.gamerTag,
           );
+          setStartggWatchPlayerEnabled(existingPlayer.id, true);
           await ctx.reply(
-            `该选手已在监控中：${candidate.playerName} (player_id=${candidate.playerId})`,
+            `${existingPlayer.enabled === 1 ? '该选手已在监控中' : '已恢复关注'}：${candidate.playerName} (player_id=${candidate.playerId})`,
             { parse_mode: 'HTML' },
           );
           return;
@@ -1422,8 +1425,9 @@ export function registerInteractiveHandlers(bot: Telegraf): void {
           selected.userId ?? existingPlayer.user_id,
           selected.gamerTag,
         );
+        setStartggWatchPlayerEnabled(existingPlayer.id, true);
         await ctx.reply(
-          `该选手已在监控中：${selected.playerName} (player_id=${selected.playerId})`,
+          `${existingPlayer.enabled === 1 ? '该选手已在监控中' : '已恢复关注'}：${selected.playerName} (player_id=${selected.playerId})`,
           { parse_mode: 'HTML' },
         );
         return;

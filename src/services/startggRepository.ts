@@ -158,6 +158,14 @@ export function updateStartggWatchPlayerIdentity(
   `).run(playerName, userId, gamerTag, new Date().toISOString(), id);
 }
 
+export function setStartggWatchPlayerEnabled(id: number, enabled: boolean): void {
+  getDb().prepare(`
+    UPDATE startgg_watch_players
+    SET enabled = ?, updated_at = ?
+    WHERE id = ?
+  `).run(enabled ? 1 : 0, new Date().toISOString(), id);
+}
+
 export interface StartggWatchEventEntrantMappingInput {
   watch_player_id: number;
   entrant_id: number;

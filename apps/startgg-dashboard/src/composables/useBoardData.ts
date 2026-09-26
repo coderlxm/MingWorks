@@ -78,6 +78,14 @@ export function useBoardData() {
         const result = value.result as { eventSlug?: string; interest?: Discovered['interest'] }
         discovered.value = discovered.value.map(event => event.eventSlug === result.eventSlug && result.interest ? { ...event, interest: result.interest } : event)
       }
+      if (intent === 'remove-player') {
+        const { id } = value.result as { id: number }
+        if (following.value) following.value = { ...following.value, players: following.value.players.filter(player => player.id !== id) }
+        if (board.value) board.value = { ...board.value, players: board.value.players.filter(player => player.id !== id) }
+        for (const [eventId, detail] of Object.entries(details)) {
+          if (detail.event.active) details[eventId] = { ...detail, players: detail.players.filter(player => player.id !== id) }
+        }
+      }
     }
     if (value.status === 'succeeded' || value.status === 'failed') activeOperationId = null
   }

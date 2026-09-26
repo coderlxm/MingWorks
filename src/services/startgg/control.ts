@@ -3,7 +3,7 @@ import { config } from '../../config/index.js';
 import { getDb } from '../../reminders/db.js';
 import { enableStartggPolling, disableStartggPolling, isStartggPollingEnabled, updateStartggFastWatch } from '../../scheduled/jobs.js';
 import { runStartggGo, runStartggWatchNow, syncStartggPresetPlayers, syncFeaturedEntrantsForActiveEvents, resyncFeaturedEntrantsForActiveEvents } from '../startggPresetSync.js';
-import { createStartggWatchPlayer, findStartggWatchPlayerByPlayerId, updateStartggWatchPlayerIdentity, listActiveStartggWatchEvents, listEnabledStartggWatchPlayers, replaceActiveStartggWatchEvent, setFeaturedSeedCount, type StartggFeaturedSeedCount } from '../startggRepository.js';
+import { createStartggWatchPlayer, findStartggWatchPlayerByPlayerId, updateStartggWatchPlayerIdentity, setStartggWatchPlayerEnabled, listStartggWatchPlayers, listActiveStartggWatchEvents, listEnabledStartggWatchPlayers, replaceActiveStartggWatchEvent, setFeaturedSeedCount, type StartggFeaturedSeedCount } from '../startggRepository.js';
 import { findStartggPendingEventById, isStartggVideogameFollowed, hasStartggEventInterestOverride, isStartggEventDismissed, followStartggVideogame, addStartggEventInterestOverride, dismissStartggEvent, deleteStartggPendingEvent, deleteStartggPendingEventsByVideogame, type StartggPendingEvent } from '../startggInterestRepository.js';
 import { discoverStartggActiveEventsForPlayers } from '../startggDiscovery.js';
 import { fetchEventMeta, listEventEntrantPlayers, resolveUserToPlayer, runStartggWatchOnce } from './tracker.js';
@@ -115,9 +115,18 @@ export async function resolveStartggDashboardPlayers(input: string): Promise<Res
 }
 export function addStartggDashboardPlayer(candidate: ResolvedDashboardPlayer) {
   const existing = findStartggWatchPlayerByPlayerId(candidate.playerId);
-  if (existing) updateStartggWatchPlayerIdentity(existing.id, candidate.playerName, candidate.userId, candidate.gamerTag);
-  else createStartggWatchPlayer(candidate.playerId, candidate.playerName, candidate.userId, candidate.gamerTag);
+  if (existing) {
+    updateStartggWatchPlayerIdentity(existing.id, candidate.playerName, candidate.userId, candidate.gamerTag);
+    setStartggWatchPlayerEnabled(existing.id, true);
+  } else createStartggWatchPlayer(candidate.playerId, candidate.playerName, candidate.userId, candidate.gamerTag);
   return { playerId: candidate.playerId, playerName: candidate.playerName };
+}
+
+export function removeStartggDashboardPlayer(watchPlayerId: number) {
+  const player = listStartggWatchPlayers().find(item => item.id === watchPlayerId);
+  if (!player) throw new Error('选手记录不存在。');
+  setStartggWatchPlayerEnabled(player.id, false);
+  return { id: player.id, playerName: player.player_name };
 }
 
 async function updateInterestPrompts(bot: Telegraf, pending: StartggPendingEvent[], text: string): Promise<void> {

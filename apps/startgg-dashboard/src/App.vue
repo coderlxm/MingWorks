@@ -59,7 +59,7 @@ function closeLogin() { loginOpen.value = false; sessionError.value = '' }
     <div class="workspace">
       <aside class="sidebar" :class="{ 'mobile-open': mobileNav }" @click="($event.target as HTMLElement).closest('a') && (mobileNav = false)"><EventNavigator :events="board?.events ?? []" :stale="stale" :selected="eventId" :pending-count="board?.pendingCount ?? 0" :can-manage="canManage" @manage="open('pending')" /></aside>
       <main class="main-content">
-        <FollowingPanel v-if="isFollowing" :following="following" :can-manage="canManage" @manage="open('players')" />
+        <FollowingPanel v-if="isFollowing" :following="following" :can-manage="canManage" :busy="busy || sessionSubmitting || board?.runtime.busy === true" :operation="operation" @manage="open('players')" @remove-player="data.run(`/players/${$event}`, {}, 'DELETE')" />
         <template v-else-if="eventId"><p v-if="detailErrors[eventId]" class="empty">{{ detailErrors[eventId] }}<RouterLink to="/">返回比赛总览 →</RouterLink></p><section v-else-if="!detail" class="panel"><h1>比赛项目</h1><p class="empty">正在读取该项目的已采集数据…</p></section></template>
         <Overview v-else :board="board" :stale="stale" :can-manage="canManage" @discover="open('discover')" />
         <KeepAlive :max="12"><EventBoard v-if="eventId && detail && !detailErrors[eventId]" :key="eventId" :detail="detail" :stale="isEventSnapshotStale(detail.event, stale)" :seed-count="following?.featuredSeedCount ?? 0" :can-manage="canManage" /></KeepAlive>

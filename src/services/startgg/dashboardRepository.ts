@@ -96,10 +96,13 @@ export function dashboardEventPlayers(rowId: number, active = true): DashboardPl
   const snapshot = readDashboardSnapshot(rowId);
   if (!snapshot) return dashboardPlayers(rowId);
   if (!active) return snapshot.snapshot.players;
-  const knownIds = new Set(snapshot.snapshot.players.map(player => player.id));
+  const enabledPlayers = dashboardPlayers();
+  const enabledIds = new Set(enabledPlayers.map(player => player.id));
+  const snapshotPlayers = snapshot.snapshot.players.filter(player => enabledIds.has(player.id));
+  const knownIds = new Set(snapshotPlayers.map(player => player.id));
   // New configuration is visible immediately, with no invented collected status.
-  const awaitingFirstCollection = dashboardPlayers().filter(player => !knownIds.has(player.id));
-  return [...snapshot.snapshot.players, ...awaitingFirstCollection];
+  const awaitingFirstCollection = enabledPlayers.filter(player => !knownIds.has(player.id));
+  return [...snapshotPlayers, ...awaitingFirstCollection];
 }
 export function dashboardSeeds(rowId: number): DashboardSeed[] {
   return listEventFeaturedEntrants(rowId).map(seed => ({ seedNum: seed.seed_num, entrantId: seed.entrant_id, entrantName: seed.entrant_name, phaseId: seed.phase_id, phaseName: null }));
