@@ -1,4 +1,5 @@
-import { spawnSync, type SpawnSyncReturns } from 'child_process';
+import { execFile, type ExecException } from 'node:child_process';
+import { promisify } from 'node:util';
 import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { resolve } from 'path';
 
@@ -26,6 +27,7 @@ const ALERT_STATE_PATH = resolve(process.cwd(), 'data/backup-health-alert-state.
 const SSH_TIMEOUT_MS = 8_000;
 const SSH_KEY_PATH = '/root/.ssh/notinews_health_ed25519';
 const BACKUP_TIME = '04:50:00';
+const execFileAsync = promisify(execFile);
 
 function loadBackupHealthTargets(): BackupHealthTarget[] {
   if (!existsSync(TARGETS_PATH)) {
@@ -78,55 +80,49 @@ function parseRemoteFields(output: string): Record<string, string> {
   );
 }
 
-function normalizeSshError(result: SpawnSyncReturns<string>): string {
-  if (result.error) {
-    const error = result.error as Error & { code?: string };
-    if (error.code === 'ETIMEDOUT') return 'SSH 连接超时';
-    return error.message;
-  }
-
-  if (result.signal === 'SIGKILL' || result.status === null) {
+function normalizeSshError(error: ExecException): string {
+  if (error.signal === 'SIGKILL' || error.code === 'ETIMEDOUT') {
     return 'SSH 连接超时';
   }
-
-  return result.stderr.trim().split('\n').slice(-1)[0] || `SSH 探测失败，退出码 ${result.status}`;
+  return error.stderr?.toString().trim().split('\n').at(-1) || error.message;
 }
 
-function checkTarget(target: BackupHealthTarget): BackupHealthResult {
-  const result = spawnSync(
-    'ssh',
-    [
-      '-i', SSH_KEY_PATH,
-      '-o', 'BatchMode=yes',
-      '-o', 'StrictHostKeyChecking=accept-new',
-      '-o', 'IdentitiesOnly=yes',
-      '-o', 'PreferredAuthentications=publickey',
-      '-o', 'GSSAPIAuthentication=no',
-      '-o', 'ConnectionAttempts=1',
-      '-o', `ConnectTimeout=${Math.floor(SSH_TIMEOUT_MS / 1000)}`,
-      '-o', 'ServerAliveInterval=3',
-      '-o', 'ServerAliveCountMax=1',
-      '-o', 'LogLevel=ERROR',
-      '-l', 'root',
-      target.host,
-      buildRemoteCheckCommand(target),
-    ],
-    {
-      encoding: 'utf-8',
-      timeout: SSH_TIMEOUT_MS,
-      killSignal: 'SIGKILL',
-    },
-  );
-
-  if (result.status !== 0) {
+async function checkTarget(target: BackupHealthTarget): Promise<BackupHealthResult> {
+  let stdout: string;
+  try {
+    ({ stdout } = await execFileAsync(
+      'ssh',
+      [
+        '-i', SSH_KEY_PATH,
+        '-o', 'BatchMode=yes',
+        '-o', 'StrictHostKeyChecking=accept-new',
+        '-o', 'IdentitiesOnly=yes',
+        '-o', 'PreferredAuthentications=publickey',
+        '-o', 'GSSAPIAuthentication=no',
+        '-o', 'ConnectionAttempts=1',
+        '-o', `ConnectTimeout=${Math.floor(SSH_TIMEOUT_MS / 1000)}`,
+        '-o', 'ServerAliveInterval=3',
+        '-o', 'ServerAliveCountMax=1',
+        '-o', 'LogLevel=ERROR',
+        '-l', 'root',
+        target.host,
+        buildRemoteCheckCommand(target),
+      ],
+      {
+        encoding: 'utf-8',
+        timeout: SSH_TIMEOUT_MS,
+        killSignal: 'SIGKILL',
+      },
+    ));
+  } catch (error) {
     return {
       target,
       healthy: false,
-      error: normalizeSshError(result),
+      error: normalizeSshError(error as ExecException),
     };
   }
 
-  const fields = parseRemoteFields(result.stdout);
+  const fields = parseRemoteFields(stdout);
   const expectedEpoch = Number(fields.expected_epoch);
   const exitEpoch = Number(fields.exit_epoch);
   const issues: string[] = [];
@@ -161,8 +157,8 @@ function checkTarget(target: BackupHealthTarget): BackupHealthResult {
   };
 }
 
-export function checkBackupHealth(): BackupHealthResult[] {
-  return loadBackupHealthTargets().map(checkTarget);
+export async function checkBackupHealth(): Promise<BackupHealthResult[]> {
+  return Promise.all(loadBackupHealthTargets().map(checkTarget));
 }
 
 type BackupAlertState = Record<string, 'healthy' | 'failed'>;

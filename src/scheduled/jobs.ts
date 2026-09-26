@@ -185,7 +185,7 @@ export function registerFixedJobs(bot: Telegraf): void {
 
   // backup health: 05:10
   schedule.scheduleJob({ hour: 5, minute: 10, tz: 'Asia/Shanghai' }, async () => {
-    const results = checkBackupHealth();
+    const results = await checkBackupHealth();
     const newFailures = getNewBackupFailures(results);
     if (newFailures.length > 0) {
       await sendTelegramMessage(formatBackupHealthAlert(newFailures), bot);

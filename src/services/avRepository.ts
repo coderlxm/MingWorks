@@ -99,18 +99,17 @@ export function createTrackedTarget(input: CreateTrackedTargetInput): TrackedTar
 }
 
 export function deleteTrackedTargetById(id: number): TrackedTarget | null {
-  const existing = findTrackedTargetById(id);
-  if (!existing) {
-    return null;
-  }
-
   const db = getDb();
-  const stmt = db.prepare(`
-    DELETE FROM tracked_targets
-    WHERE id = ?
-  `);
-  stmt.run(id);
-  return existing;
+  return db.transaction(() => {
+    const existing = findTrackedTargetById(id);
+    if (!existing) {
+      return null;
+    }
+
+    db.prepare('DELETE FROM push_history WHERE target_id = ?').run(id);
+    db.prepare('DELETE FROM tracked_targets WHERE id = ?').run(id);
+    return existing;
+  })();
 }
 
 export function findPushHistory(targetId: number, itemGuid: string): PushHistoryRow | null {
