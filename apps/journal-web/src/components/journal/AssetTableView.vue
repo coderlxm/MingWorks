@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { Connection, Document, Hide, Lock, Top } from '@element-plus/icons-vue';
 import { ElTable, ElTableColumn, vLoading } from 'element-plus';
+import 'element-plus/es/components/table/style/css';
+import 'element-plus/es/components/table-column/style/css';
 import { computed } from 'vue';
 import type { JournalEntry, JournalPlainChannel } from '../../types';
 import type { AccessSettingsInput } from './accessSettings';

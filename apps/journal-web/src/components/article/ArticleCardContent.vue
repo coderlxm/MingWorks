@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, shallowRef } from 'vue';
+import { computed, defineAsyncComponent, shallowRef } from 'vue';
 import type { CSSProperties } from 'vue';
 import JournalLoading from '../ui/JournalLoading.vue';
 import JournalProgressiveImage from '../ui/JournalProgressiveImage.vue';
@@ -12,8 +12,8 @@ import CardDateSpine from '../journal/CardDateSpine.vue';
 import PublishedTimeDialog from '../journal/PublishedTimeDialog.vue';
 import CardStatusIndicator from '../journal/CardStatusIndicator.vue';
 import EntryInteractionSummary from '../interaction/EntryInteractionSummary.vue';
-import ArticleRichBody from './ArticleRichBody.vue';
-import RichArticleRenderer from './RichArticleRenderer.vue';
+const ArticleRichBody = defineAsyncComponent(() => import('./ArticleRichBody.vue'));
+const RichArticleRenderer = defineAsyncComponent(() => import('./RichArticleRenderer.vue'));
 
 const props = withDefaults(defineProps<{
   entry: JournalEntry;

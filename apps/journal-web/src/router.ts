@@ -1,20 +1,13 @@
 import { createRouter, createWebHistory } from 'vue-router';
-import AboutView from './components/about/AboutView.vue';
-import ArticleEditorView from './components/article/ArticleEditorView.vue';
-import PublicArchiveMonthView from './components/discovery/PublicArchiveMonthView.vue';
-import PublicArchiveView from './components/discovery/PublicArchiveView.vue';
-import PublicSearchView from './components/discovery/PublicSearchView.vue';
 import { normalizePublicSearchQuery } from './components/discovery/discoveryRoutes';
 import NotFoundView from './components/NotFoundView.vue';
 import FeedView from './components/journal/FeedView.vue';
-import EntryPublisherView from './components/publisher/EntryPublisherView.vue';
-import SiteProfileSettingsView from './components/settings/SiteProfileSettingsView.vue';
 
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/', name: 'public', component: FeedView },
-    { path: '/about', name: 'about', component: AboutView },
+    { path: '/about', name: 'about', component: () => import('./components/about/AboutView.vue') },
     {
       path: '/resume',
       name: 'resume',
@@ -23,7 +16,7 @@ export const router = createRouter({
     {
       path: '/search',
       name: 'search',
-      component: PublicSearchView,
+      component: () => import('./components/discovery/PublicSearchView.vue'),
       props: route => ({
         query: typeof route.query.q === 'string'
           ? normalizePublicSearchQuery(route.query.q)
@@ -33,12 +26,12 @@ export const router = createRouter({
     {
       path: '/archive',
       name: 'archive',
-      component: PublicArchiveView,
+      component: () => import('./components/discovery/PublicArchiveView.vue'),
     },
     {
       path: '/archive/:year(\\d{4})/:month(0[1-9]|1[0-2])',
       name: 'archive-month',
-      component: PublicArchiveMonthView,
+      component: () => import('./components/discovery/PublicArchiveMonthView.vue'),
       props: true,
     },
     {
@@ -67,11 +60,15 @@ export const router = createRouter({
       name: 'guestbook',
       component: () => import('./components/guestbook/GuestbookView.vue'),
     },
-    { path: '/me', name: 'private', component: FeedView },
+    {
+      path: '/me',
+      name: 'private',
+      component: () => import('./components/journal/private-feed/PrivateAssetFeedView.vue'),
+    },
     {
       path: '/me/settings',
       name: 'settings',
-      component: SiteProfileSettingsView,
+      component: () => import('./components/settings/SiteProfileSettingsView.vue'),
     },
     {
       path: '/me/contributions',
@@ -87,23 +84,23 @@ export const router = createRouter({
     {
       path: '/me/entries/new',
       name: 'entry-new',
-      component: EntryPublisherView,
+      component: () => import('./components/publisher/EntryPublisherView.vue'),
     },
     {
       path: '/me/entries/:entryId(\\d+)/edit',
       name: 'entry-edit',
-      component: EntryPublisherView,
+      component: () => import('./components/publisher/EntryPublisherView.vue'),
       props: route => ({ entryId: Number(route.params.entryId) }),
     },
     {
       path: '/me/articles/new',
       name: 'article-new',
-      component: ArticleEditorView,
+      component: () => import('./components/article/ArticleEditorView.vue'),
     },
     {
       path: '/me/articles/:articleId(\\d+)/edit',
       name: 'article-edit',
-      component: ArticleEditorView,
+      component: () => import('./components/article/ArticleEditorView.vue'),
       props: route => ({ articleId: Number(route.params.articleId) }),
     },
     { path: '/p/:publicId', name: 'detail', component: FeedView },

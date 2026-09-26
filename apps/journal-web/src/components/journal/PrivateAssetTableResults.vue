@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ElPagination } from 'element-plus';
+import 'element-plus/es/components/pagination/style/css';
 import type { JournalEntry, JournalPlainChannel } from '../../types';
 import type { AccessSettingsInput } from './accessSettings';
 import AssetTableView from './AssetTableView.vue';

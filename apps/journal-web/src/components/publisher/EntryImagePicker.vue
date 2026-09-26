@@ -2,6 +2,7 @@
 import { useDropZone, useEventListener, useFileDialog } from '@vueuse/core';
 import { InfoFilled } from '@element-plus/icons-vue';
 import { ElTooltip } from 'element-plus';
+import 'element-plus/es/components/tooltip/style/css';
 import { computed, useTemplateRef } from 'vue';
 import type { JournalAsset } from '../../types';
 import { resolveJournalMediaType } from '../../utils/journalMedia';

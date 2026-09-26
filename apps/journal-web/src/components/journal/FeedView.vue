@@ -1,19 +1,15 @@
 <script setup lang="ts">
-import { computed } from 'vue';
 import type {
-  AssetView,
   JournalChannel,
   JournalEntry,
   JournalInteractionSummary,
   ProtectedJournalEntryPreview,
   PublicJournalFeedItem,
 } from '../../types';
-import PrivateAssetFeedView from './private-feed/PrivateAssetFeedView.vue';
 import PublicEntryDetailView from './public-detail/PublicEntryDetailView.vue';
 import PublicFeedView from './public-feed/PublicFeedView.vue';
 
-const props = withDefaults(defineProps<{
-  mode: 'public' | 'private';
+withDefaults(defineProps<{
   detailId?: string;
   initialTag?: string;
   channel?: JournalChannel;
@@ -21,9 +17,6 @@ const props = withDefaults(defineProps<{
   overlayEntry?: JournalEntry;
   overlayProtectedEntry?: ProtectedJournalEntryPreview;
   revealedPublicEntries?: ReadonlyMap<string, JournalEntry>;
-  directOverlay?: boolean;
-  assetView?: AssetView;
-  page?: number;
 }>(), {
   detailId: undefined,
   initialTag: '',
@@ -32,9 +25,6 @@ const props = withDefaults(defineProps<{
   overlayEntry: undefined,
   overlayProtectedEntry: undefined,
   revealedPublicEntries: undefined,
-  directOverlay: false,
-  assetView: 'waterfall',
-  page: 1,
 });
 
 const emit = defineEmits<{
@@ -46,11 +36,7 @@ const emit = defineEmits<{
   closeOverlay: [];
   removeDeletedOverlay: [];
   returnToFeed: [];
-  changeAssetView: [view: AssetView];
-  changePage: [page: number];
 }>();
-
-const isDetail = computed(() => props.mode === 'public' && props.detailId !== undefined);
 
 function forwardInteractionsChange(
   publicId: string,
@@ -61,23 +47,8 @@ function forwardInteractionsChange(
 </script>
 
 <template>
-  <PrivateAssetFeedView
-    v-if="mode === 'private'"
-    :asset-view="assetView"
-    :page="page"
-    :overlay-entry-id="overlayEntryId"
-    :overlay-entry="overlayEntry"
-    :overlay-protected-entry="overlayProtectedEntry"
-    :direct-overlay="directOverlay"
-    @layout-ready="emit('layoutReady')"
-    @open-entry="emit('openEntry', $event)"
-    @close-overlay="emit('closeOverlay')"
-    @remove-deleted-overlay="emit('removeDeletedOverlay')"
-    @change-asset-view="emit('changeAssetView', $event)"
-    @change-page="emit('changePage', $event)"
-  />
   <PublicEntryDetailView
-    v-else-if="isDetail"
+    v-if="detailId !== undefined"
     :detail-id="detailId as string"
     @detail-loaded="emit('detailLoaded', $event)"
     @detail-unlocked="emit('detailUnlocked', $event)"

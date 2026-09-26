@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { Connection, Document, Hide, Lock, Top } from '@element-plus/icons-vue';
 import { storeToRefs } from 'pinia';
-import { computed, shallowRef, watch } from 'vue';
-import ArticleRichBody from '../article/ArticleRichBody.vue';
+import { computed, defineAsyncComponent, shallowRef, watch } from 'vue';
 import JournalLoading from '../ui/JournalLoading.vue';
 import { useSiteProfileStore } from '../../stores/siteProfile';
 import type {
@@ -18,6 +17,8 @@ import PublishedTimeDialog from './PublishedTimeDialog.vue';
 import AccessSettingsDialog from './AccessSettingsDialog.vue';
 import type { AccessSettingsInput } from './accessSettings';
 import JournalInteractions from '../interaction/JournalInteractions.vue';
+
+const ArticleRichBody = defineAsyncComponent(() => import('../article/ArticleRichBody.vue'));
 
 const props = withDefaults(defineProps<{
   entry: JournalEntry;
