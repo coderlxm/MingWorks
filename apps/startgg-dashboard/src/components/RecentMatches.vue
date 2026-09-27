@@ -25,8 +25,8 @@ function followed(eventId: number) {
     <div class="section-heading"><h2>最近对局</h2><button v-if="hasNew" class="text-button accent" @click="accepted = incoming">有新对局或赛果 · 点击查看 ↑</button></div>
     <p class="meta scope-note">最近结束的对局优先展示，进行中对局一并收录。仅含已采集对局。</p>
     <div v-if="visible.length" class="live-grid">
-      <div v-for="match in visible" :key="key(match)">
-        <RouterLink :to="`/events/${match.eventId}`" class="match-event">{{ events.get(match.eventId)?.tournamentName }} · {{ events.get(match.eventId)?.eventName }} →</RouterLink>
+      <div v-for="match in visible" :key="key(match)" class="match-cell">
+        <RouterLink :to="`/events/${match.eventId}`" class="match-event" :title="`${events.get(match.eventId)?.tournamentName} · ${events.get(match.eventId)?.eventName}`">{{ events.get(match.eventId)?.tournamentName }} · {{ events.get(match.eventId)?.eventName }} →</RouterLink>
         <MatchCard :match="match" :stale="isEventSnapshotStale(events.get(match.eventId)!, stale)" :followed-entrants="followed(match.eventId)" />
       </div>
     </div>

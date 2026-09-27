@@ -1,7 +1,7 @@
 import dayjs from 'dayjs'
 import utc from 'dayjs/plugin/utc'
 import timezone from 'dayjs/plugin/timezone'
-import type { Board, EventSummary, Timestamp } from './types'
+import type { Board, EventSummary, Match, Timestamp } from './types'
 dayjs.extend(utc)
 dayjs.extend(timezone)
 export function time(value: Timestamp) {
@@ -30,4 +30,17 @@ export function eventStatus(value: string | null) {
 export function stopReason(value: string | null) {
   const labels: Record<string, string> = { paused: "用户已暂停监控", no_events: "当前无活动项目", deadline: "超过大会结束时间，停止采集", completed: "所有监控项目官方已完成" }
   return value === null ? "尚无停止原因" : labels[value] ?? value
+}
+
+// start.gg 的 displayScore 固定为「选手A 比分A - 选手B 比分B」，弃权时为「DQ」；按已知双方名字拆出各自比分
+export function slotScores(match: Match): [string, string] | null {
+  const [first, second] = match.slots
+  const text = match.displayScore
+  if (match.slots.length !== 2 || !text) return null
+  if (text === 'DQ' && match.winnerId !== null) return first.entrantId === match.winnerId ? ['W', 'DQ'] : ['DQ', 'W']
+  if (!first.name || !second.name || !text.startsWith(`${first.name} `)) return null
+  const separator = text.indexOf(` - ${second.name} `, first.name.length)
+  if (separator < 0) return null
+  const scores: [string, string] = [text.slice(first.name.length + 1, separator), text.slice(separator + second.name.length + 4)]
+  return scores.every(score => /^\S+$/.test(score)) ? scores : null
 }

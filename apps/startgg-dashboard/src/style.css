@@ -109,35 +109,42 @@ p{margin-bottom:12px}
 .section-heading h2:before{content:'';width:7px;height:20px;background:var(--accent);transform:skewX(-18deg);display:inline-block;flex-shrink:0}
 .count{font-family:var(--display);font-size:15px;font-weight:700;color:var(--accent);border:1px solid #ffd60a55;background:#ffd60a0f;min-width:30px;padding:0 8px;text-align:center;border-radius:2px}
 .live-grid,.event-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
-.match-event{font-size:12px;color:var(--muted);display:block;margin-bottom:8px;transition:color .15s}
+.match-cell{display:flex;flex-direction:column;min-width:0}
+.match-cell>.match-card{flex:1}
+.match-event{font-size:12px;color:var(--muted);display:block;margin-bottom:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:color .15s}
 .match-event:hover{color:var(--accent)}
 
-/* 对局卡：左 1P 红、右 2P 蓝，胜者高亮，败者退暗 */
-.match-card{position:relative;background:linear-gradient(90deg,#ff3d5a14,transparent 32%,transparent 68%,#2fb8ff14),var(--card);border:1px solid var(--line);border-radius:2px;padding:14px 18px;overflow:hidden;overflow-wrap:anywhere;transition:border-color .15s,transform .15s}
-.match-card:before,.match-card:after{content:'';position:absolute;top:0;bottom:0;width:3px}
-.match-card:before{left:0;background:var(--p1)}
-.match-card:after{right:0;background:var(--p2)}
+/* 对局卡：转播比分牌，上行 1P 红、下行 2P 蓝；名字单行截断，卡片高度只由固定结构决定 */
+.match-card{display:flex;flex-direction:column;background:var(--card);border:1px solid var(--line);border-radius:2px;padding:14px 16px;min-width:0;transition:border-color .15s}
 .match-card:hover{border-color:var(--line-hi)}
 .match-card.is-live{border-color:#ff2d5570;animation:glow 2.4s ease-in-out infinite}
-.match-heading{display:flex;justify-content:space-between;align-items:center;gap:14px;color:var(--muted);font-family:var(--display);font-size:13px;font-weight:600;letter-spacing:.06em}
-.match-heading>span:last-child{flex-shrink:0}
+.match-heading{display:flex;justify-content:space-between;align-items:center;gap:14px;min-height:24px;color:var(--muted);font-family:var(--display);font-size:13px;font-weight:600;letter-spacing:.06em}
+.match-heading>span{flex-shrink:0;white-space:nowrap}
+.match-heading>.match-round{flex-shrink:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
 .match-heading .live{background:var(--live);color:#fff;padding:1px 12px;font-weight:800;letter-spacing:.1em;clip-path:var(--slant);animation:pulse 1.6s ease-in-out infinite}
-.opponents{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:20px 0 10px}
-.competitor{font-family:var(--display);font-size:24px;font-weight:600;line-height:1.25;flex:1;display:flex;align-items:center;gap:8px;flex-wrap:wrap;transition:color .15s}
-.competitor:last-child{text-align:right;justify-content:flex-end}
-.competitor.winner{font-weight:800;color:var(--text)}
-.opponents:has(.winner) .competitor:not(.winner){color:var(--dim)}
-.competitor .tag{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-family:inherit;font-size:12px;font-weight:800;padding:0 10px;clip-path:var(--slant)}
-.versus{font-family:var(--display);font-style:italic;font-size:22px;font-weight:800;color:var(--accent);letter-spacing:.02em;text-shadow:0 0 18px #ffd60a55}
-.score{font-family:var(--display);font-style:italic;font-size:30px;font-weight:800;letter-spacing:.03em;text-align:center;margin-bottom:14px;line-height:1.2}
-.match-footer{display:flex;align-items:center;flex-wrap:wrap;gap:10px;color:var(--muted);font-size:11px;border-top:1px dashed var(--line-hi);padding-top:12px}
-.match-footer a{margin-left:auto;color:var(--text);font-weight:600}
-.match-footer a:hover{color:var(--accent)}
+.scoreboard{list-style:none;margin:12px 0 14px;padding:0;display:grid;grid-template-rows:repeat(2,46px);gap:4px}
+p.scoreboard{display:flex;align-items:center;justify-content:center;height:96px}
+.side{position:relative;display:flex;align-items:center;gap:10px;min-width:0;padding-left:16px;background:linear-gradient(90deg,#ffffff0a,#ffffff03);transition:color .15s}
+.side:before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--p1)}
+.side+.side:before{background:var(--p2)}
+.side>.accent{flex-shrink:0;font-size:14px}
+.side-name{flex:1;min-width:0;font-family:var(--display);font-size:22px;font-weight:700;letter-spacing:.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.win-tag{flex-shrink:0;background:var(--accent);color:var(--accent-ink);font-size:12px;font-weight:800;line-height:20px;padding:0 10px;clip-path:var(--slant)}
+.side-score{flex-shrink:0;align-self:stretch;display:grid;place-items:center;min-width:54px;padding:0 10px;background:#ffffff0d;font-family:var(--display);font-style:italic;font-size:28px;font-weight:800;line-height:1}
+.side.winner .side-score{background:var(--accent);color:var(--accent-ink)}
+.side.loser{color:var(--dim)}
+.side.loser .side-score{color:var(--muted)}
+.match-footer{display:flex;align-items:center;gap:10px;min-width:0;margin-top:auto;color:var(--muted);font-size:11px;border-top:1px dashed var(--line-hi);padding-top:12px}
+.match-footer>.tags{flex-wrap:nowrap;flex-shrink:0}
 .match-footer .tag{font-size:10px}
+.match-time{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.match-footer a{margin-left:auto;flex-shrink:0;white-space:nowrap;color:var(--text);font-weight:600}
+.match-footer a:hover{color:var(--accent)}
 .match-stack{display:flex;flex-direction:column;gap:12px}
-.compact .opponents{padding:14px 0 6px}
-.compact .competitor{font-size:20px}
-.compact .score{text-align:left;font-size:22px;margin-bottom:12px}
+.compact .scoreboard{grid-template-rows:repeat(2,40px);margin:10px 0 12px}
+.compact p.scoreboard{height:84px}
+.compact .side-name{font-size:19px}
+.compact .side-score{font-size:24px;min-width:48px}
 
 /* 赛事卡 */
 .event-tile{position:relative;display:flex;flex-direction:column;padding:20px 22px;background:linear-gradient(160deg,var(--card-hi),var(--card) 55%);border:1px solid var(--line);clip-path:var(--cut);transition:border-color .15s}
@@ -261,7 +268,7 @@ p{margin-bottom:12px}
 @media(max-width:1200px){
   .topbar{gap:36px}.workspace{grid-template-columns:220px minmax(0,1fr)}.main-content{padding:26px 22px 0}
   .event-columns{grid-template-columns:minmax(0,1.4fr) minmax(250px,1fr);gap:16px}.panel{padding:18px}.live-grid{grid-template-columns:1fr}
-  .opponents{gap:10px}.competitor{font-size:21px}.following-grid{grid-template-columns:1fr}
+  .following-grid{grid-template-columns:1fr}
 }
 @media(max-width:900px){
   .topbar{padding:0 20px;gap:28px;height:68px}.timezone{display:none}.top-actions{gap:12px}.main-nav{gap:22px}.main-nav>a{font-size:14px}.brand-caption{font-size:12px}
@@ -279,9 +286,8 @@ p{margin-bottom:12px}
   .workspace{display:block;position:relative}.sidebar{display:none}.sidebar.mobile-open{display:block;border-bottom:1px solid var(--line)}.event-nav{position:static;max-height:60vh;padding:20px 14px}
   .main-content{padding:24px 16px 0}.page-heading{margin-bottom:24px;flex-wrap:wrap}.page-heading h1{font-size:28px}.page-heading .meta{font-size:11px}
   .panel{padding:16px;margin-bottom:20px}.section-heading{margin-bottom:16px}.section-heading h2{font-size:18px}
-  .match-card{padding:12px 14px}.opponents{flex-direction:column;align-items:stretch;padding:16px 0 10px;gap:4px}.competitor,.compact .competitor{font-size:21px}
-  .competitor:last-child{text-align:left;justify-content:flex-start}.versus{font-size:16px;padding-left:1px}.score,.compact .score{text-align:left;font-size:22px}
-  .match-footer{font-size:10px;gap:8px}.match-footer>.tags{width:100%}.match-footer a{min-height:30px;display:flex;align-items:center}
+  .match-card{padding:12px 14px}.side-name,.compact .side-name{font-size:19px}.side-score,.compact .side-score{font-size:24px;min-width:46px}
+  .match-footer{font-size:10px;gap:8px}.match-footer a{min-height:30px;display:flex;align-items:center}
   .event-tile{padding:16px}.event-tile h3{font-size:22px}.seed-grid{grid-template-columns:1fr}.tabs{gap:22px;margin-bottom:20px;overflow-x:auto}.tabs>button{font-size:13px;white-space:nowrap}
   .following-grid{gap:0}.connection-error,.collection-error,.operation-strip{padding:12px 16px;font-size:11px;align-items:flex-start}.connection-error button{flex-shrink:0;font-size:11px}.operation-strip button{flex-shrink:0}
   .page-footer{font-size:10px;gap:8px;justify-content:flex-start}.page-footer>span:nth-child(2){width:100%}.page-footer>.text-button{min-height:36px}
