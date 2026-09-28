@@ -14,8 +14,10 @@ import type {
 } from '../../types';
 import { showMessage } from '../../utils/message';
 import JournalLoading from '../ui/JournalLoading.vue';
+import SettingsCard from './SettingsCard.vue';
 import SettingsResumeAccessPanel from './SettingsResumeAccessPanel.vue';
 import SettingsResumeFilePanel from './SettingsResumeFilePanel.vue';
+import SettingsSection from './SettingsSection.vue';
 
 const siteProfile = useSiteProfileStore();
 const summary = shallowRef<JournalAdminResumeSummary | null>(null);
@@ -108,13 +110,13 @@ async function copyGeneratedShareUrl(): Promise<void> {
 </script>
 
 <template>
-  <section class="resume-panel" aria-labelledby="resume-settings-title">
-    <div class="resume-panel__heading">
-      <h2 id="resume-settings-title">个人简历</h2>
-      <p>上传一份 Markdown 或 PDF 简历，并控制它在「关于我」与独立页面中的可见性。</p>
-    </div>
-
-    <JournalLoading v-if="loading" variant="reading" label="正在读取简历…" />
+  <SettingsSection
+    title="个人简历"
+    description="上传一份 Markdown 或 PDF 简历，并控制它在「关于我」与独立页面中的可见性。这里的操作会立即生效。"
+  >
+    <SettingsCard v-if="loading">
+      <JournalLoading variant="inline" label="正在读取简历…" />
+    </SettingsCard>
 
     <template v-else>
       <SettingsResumeFilePanel
@@ -134,35 +136,10 @@ async function copyGeneratedShareUrl(): Promise<void> {
     </template>
 
     <p v-if="error" class="resume-panel__error" role="alert">{{ error }}</p>
-  </section>
+  </SettingsSection>
 </template>
 
 <style scoped>
-.resume-panel,
-.resume-panel__heading {
-  display: grid;
-}
-
-.resume-panel {
-  gap: 1.1rem;
-}
-
-.resume-panel__heading {
-  gap: 0.25rem;
-}
-
-.resume-panel__heading h2 {
-  margin: 0;
-  font-family: var(--font-serif);
-  font-size: 1.1rem;
-}
-
-.resume-panel__heading p {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: 0.75rem;
-}
-
 .resume-panel__error {
   margin: 0;
   color: var(--danger);

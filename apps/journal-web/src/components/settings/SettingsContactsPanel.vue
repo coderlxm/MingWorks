@@ -2,6 +2,8 @@
 import { ElSwitch } from 'element-plus';
 import 'element-plus/es/components/switch/style/css';
 import type { SiteContactItem } from '../../types';
+import SettingsCard from './SettingsCard.vue';
+import SettingsSection from './SettingsSection.vue';
 
 const props = defineProps<{
   contactItems: SiteContactItem[];
@@ -58,6 +60,11 @@ function updateEnabled(kind: SiteContactItem['kind'], enabled: boolean | string 
   updateContact(kind, { enabled: Boolean(enabled) });
 }
 
+function urlInvalid(url: string | null): boolean {
+  const value = url?.trim();
+  return !value || !URL.canParse(value);
+}
+
 function updateText(
   kind: SiteContactItem['kind'],
   field: 'value' | 'url',
@@ -68,159 +75,133 @@ function updateText(
 </script>
 
 <template>
-  <section class="contacts-panel" aria-labelledby="contact-settings-title">
-    <div class="contacts-panel__heading">
-      <h2 id="contact-settings-title">联系方式</h2>
-      <p>启用后会公开展示在「关于我」页面，保存前请确认内容和链接。</p>
-    </div>
-
-    <div class="contacts-panel__grid">
-      <article
-        v-for="item in props.contactItems"
-        :key="item.kind"
-        class="contact-card"
-      >
-        <div class="contact-card__heading">
-          <div class="contact-card__copy">
-            <h3>{{ item.label }}</h3>
-            <p>{{ contactMetadata[item.kind].description }}</p>
+  <SettingsSection title="联系方式" description="启用的联系方式会展示在「关于我」页面，访客可以直接跳转或复制。">
+    <SettingsCard flush>
+      <ul class="contact-list">
+        <li
+          v-for="item in props.contactItems"
+          :key="item.kind"
+          class="contact-row"
+        >
+          <div class="contact-row__heading">
+            <div class="contact-row__copy">
+              <h3>{{ item.label }}</h3>
+              <p>{{ contactMetadata[item.kind].description }}</p>
+            </div>
+            <ElSwitch
+              class="contact-row__switch"
+              :model-value="item.enabled"
+              :disabled="props.disabled"
+              :aria-label="`${item.enabled ? '关闭' : '启用'}${item.label}`"
+              @update:model-value="updateEnabled(item.kind, $event)"
+            />
           </div>
-          <ElSwitch
-            class="contact-card__switch"
-            :model-value="item.enabled"
-            :disabled="props.disabled"
-            :aria-label="`${item.enabled ? '关闭' : '启用'}${item.label}`"
-            @update:model-value="updateEnabled(item.kind, $event)"
-          />
-        </div>
 
-        <div class="contact-card__fields">
-          <label class="field">
-            <span class="field__label">展示内容</span>
-            <input
-              :value="item.value"
-              type="text"
-              :maxlength="props.maxValueLength"
-              :required="item.enabled"
-              :disabled="props.disabled"
-              :aria-invalid="item.enabled && !item.value.trim()"
-              :placeholder="contactMetadata[item.kind].valuePlaceholder"
-              @input="updateText(item.kind, 'value', $event)"
-            >
-          </label>
+          <div
+            v-if="item.enabled"
+            class="contact-row__fields"
+            :class="{ 'contact-row__fields--single': item.kind === 'wechat' }"
+          >
+            <label class="field">
+              <span class="field__label">展示内容</span>
+              <input
+                :value="item.value"
+                type="text"
+                :maxlength="props.maxValueLength"
+                required
+                :disabled="props.disabled"
+                :aria-invalid="!item.value.trim()"
+                :placeholder="contactMetadata[item.kind].valuePlaceholder"
+                @input="updateText(item.kind, 'value', $event)"
+              >
+            </label>
 
-          <label v-if="item.kind !== 'wechat'" class="field">
-            <span class="field__label">跳转链接</span>
-            <input
-              :value="item.url ?? ''"
-              type="url"
-              :maxlength="props.maxUrlLength"
-              :required="item.enabled"
-              :disabled="props.disabled"
-              :aria-invalid="item.enabled && !item.url?.trim()"
-              :placeholder="contactMetadata[item.kind].urlPlaceholder ?? ''"
-              @input="updateText(item.kind, 'url', $event)"
-            >
-          </label>
-        </div>
-      </article>
-    </div>
-  </section>
+            <label v-if="item.kind !== 'wechat'" class="field">
+              <span class="field__label">跳转链接</span>
+              <input
+                :value="item.url ?? ''"
+                type="url"
+                :maxlength="props.maxUrlLength"
+                required
+                :disabled="props.disabled"
+                :aria-invalid="urlInvalid(item.url)"
+                :placeholder="contactMetadata[item.kind].urlPlaceholder ?? ''"
+                @input="updateText(item.kind, 'url', $event)"
+              >
+            </label>
+          </div>
+        </li>
+      </ul>
+    </SettingsCard>
+  </SettingsSection>
 </template>
 
 <style scoped>
-.contacts-panel,
-.contacts-panel__heading,
-.contact-card,
-.contact-card__copy,
-.contact-card__fields {
-  display: grid;
-}
-
-.contacts-panel {
-  gap: 1.1rem;
-}
-
-.contacts-panel__heading {
-  gap: 0.25rem;
-}
-
-.contacts-panel__heading h2,
-.contact-card__copy h3 {
+.contact-list {
   margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
-.contacts-panel__heading h2 {
-  font-family: var(--font-serif);
-  font-size: 1.1rem;
-}
-
-.contacts-panel__heading p,
-.contact-card__copy p {
-  margin: 0;
-  color: var(--text-muted);
-}
-
-.contacts-panel__heading p {
-  font-size: 0.75rem;
-}
-
-.contacts-panel__grid {
+.contact-row {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.75rem;
+  gap: 0.9rem;
+  padding: 1rem 1.15rem;
 }
 
-.contact-card {
-  min-width: 0;
-  align-content: start;
-  gap: 1rem;
-  padding: 1rem;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-card);
-  background: var(--surface-page);
+.contact-row + .contact-row {
+  border-top: 1px solid var(--border-subtle);
 }
 
-.contact-card__heading {
+.contact-row__heading {
   display: flex;
-  min-width: 0;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
+  gap: 1rem;
 }
 
-.contact-card__copy {
+.contact-row__copy {
+  display: grid;
   min-width: 0;
-  gap: 0.22rem;
+  gap: 0.2rem;
 }
 
-.contact-card__copy h3 {
+.contact-row__copy h3 {
+  margin: 0;
   font-size: 0.86rem;
 }
 
-.contact-card__copy p {
+.contact-row__copy p {
+  margin: 0;
+  color: var(--text-muted);
   font-size: 0.72rem;
   line-height: 1.5;
 }
 
-.contact-card__switch {
+.contact-row__switch {
   --el-switch-on-color: var(--accent);
   --el-switch-off-color: var(--border-strong);
 
   flex: none;
 }
 
-.contact-card__fields {
-  gap: 0.65rem;
+.contact-row__fields {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  gap: 0.75rem;
 }
 
-@media (max-width: 720px) {
-  .contacts-panel__grid {
-    grid-template-columns: 1fr;
+.contact-row__fields--single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (max-width: 599px) {
+  .contact-row {
+    padding: 0.9rem 0.95rem;
   }
 
-  .contact-card {
-    padding: 0.9rem;
+  .contact-row__fields {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 </style>

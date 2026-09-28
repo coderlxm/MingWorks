@@ -1,8 +1,5 @@
 <script setup lang="ts">
 import { useFileDialog, useMediaQuery, useObjectUrl } from '@vueuse/core';
-import { ElTabPane, ElTabs } from 'element-plus';
-import 'element-plus/es/components/tab-pane/style/css';
-import 'element-plus/es/components/tabs/style/css';
 import { storeToRefs } from 'pinia';
 import { computed, onBeforeUnmount, shallowRef, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
@@ -11,12 +8,18 @@ import JournalLoading from '../ui/JournalLoading.vue';
 import { logout as logoutRequest } from '../../api';
 import { useSessionStore } from '../../stores/session';
 import { useSiteProfileStore } from '../../stores/siteProfile';
-import type { ChannelTags, SiteContactItem } from '../../types';
+import type { ChannelTags, SiteContactItem, SiteProfile } from '../../types';
 import { showMessage } from '../../utils/message';
 import SettingsChannelTagsPanel from './SettingsChannelTagsPanel.vue';
 import SettingsContactsPanel from './SettingsContactsPanel.vue';
+import SettingsNavigation from './SettingsNavigation.vue';
 import SettingsPublicProfilePanel from './SettingsPublicProfilePanel.vue';
 import SettingsResumePanel from './SettingsResumePanel.vue';
+import {
+  isSettingsSectionName,
+  settingsSections,
+  type SettingsSectionName,
+} from './settingsSections';
 
 const MAX_BIO_LENGTH = 120;
 const MAX_ABOUT_INTRO_LENGTH = 1200;
@@ -24,16 +27,6 @@ const MAX_CONTACT_VALUE_LENGTH = 120;
 const MAX_CONTACT_URL_LENGTH = 500;
 const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
 const AVATAR_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
-
-const settingsSections = [
-  { name: 'profile', label: '公开资料' },
-  { name: 'contacts', label: '联系方式' },
-  { name: 'tags', label: '频道标签' },
-  { name: 'resume', label: '个人简历' },
-  { name: 'contribution', label: '投稿链接' },
-] as const;
-
-type SettingsSection = typeof settingsSections[number]['name'];
 
 const route = useRoute();
 const router = useRouter();
@@ -51,7 +44,6 @@ const draftAboutIntro = shallowRef('');
 const draftAvatarFile = shallowRef<File | null>(null);
 const draftChannelTags = shallowRef<ChannelTags | null>(null);
 const draftContactItems = shallowRef<SiteContactItem[]>([]);
-const formError = shallowRef<string | null>(null);
 const submitting = shallowRef(false);
 const loggingOut = shallowRef(false);
 const initialized = shallowRef(false);
@@ -67,13 +59,12 @@ const {
   reset: true,
 });
 
-const activeSection = computed<SettingsSection>(() => {
+const activeSection = computed<SettingsSectionName | null>(() => {
   const requestedSection = route.query.section;
-  return settingsSections.some(section => section.name === requestedSection)
-    ? requestedSection as SettingsSection
-    : 'profile';
+  if (isSettingsSectionName(requestedSection)) return requestedSection;
+  return compactSettings.value ? null : 'profile';
 });
-const tabPosition = computed(() => compactSettings.value ? 'top' : 'left');
+const showSectionIndex = computed(() => compactSettings.value && activeSection.value === null);
 const normalizedDraftBio = computed(() => draftBio.value.trim());
 const normalizedDraftAboutIntro = computed(() => draftAboutIntro.value.trim());
 const bioLength = computed(() => normalizedDraftBio.value.length);
@@ -89,6 +80,9 @@ const incompleteContact = computed(() => draftContactItems.value.find(item =>
   item.enabled
   && (!item.value.trim() || (item.kind !== 'wechat' && !item.url?.trim())),
 ));
+const invalidUrlContact = computed(() => draftContactItems.value.find(item =>
+  item.enabled && item.kind !== 'wechat' && item.url?.trim() && !URL.canParse(item.url.trim()),
+));
 const validationError = computed(() => {
   if (bioLength.value > MAX_BIO_LENGTH) return `Bio 不能超过 ${MAX_BIO_LENGTH} 个字符。`;
   if (aboutIntroLength.value > MAX_ABOUT_INTRO_LENGTH) {
@@ -96,6 +90,9 @@ const validationError = computed(() => {
   }
   if (incompleteContact.value) {
     return `${incompleteContact.value.label}已启用，请补充完整的展示内容和跳转链接。`;
+  }
+  if (invalidUrlContact.value) {
+    return `${invalidUrlContact.value.label}的跳转链接需要是完整地址，例如 https:// 或 mailto: 开头。`;
   }
   return null;
 });
@@ -108,7 +105,16 @@ const contactsDirty = computed(() => profile.value !== null
   && JSON.stringify(draftContactItems.value) !== JSON.stringify(profile.value.contactItems));
 const tagsDirty = computed(() => profile.value !== null
   && JSON.stringify(editableChannelTags.value) !== JSON.stringify(profile.value.channelTags));
-const hasUnsavedChanges = computed(() => profileDirty.value || contactsDirty.value || tagsDirty.value);
+const dirtySections = computed<SettingsSectionName[]>(() => [
+  ...(profileDirty.value ? ['profile' as const] : []),
+  ...(contactsDirty.value ? ['contacts' as const] : []),
+  ...(tagsDirty.value ? ['tags' as const] : []),
+]);
+const hasUnsavedChanges = computed(() => dirtySections.value.length > 0);
+const unsavedSummary = computed(() => `未保存：${settingsSections
+  .filter(section => dirtySections.value.includes(section.name))
+  .map(section => section.label)
+  .join('、')}`);
 const accessError = computed(() => authenticationError.value
   ?? (authenticationChecked.value && !ownerAuthenticated.value
     ? '请先返回“我的资产”登录后再修改公开资料。'
@@ -129,11 +135,18 @@ const canSubmit = computed(() =>
   && hasUnsavedChanges.value,
 );
 
-watch(profile, (value) => {
-  if (!value || initialized.value) return;
+function resetDrafts(value: SiteProfile): void {
   draftBio.value = value.bio;
   draftAboutIntro.value = value.aboutIntro;
   draftContactItems.value = value.contactItems.map(item => ({ ...item }));
+  draftAvatarFile.value = null;
+  draftChannelTags.value = null;
+  resetFileDialog();
+}
+
+watch(profile, (value) => {
+  if (!value || initialized.value) return;
+  resetDrafts(value);
   initialized.value = true;
 }, { immediate: true });
 
@@ -150,14 +163,6 @@ watch(accessMessage, (error) => {
   }
 }, { immediate: true });
 
-watch(formError, (error) => {
-  if (error) showMessage({ message: error, type: 'error' });
-});
-
-watch(validationError, (error, previousError) => {
-  if (error && error !== previousError) showMessage({ message: error, type: 'error' });
-});
-
 onBeforeUnmount(() => persistentMessage?.close());
 
 onAvatarChange((files) => {
@@ -165,44 +170,53 @@ onAvatarChange((files) => {
   if (!file) return;
   if (!AVATAR_TYPES.has(file.type)) {
     draftAvatarFile.value = null;
-    formError.value = '头像仅支持 JPEG、PNG 或 WebP 图片。';
+    showMessage({ message: '头像仅支持 JPEG、PNG 或 WebP 图片。', type: 'error' });
     return;
   }
   if (file.size > MAX_AVATAR_BYTES) {
     draftAvatarFile.value = null;
-    formError.value = '头像文件不能超过 5 MB。';
+    showMessage({ message: '头像文件不能超过 5 MB。', type: 'error' });
     return;
   }
   draftAvatarFile.value = file;
-  formError.value = null;
 });
 
 function chooseAvatar(): void {
   openFileDialog();
 }
 
-function selectSection(section: string | number): void {
-  if (!settingsSections.some(item => item.name === section)) return;
+function selectSection(section: SettingsSectionName): void {
+  if (compactSettings.value) {
+    void router.push({ query: { ...route.query, section } });
+    return;
+  }
   const query = { ...route.query };
   if (section === 'profile') delete query.section;
   else query.section = section;
   void router.replace({ query });
 }
 
+function returnToSectionIndex(): void {
+  const query = { ...route.query };
+  delete query.section;
+  const indexLocation = router.resolve({ query });
+  if (router.options.history.state.back === indexLocation.fullPath) {
+    router.back();
+    return;
+  }
+  void router.replace(indexLocation);
+}
+
+function discardChanges(): void {
+  resetDrafts(profile.value!);
+}
+
 function replaceContactItems(contactItems: SiteContactItem[]): void {
   draftContactItems.value = contactItems;
 }
 
-function sectionIsDirty(section: SettingsSection): boolean {
-  if (section === 'profile') return profileDirty.value;
-  if (section === 'contacts') return contactsDirty.value;
-  if (section === 'tags') return tagsDirty.value;
-  return false;
-}
-
 async function save(): Promise<void> {
   if (!canSubmit.value) return;
-  formError.value = null;
   submitting.value = true;
   try {
     const updated = await siteProfile.update({
@@ -217,16 +231,11 @@ async function save(): Promise<void> {
         url: item.url?.trim() || null,
       })),
     });
-    draftBio.value = updated.bio;
-    draftAboutIntro.value = updated.aboutIntro;
-    draftContactItems.value = updated.contactItems.map(item => ({ ...item }));
-    draftAvatarFile.value = null;
-    draftChannelTags.value = null;
-    resetFileDialog();
+    resetDrafts(updated);
     showMessage({ message: '站点设置已保存。', type: 'success' });
   }
   catch (reason) {
-    formError.value = reason instanceof Error ? reason.message : String(reason);
+    showMessage({ message: reason instanceof Error ? reason.message : String(reason), type: 'error' });
   }
   finally {
     submitting.value = false;
@@ -235,14 +244,13 @@ async function save(): Promise<void> {
 
 async function logout(): Promise<void> {
   loggingOut.value = true;
-  formError.value = null;
   try {
     await logoutRequest();
     session.setAuthenticated(false);
     await router.replace({ name: 'private' });
   }
   catch (reason) {
-    formError.value = reason instanceof Error ? reason.message : String(reason);
+    showMessage({ message: reason instanceof Error ? reason.message : String(reason), type: 'error' });
   }
   finally {
     loggingOut.value = false;
@@ -252,94 +260,97 @@ async function logout(): Promise<void> {
 
 <template>
   <main class="settings-view">
-    <div class="settings-view__heading">
+    <header v-if="showSectionIndex || !compactSettings" class="settings-view__header">
       <button class="text-button" type="button" @click="router.push({ name: 'private' })">← 返回我的资产</button>
-      <button
-        class="text-button settings-view__logout"
-        type="button"
-        :disabled="loggingOut"
-        :aria-busy="loggingOut"
-        @click="logout"
-      >
-        <JournalLoading v-if="loggingOut" variant="inline" label="退出中…" />
-        <template v-else>退出登录</template>
-      </button>
-    </div>
+      <span class="settings-view__eyebrow">SITE SETTINGS</span>
+      <h1>站点设置</h1>
+      <p>管理公开资料、联系方式与频道标签，以及简历和投稿链接的分享方式。</p>
+    </header>
+    <header v-else class="settings-view__header settings-view__header--detail">
+      <button class="text-button" type="button" @click="returnToSectionIndex">← 站点设置</button>
+    </header>
 
-    <section v-if="ownerAuthenticated && profile" class="settings-workspace" aria-labelledby="site-settings-title">
-      <div class="settings-workspace__heading">
-        <h1 id="site-settings-title">站点设置</h1>
-        <p>分区管理公开资料、联系方式与页面内容。</p>
-      </div>
+    <div v-if="ownerAuthenticated && profile" class="settings-layout">
+      <aside v-if="!compactSettings" class="settings-layout__sidebar">
+        <SettingsNavigation
+          variant="sidebar"
+          :active-section="activeSection"
+          :dirty-sections="dirtySections"
+          :logging-out="loggingOut"
+          @select="selectSection"
+          @logout="logout"
+        />
+      </aside>
 
-      <form class="settings-workspace__form" @submit.prevent="save">
-        <ElTabs
-          :model-value="activeSection"
-          class="settings-tabs"
-          :tab-position="tabPosition"
-          :stretch="compactSettings"
-          @update:model-value="selectSection"
-        >
-          <ElTabPane
-            v-for="section in settingsSections"
-            :key="section.name"
-            :name="section.name"
-          >
-            <template #label>
-              <span class="settings-tabs__label">
-                {{ section.label }}
-                <span
-                  v-if="sectionIsDirty(section.name)"
-                  class="settings-tabs__dirty"
-                  aria-label="有未保存修改"
-                />
-              </span>
-            </template>
+      <form class="settings-layout__content" novalidate @submit.prevent="save">
+        <SettingsNavigation
+          v-if="showSectionIndex"
+          variant="list"
+          :active-section="null"
+          :dirty-sections="dirtySections"
+          :logging-out="loggingOut"
+          @select="selectSection"
+          @logout="logout"
+        />
 
-            <SettingsPublicProfilePanel
-              v-if="section.name === 'profile'"
-              v-model:bio="draftBio"
-              v-model:about-intro="draftAboutIntro"
-              :avatar-url="previewAvatarUrl"
-              :disabled="submitting"
-              :max-bio-length="MAX_BIO_LENGTH"
-              :max-about-intro-length="MAX_ABOUT_INTRO_LENGTH"
-              @choose-avatar="chooseAvatar"
-            />
-            <SettingsContactsPanel
-              v-else-if="section.name === 'contacts'"
-              :contact-items="draftContactItems"
-              :disabled="submitting"
-              :max-value-length="MAX_CONTACT_VALUE_LENGTH"
-              :max-url-length="MAX_CONTACT_URL_LENGTH"
-              @update:contact-items="replaceContactItems"
-            />
-            <SettingsChannelTagsPanel
-              v-else-if="section.name === 'tags'"
-              v-model="editableChannelTags"
-              :disabled="submitting"
-            />
-            <SettingsResumePanel v-else-if="section.name === 'resume'" />
-            <AdminContributionLinkSettings v-else />
-          </ElTabPane>
-        </ElTabs>
+        <SettingsPublicProfilePanel
+          v-show="activeSection === 'profile'"
+          v-model:bio="draftBio"
+          v-model:about-intro="draftAboutIntro"
+          :avatar-url="previewAvatarUrl"
+          :disabled="submitting"
+          :max-bio-length="MAX_BIO_LENGTH"
+          :max-about-intro-length="MAX_ABOUT_INTRO_LENGTH"
+          @choose-avatar="chooseAvatar"
+        />
+        <SettingsContactsPanel
+          v-show="activeSection === 'contacts'"
+          :contact-items="draftContactItems"
+          :disabled="submitting"
+          :max-value-length="MAX_CONTACT_VALUE_LENGTH"
+          :max-url-length="MAX_CONTACT_URL_LENGTH"
+          @update:contact-items="replaceContactItems"
+        />
+        <SettingsChannelTagsPanel
+          v-show="activeSection === 'tags'"
+          v-model="editableChannelTags"
+          :disabled="submitting"
+        />
+        <SettingsResumePanel v-show="activeSection === 'resume'" />
+        <AdminContributionLinkSettings v-show="activeSection === 'contribution'" />
 
-        <div v-if="activeSection !== 'contribution' && activeSection !== 'resume'" class="settings-savebar">
-          <p aria-live="polite">
-            {{ hasUnsavedChanges ? '有尚未保存的站点设置' : '当前设置已保存' }}
-          </p>
-          <button
-            class="button button--primary"
-            type="submit"
-            :disabled="!canSubmit"
-            :aria-busy="submitting"
-          >
-            <JournalLoading v-if="submitting" variant="inline" label="保存中…" />
-            <template v-else>保存修改</template>
-          </button>
-        </div>
+        <Transition name="settings-savebar">
+          <div v-if="hasUnsavedChanges" class="settings-savebar">
+            <p
+              class="settings-savebar__status"
+              :class="{ 'settings-savebar__status--invalid': validationError }"
+              aria-live="polite"
+            >
+              {{ validationError ?? unsavedSummary }}
+            </p>
+            <div class="settings-savebar__actions">
+              <button
+                class="button button--quiet"
+                type="button"
+                :disabled="submitting"
+                @click="discardChanges"
+              >
+                放弃修改
+              </button>
+              <button
+                class="button button--primary"
+                type="submit"
+                :disabled="!canSubmit"
+                :aria-busy="submitting"
+              >
+                <JournalLoading v-if="submitting" variant="inline" label="保存中…" />
+                <template v-else>保存修改</template>
+              </button>
+            </div>
+          </div>
+        </Transition>
       </form>
-    </section>
+    </div>
 
     <div v-else-if="waitingForAccess" class="settings-view__loading">
       <JournalLoading
@@ -352,152 +363,123 @@ async function logout(): Promise<void> {
 
 <style scoped>
 .settings-view {
+  --settings-sidebar-width: 12.5rem;
+  --settings-layout-gap: 2.5rem;
+
   display: grid;
-  gap: 1rem;
-  width: min(calc(100% - (var(--page-gutter) * 2)), var(--editor-workspace-width));
+  align-content: start;
+  gap: 1.5rem;
+  width: min(
+    calc(100% - (var(--page-gutter) * 2)),
+    calc(var(--settings-sidebar-width) + var(--settings-layout-gap) + var(--editor-width))
+  );
+  min-height: 100%;
   margin: 0 auto;
   padding: 1.3rem 0 4rem;
 }
 
-.settings-view__heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 0.15rem;
-  color: var(--text-muted);
-  font-size: 0.78rem;
-}
-
-.settings-view__logout {
-  color: var(--text-muted);
-}
-
-.settings-view__logout:hover {
-  color: var(--danger);
-}
-
-.settings-workspace,
-.settings-workspace__heading,
-.settings-workspace__form {
+.settings-view__header {
   display: grid;
-}
-
-.settings-workspace {
-  gap: 1.1rem;
-}
-
-.settings-workspace__heading {
+  justify-items: start;
   gap: 0.25rem;
 }
 
-.settings-workspace__heading h1 {
-  margin: 0;
-  font-family: var(--font-serif);
-  font-size: 1.4rem;
-}
-
-.settings-workspace__heading p {
-  margin: 0;
+.settings-view__header .text-button {
+  margin-bottom: 1rem;
   color: var(--text-muted);
-  font-size: 0.78rem;
 }
 
-.settings-workspace__form {
-  min-width: 0;
-  gap: 1rem;
-}
-
-.settings-tabs {
-  --el-color-primary: var(--accent);
-  --el-text-color-primary: var(--text-primary);
-  --el-text-color-regular: var(--text-muted);
-
-  min-width: 0;
-}
-
-.settings-tabs :deep(.el-tabs__header.is-left) {
-  position: sticky;
-  top: 1rem;
-  align-self: flex-start;
-  width: 11.5rem;
-  margin-right: 1.4rem;
-}
-
-.settings-tabs :deep(.el-tabs__nav-wrap.is-left),
-.settings-tabs :deep(.el-tabs__nav-scroll),
-.settings-tabs :deep(.el-tabs__nav.is-left) {
-  width: 100%;
-}
-
-.settings-tabs :deep(.el-tabs__nav-wrap::after),
-.settings-tabs :deep(.el-tabs__active-bar) {
-  display: none;
-}
-
-.settings-tabs :deep(.el-tabs__item) {
-  height: 2.9rem;
-  justify-content: flex-start;
-  margin-bottom: 0.25rem;
-  padding: 0 0.9rem !important;
-  border-radius: 10px;
-  color: var(--text-muted);
-  font-size: 0.8rem;
-  font-weight: 650;
-}
-
-.settings-tabs :deep(.el-tabs__item.is-left) {
-  width: 100%;
-  text-align: left;
-}
-
-.settings-tabs :deep(.el-tabs__item:hover) {
+.settings-view__header .text-button:hover {
   color: var(--text-primary);
 }
 
-.settings-tabs :deep(.el-tabs__item.is-active) {
-  background: var(--accent-soft);
+.settings-view__header--detail .text-button {
+  margin-bottom: 0;
+}
+
+.settings-view__eyebrow {
   color: var(--accent-strong);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.17em;
 }
 
-.settings-tabs :deep(.el-tabs__content) {
+.settings-view__header h1 {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 1.55rem;
+}
+
+.settings-view__header p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  line-height: 1.6;
+}
+
+.settings-layout {
+  display: grid;
+  grid-template-columns: var(--settings-sidebar-width) minmax(0, 1fr);
+  align-items: start;
+  gap: var(--settings-layout-gap);
+}
+
+.settings-layout__sidebar {
+  position: sticky;
+  top: 1.3rem;
+}
+
+.settings-layout__content {
+  display: grid;
   min-width: 0;
-  overflow: visible;
-}
-
-.settings-tabs__label {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-}
-
-.settings-tabs__dirty {
-  width: 0.38rem;
-  height: 0.38rem;
-  border-radius: 50%;
-  background: currentColor;
+  gap: 1.5rem;
 }
 
 .settings-savebar {
   position: sticky;
-  bottom: 0.75rem;
+  bottom: 0.9rem;
   z-index: 5;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
   gap: 1rem;
-  margin-left: 12.9rem;
-  padding: 0.7rem 0.8rem;
-  border: 1px solid var(--border-subtle);
+  padding: 0.65rem 0.7rem 0.65rem 1rem;
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-card);
-  background: color-mix(in srgb, var(--surface-page) 92%, transparent);
-  box-shadow: 0 0.5rem 1.5rem color-mix(in srgb, var(--ink) 8%, transparent);
+  background: color-mix(in srgb, var(--surface-card) 92%, transparent);
+  box-shadow: 0 0.6rem 1.8rem rgb(0 0 0 / 10%);
   backdrop-filter: blur(12px);
 }
 
-.settings-savebar p {
-  margin: 0 auto 0 0;
+.settings-savebar__status {
+  min-width: 0;
+  flex: 1;
+  margin: 0;
+  overflow: hidden;
   color: var(--text-muted);
-  font-size: 0.72rem;
+  font-size: 0.74rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-savebar__status--invalid {
+  color: var(--danger);
+}
+
+.settings-savebar__actions {
+  display: flex;
+  flex: none;
+  gap: 0.5rem;
+}
+
+.settings-savebar-enter-active,
+.settings-savebar-leave-active {
+  transition: opacity var(--dur-loading-enter) var(--ease-card), transform var(--dur-loading-enter) var(--ease-card);
+}
+
+.settings-savebar-enter-from,
+.settings-savebar-leave-to {
+  opacity: 0;
+  transform: translateY(0.5rem);
 }
 
 .settings-view__loading {
@@ -506,60 +488,41 @@ async function logout(): Promise<void> {
 
 @media (max-width: 799px) {
   .settings-view {
-    padding-top: 0.8rem;
+    gap: 1.1rem;
+    padding-top: 0.9rem;
   }
 
-  .settings-tabs :deep(.el-tabs__header.is-top) {
-    position: sticky;
-    top: 0;
-    z-index: 4;
-    margin: 0 0 1rem;
-    padding: 0.35rem 0;
-    background: var(--surface-page);
+  .settings-view__header .text-button {
+    margin-bottom: 0.6rem;
   }
 
-  .settings-tabs :deep(.el-tabs__nav-wrap) {
-    overflow-x: auto;
-    scrollbar-width: none;
+  .settings-layout {
+    grid-template-columns: minmax(0, 1fr);
   }
 
-  .settings-tabs :deep(.el-tabs__nav-wrap::-webkit-scrollbar) {
-    display: none;
-  }
-
-  .settings-tabs :deep(.el-tabs__nav-scroll) {
-    overflow: visible;
-  }
-
-  .settings-tabs :deep(.el-tabs__nav) {
-    min-width: max-content;
-  }
-
-  .settings-tabs :deep(.el-tabs__item) {
-    height: 2.7rem;
-    justify-content: center;
-    margin: 0;
-    padding: 0 0.8rem !important;
-    font-size: 0.76rem;
-  }
-
-  .settings-savebar {
-    bottom: calc(var(--mobile-bottom-nav-height, 0px) + 0.65rem);
-    margin-left: 0;
+  .settings-layout__content {
+    gap: 1.25rem;
   }
 }
 
 @media (max-width: 520px) {
-  .settings-workspace__heading p {
-    max-width: 24rem;
+  .settings-savebar {
+    flex-wrap: wrap;
+    gap: 0.55rem;
+    padding: 0.7rem;
   }
 
-  .settings-savebar p {
-    display: none;
+  .settings-savebar__status {
+    flex-basis: 100%;
+    white-space: normal;
   }
 
-  .settings-savebar .button {
-    width: 100%;
+  .settings-savebar__actions {
+    flex: 1;
+  }
+
+  .settings-savebar__actions .button {
+    flex: 1;
   }
 }
 </style>

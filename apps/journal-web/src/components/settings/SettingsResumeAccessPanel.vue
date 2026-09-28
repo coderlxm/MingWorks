@@ -5,6 +5,8 @@ import type {
   JournalResumeAccessInput,
   JournalResumeAccessMode,
 } from '../../types';
+import { formatEntryTime } from '../../utils/formatters';
+import SettingsCard from './SettingsCard.vue';
 
 const props = defineProps<{
   summary: JournalAdminResumeSummary;
@@ -35,12 +37,15 @@ const presetDurations: Record<Exclude<TemporaryPreset, 'custom'>, number> = {
 };
 
 const maxTemporaryMs = 30 * 24 * 60 * 60 * 1000;
-const modeLabels: Record<JournalResumeAccessMode, string> = {
-  private: '仅自己可见',
-  protected: '访问口令',
-  temporary: '限时链接',
-  public: '完全公开',
-};
+const modeOptions: Array<{ value: JournalResumeAccessMode; label: string; description: string }> = [
+  { value: 'private', label: '仅自己可见', description: '保存后立即撤销当前口令会话或限时链接' },
+  { value: 'protected', label: '访问口令', description: '访客在「关于我」入口输入 6 位口令解锁' },
+  { value: 'temporary', label: '限时链接', description: '生成带随机 token 的地址，到期后自动失效' },
+  { value: 'public', label: '完全公开', description: '任何人都可以访问并下载' },
+];
+const modeLabels = Object.fromEntries(
+  modeOptions.map(option => [option.value, option.label]),
+) as Record<JournalResumeAccessMode, string>;
 
 const selectedMode = shallowRef<JournalResumeAccessMode>(props.summary.accessMode);
 const password = shallowRef('');
@@ -73,18 +78,6 @@ function selectPreset(preset: TemporaryPreset): void {
   presetValue.value = preset;
 }
 
-function formatDateTime(value: string): string {
-  return new Intl.DateTimeFormat('zh-CN', {
-    timeZone: 'Asia/Shanghai',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).format(new Date(value));
-}
-
 function save(): void {
   if (!canSave.value) return;
   if (selectedMode.value === 'protected') {
@@ -101,45 +94,23 @@ function save(): void {
 </script>
 
 <template>
-  <div class="resume-access-panel">
-    <div class="resume-access-panel__heading">
-      <span class="resume-access-panel__title">访问权限</span>
-      <span class="resume-access-panel__current">当前：{{ modeLabels[summary.accessMode] }}</span>
-    </div>
+  <SettingsCard title="访问权限" description="选择访客查看这份简历的方式，保存后立即生效。">
+    <template #aside>
+      <span class="resume-access__current">当前：{{ modeLabels[summary.accessMode] }}</span>
+    </template>
 
-    <div class="resume-access-panel__options">
-      <label class="resume-access-panel__option">
-        <input v-model="selectedMode" type="radio" value="private" :disabled="busy">
+    <div class="resume-access__options" role="radiogroup" aria-label="简历访问权限">
+      <label v-for="option in modeOptions" :key="option.value" class="resume-access__option">
+        <input v-model="selectedMode" type="radio" name="resume-access-mode" :value="option.value" :disabled="busy">
         <span>
-          <strong>仅自己可见</strong>
-          <small>保存后立即撤销当前口令会话或限时链接</small>
-        </span>
-      </label>
-      <label class="resume-access-panel__option">
-        <input v-model="selectedMode" type="radio" value="protected" :disabled="busy">
-        <span>
-          <strong>访问口令</strong>
-          <small>访问「关于我」入口后输入 6 位口令解锁，页面不回显已有口令</small>
-        </span>
-      </label>
-      <label class="resume-access-panel__option">
-        <input v-model="selectedMode" type="radio" value="temporary" :disabled="busy">
-        <span>
-          <strong>限时链接</strong>
-          <small>生成带随机 token 的限时地址，到期后自动失效</small>
-        </span>
-      </label>
-      <label class="resume-access-panel__option">
-        <input v-model="selectedMode" type="radio" value="public" :disabled="busy">
-        <span>
-          <strong>完全公开</strong>
-          <small>任何人都可以访问并下载</small>
+          <strong>{{ option.label }}</strong>
+          <small>{{ option.description }}</small>
         </span>
       </label>
     </div>
 
-    <div v-if="selectedMode === 'protected'" class="resume-access-panel__detail">
-      <label class="field resume-access-panel__password">
+    <div v-if="selectedMode === 'protected'" class="resume-access__detail">
+      <label class="field">
         <span class="field__label">访问口令</span>
         <input
           v-model="password"
@@ -151,37 +122,45 @@ function save(): void {
           :aria-invalid="password ? !passwordValid : undefined"
         >
       </label>
-      <small v-if="password && !passwordValid" class="resume-access-panel__error">
+      <small v-if="password && !passwordValid" class="resume-access__error">
         请输入 6 位数字口令
       </small>
+      <small v-else class="resume-access__hint">页面不会回显已有口令，保存后以新口令为准。</small>
     </div>
 
-    <div v-if="selectedMode === 'temporary'" class="resume-access-panel__detail">
-      <div class="resume-access-panel__presets">
+    <div v-if="selectedMode === 'temporary'" class="resume-access__detail">
+      <span class="field__label">有效期</span>
+      <div class="resume-access__presets">
         <button
           v-for="preset in presetOptions"
           :key="preset.value"
-          class="resume-access-panel__preset"
-          :class="{ 'resume-access-panel__preset--active': presetValue === preset.value }"
+          class="resume-access__preset"
+          :class="{ 'resume-access__preset--active': presetValue === preset.value }"
           type="button"
+          :aria-pressed="presetValue === preset.value"
           :disabled="busy"
           @click="selectPreset(preset.value)"
         >
           {{ preset.label }}
         </button>
       </div>
-      <label v-if="presetValue === 'custom'" class="field resume-access-panel__custom">
+      <label v-if="presetValue === 'custom'" class="field">
         <span class="field__label">自定义到期时间（不超过 30 天）</span>
         <input v-model="customExpiresAt" type="datetime-local" :disabled="busy">
       </label>
-      <div v-if="summary.temporaryShare" class="resume-access-panel__share-times">
-        <span>创建：{{ formatDateTime(summary.temporaryShare.createdAt) }}</span>
-        <span>到期：{{ formatDateTime(summary.temporaryShare.expiresAt) }}</span>
-        <small>重新生成限时链接会立即替换旧链接。</small>
-      </div>
-      <label v-if="shareUrl" class="field resume-access-panel__generated-link">
+      <dl v-if="summary.temporaryShare" class="resume-access__share-times">
+        <div>
+          <dt>创建</dt>
+          <dd>{{ formatEntryTime(summary.temporaryShare.createdAt) }}</dd>
+        </div>
+        <div>
+          <dt>到期</dt>
+          <dd>{{ formatEntryTime(summary.temporaryShare.expiresAt) }}</dd>
+        </div>
+      </dl>
+      <label v-if="shareUrl" class="field">
         <span class="field__label">本次生成的限时链接</span>
-        <span class="resume-access-panel__link-row">
+        <span class="resume-access__link-row">
           <input :value="shareUrl" type="text" readonly>
           <button
             class="button button--quiet"
@@ -192,15 +171,15 @@ function save(): void {
             复制链接
           </button>
         </span>
-        <small>完整链接只在本次生成后显示；离开页面后需要重新生成。</small>
+        <small class="resume-access__hint">完整链接只在本次生成后显示；离开页面后需要重新生成。</small>
       </label>
     </div>
 
-    <p v-if="selectedMode === 'public'" class="resume-access-panel__public-hint">
-      任何访客都可以从「关于我」进入、阅读并下载这份简历。
-    </p>
-
-    <div class="resume-access-panel__save">
+    <template #footer>
+      <small class="resume-access__footer-hint">
+        <template v-if="selectedMode === 'temporary'">重新生成限时链接会立即替换旧链接。</template>
+        <template v-else-if="selectedMode === 'public'">任何访客都可以从「关于我」进入、阅读并下载这份简历。</template>
+      </small>
       <button
         class="button button--primary"
         type="button"
@@ -208,178 +187,175 @@ function save(): void {
         :aria-busy="busy"
         @click="save"
       >
-        保存权限
+        {{ selectedMode === 'temporary' ? '生成限时链接' : '保存权限' }}
       </button>
-    </div>
-  </div>
+    </template>
+  </SettingsCard>
 </template>
 
 <style scoped>
-.resume-access-panel {
-  display: grid;
-  gap: 0.9rem;
-  padding: 1rem;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-card);
-  background: var(--surface-card);
-}
-
-.resume-access-panel__heading {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.resume-access-panel__title {
-  font-size: 0.9rem;
+.resume-access__current {
+  padding: 0.28rem 0.6rem;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-size: 0.7rem;
   font-weight: 700;
+  white-space: nowrap;
 }
 
-.resume-access-panel__current {
-  color: var(--text-muted);
-  font-size: 0.72rem;
-}
-
-.resume-access-panel__options {
+.resume-access__options {
   display: grid;
-  gap: 0.55rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
 }
 
-.resume-access-panel__option {
+.resume-access__option {
   display: flex;
+  min-width: 0;
   align-items: flex-start;
   gap: 0.6rem;
-  padding: 0.6rem 0.7rem;
+  padding: 0.75rem 0.8rem;
   border: 1px solid var(--border-subtle);
-  border-radius: 0.6rem;
+  border-radius: 10px;
   cursor: pointer;
+  transition: border-color 140ms ease, background-color 140ms ease;
 }
 
-.resume-access-panel__option:has(input:checked) {
+.resume-access__option:hover {
+  border-color: var(--border-strong);
+}
+
+.resume-access__option:has(input:checked) {
   border-color: var(--accent);
   background: var(--accent-soft);
 }
 
-.resume-access-panel__option input {
+.resume-access__option:has(input:disabled) {
+  cursor: wait;
+}
+
+.resume-access__option input {
   flex: none;
   margin: 0.18rem 0 0;
   accent-color: var(--accent);
 }
 
-.resume-access-panel__option span {
+.resume-access__option span {
   display: grid;
-  gap: 0.16rem;
+  min-width: 0;
+  gap: 0.18rem;
 }
 
-.resume-access-panel__option strong {
-  font-size: 0.84rem;
+.resume-access__option strong {
+  font-size: 0.82rem;
 }
 
-.resume-access-panel__option small {
+.resume-access__option small {
   color: var(--text-muted);
-  font-size: 0.72rem;
-  line-height: 1.45;
+  font-size: 0.7rem;
+  line-height: 1.5;
 }
 
-.resume-access-panel__detail {
+.resume-access__detail {
   display: grid;
-  gap: 0.5rem;
+  gap: 0.6rem;
+  padding-top: 1rem;
+  border-top: 1px dashed var(--border-subtle);
 }
 
-.resume-access-panel__password input,
-.resume-access-panel__custom input,
-.resume-access-panel__generated-link input {
+.resume-access__detail input {
   width: 100%;
-  min-height: 2.75rem;
-  padding: 0.55rem 0.7rem;
-  border: 1px solid var(--border-strong);
-  border-radius: 0.65rem;
-  background: var(--surface-card);
-  color: var(--text-primary);
-  font: inherit;
 }
 
-.resume-access-panel__password input:focus-visible,
-.resume-access-panel__custom input:focus-visible,
-.resume-access-panel__generated-link input:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
+.resume-access__error,
+.resume-access__hint {
+  font-size: 0.7rem;
+  line-height: 1.5;
 }
 
-.resume-access-panel__error {
+.resume-access__error {
   color: var(--danger);
-  font-size: 0.74rem;
 }
 
-.resume-access-panel__presets {
+.resume-access__hint {
+  color: var(--text-muted);
+}
+
+.resume-access__presets {
   display: flex;
   flex-wrap: wrap;
   gap: 0.45rem;
 }
 
-.resume-access-panel__preset {
-  min-height: 2.4rem;
+.resume-access__preset {
+  min-height: 2.2rem;
   padding: 0 0.9rem;
   border: 1px solid var(--border-subtle);
   border-radius: 999px;
-  background: var(--surface-page);
+  background: var(--surface-card);
   color: var(--text-muted);
   cursor: pointer;
   font-size: 0.76rem;
 }
 
-.resume-access-panel__preset:hover {
+.resume-access__preset:hover:not(:disabled) {
   border-color: var(--accent);
   color: var(--accent-strong);
 }
 
-.resume-access-panel__preset--active {
+.resume-access__preset--active {
   border-color: var(--accent);
   background: var(--accent-soft);
   color: var(--accent-strong);
+  font-weight: 650;
 }
 
-.resume-access-panel__preset:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.resume-access-panel__share-times {
-  display: grid;
-  gap: 0.14rem;
+.resume-access__share-times {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 1.25rem;
+  margin: 0;
   color: var(--text-muted);
-  font-size: 0.74rem;
+  font-size: 0.72rem;
 }
 
-.resume-access-panel__share-times small {
-  color: var(--text-muted);
+.resume-access__share-times div {
+  display: flex;
+  gap: 0.4rem;
 }
 
-.resume-access-panel__link-row {
+.resume-access__share-times dd {
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.resume-access__link-row {
   display: flex;
   min-width: 0;
   gap: 0.5rem;
 }
 
-.resume-access-panel__link-row input {
+.resume-access__link-row input {
   min-width: 0;
   flex: 1 1 auto;
 }
 
-.resume-access-panel__generated-link small {
+.resume-access__link-row .button {
+  flex: none;
+}
+
+.resume-access__footer-hint {
+  min-width: 0;
+  margin-right: auto;
   color: var(--text-muted);
   font-size: 0.7rem;
+  line-height: 1.5;
 }
 
-.resume-access-panel__public-hint {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: 0.74rem;
-}
-
-.resume-access-panel__save {
-  display: flex;
-  justify-content: flex-end;
+@media (max-width: 599px) {
+  .resume-access__options {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 </style>
