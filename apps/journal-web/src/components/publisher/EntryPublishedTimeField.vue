@@ -153,7 +153,8 @@ function updateValue(): void {
 }
 
 .published-time-field__inputs {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 7rem), 1fr));
   min-width: 0;
   gap: 0.75rem;
   padding: 0.75rem;
@@ -166,7 +167,6 @@ function updateValue(): void {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   min-width: 0;
-  flex: 1;
   gap: 0.4rem;
   color: var(--text-muted);
   font-size: 0.78rem;
@@ -174,10 +174,13 @@ function updateValue(): void {
 }
 
 .published-time-field__input input {
+  display: block;
   width: 100%;
   min-width: 0;
   max-width: 100%;
   min-height: 2.75rem;
+  -webkit-appearance: none;
+  appearance: none;
   padding: 0.55rem 0.7rem;
   border: 1px solid var(--border-strong);
   border-radius: 0.65rem;
@@ -191,9 +194,14 @@ function updateValue(): void {
   outline-offset: 2px;
 }
 
+.published-time-field__input input::-webkit-date-and-time-value {
+  min-height: 1.5em;
+  text-align: left;
+}
+
 @media (max-width: 520px) {
   .published-time-field__inputs {
-    flex-direction: column;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 </style>

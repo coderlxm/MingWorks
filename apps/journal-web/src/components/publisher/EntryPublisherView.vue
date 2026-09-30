@@ -659,15 +659,10 @@ async function generateTopic(): Promise<void> {
 }
 
 .publisher-view__sidebar :deep(.published-time-field__inputs) {
-  flex-wrap: wrap;
   padding: 0.5rem 0;
   border: 0;
   border-radius: 0;
   background: transparent;
-}
-
-.publisher-view__sidebar :deep(.published-time-field__input) {
-  flex-basis: 7rem;
 }
 
 .publisher-view__sidebar :deep(.visibility-field__password) {
