@@ -99,6 +99,7 @@ function updateValue(): void {
 <style scoped>
 .published-time-field {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   align-content: start;
   gap: 0.55rem;
   min-width: 0;
@@ -153,6 +154,7 @@ function updateValue(): void {
 
 .published-time-field__inputs {
   display: flex;
+  min-width: 0;
   gap: 0.75rem;
   padding: 0.75rem;
   border: 1px solid var(--border-subtle);
@@ -162,6 +164,7 @@ function updateValue(): void {
 
 .published-time-field__input {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   min-width: 0;
   flex: 1;
   gap: 0.4rem;
@@ -172,6 +175,8 @@ function updateValue(): void {
 
 .published-time-field__input input {
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   min-height: 2.75rem;
   padding: 0.55rem 0.7rem;
   border: 1px solid var(--border-strong);
