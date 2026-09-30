@@ -143,10 +143,15 @@ function removeExisting(assetId: number): void {
   removedAssetIds.value = new Set([...removedAssetIds.value, assetId]);
 }
 
+const returnPath = (window.history.state as { journalReturnPath?: string } | null)?.journalReturnPath ?? '/me';
+const returnLabel = returnPath.startsWith('/me') ? '我的全部记录' : '首页';
+
 function returnToAssets(): void {
-  const state = window.history.state as { journalReturnPath?: string } | null;
+  const { path, query, hash } = router.resolve(returnPath);
   void router.push({
-    path: state?.journalReturnPath ?? '/me',
+    path,
+    query,
+    hash,
     state: { journalAssetChanged: assetChanged.value },
   });
 }
@@ -305,7 +310,7 @@ async function generateTopic(): Promise<void> {
 <template>
   <main class="publisher-view">
     <header class="publisher-view__heading">
-      <button class="text-button" type="button" @click="returnToAssets">← 返回我的全部记录</button>
+      <button class="text-button" type="button" @click="returnToAssets">← 返回{{ returnLabel }}</button>
       <h1>{{ isEditing ? '编辑记录' : '写一条新记录' }}</h1>
       <p>{{ isEditing ? '继续整理文字，留住想记下的细节。' : '生活里的小事，也值得被记下来。' }}</p>
     </header>

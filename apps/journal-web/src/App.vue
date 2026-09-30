@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { EditPen } from '@element-plus/icons-vue';
 import { useMediaQuery } from '@vueuse/core';
 import { storeToRefs } from 'pinia';
 import {
@@ -99,6 +100,9 @@ const {
   handlePublicInteractionsChange,
   returnFromDetail,
 } = feedOverlay;
+
+const composeVisible = computed(() => ownerAuthenticated.value && route.value.name === 'public');
+const composeArticle = computed(() => publicFeedRoute.value?.channel === 'article');
 
 const {
   routedViewLocation,
@@ -263,6 +267,19 @@ onUnmounted(() => {
         @discovery-detail-unlocked="handleDiscoveryDetailUnlocked"
         @select-discovery-tag="selectDiscoveryTag"
       />
+
+      <RouterLink
+        v-if="composeVisible"
+        class="app-compose"
+        :to="{
+          name: composeArticle ? 'article-new' : 'entry-new',
+          state: { journalReturnPath: currentRoute.fullPath },
+        }"
+        :aria-label="composeArticle ? '写文章' : '发布内容'"
+        :title="composeArticle ? '写文章' : '发布内容'"
+      >
+        <EditPen class="app-compose__icon" aria-hidden="true" />
+      </RouterLink>
     </div>
   </div>
 </template>
@@ -326,6 +343,42 @@ onUnmounted(() => {
   gap: var(--public-layout-gap);
 }
 
+.app-main--public > .app-route-viewport,
+.app-compose {
+  grid-row: 1;
+  grid-column: -2 / -1;
+}
+
+.app-compose {
+  z-index: 20;
+  display: grid;
+  width: 3.25rem;
+  height: 3.25rem;
+  align-self: end;
+  justify-self: end;
+  margin: 0 1.5rem 1.75rem 0;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--accent-strong);
+  box-shadow: 0 0.5rem 1.4rem rgb(0 0 0 / 18%);
+  color: #fff;
+  transition: transform 160ms var(--ease-card), box-shadow 160ms ease;
+}
+
+.app-compose:hover {
+  box-shadow: 0 0.7rem 1.8rem rgb(0 0 0 / 22%);
+  transform: translateY(-2px);
+}
+
+.app-compose:active {
+  transform: scale(0.94);
+}
+
+.app-compose__icon {
+  width: 1.3rem;
+  height: 1.3rem;
+}
+
 .app-main--photo-immersive,
 .app-main--game-immersive {
   width: 100%;
@@ -357,8 +410,10 @@ onUnmounted(() => {
     gap: 0;
   }
 
-  .app-main--public > .app-route-viewport {
-    grid-row: 1;
+  .app-compose {
+    width: 3rem;
+    height: 3rem;
+    margin: 0 1rem 1rem 0;
   }
 }
 </style>

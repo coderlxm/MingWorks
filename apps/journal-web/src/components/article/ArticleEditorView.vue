@@ -314,16 +314,24 @@ function viewCurrentArticle(): void {
   if (article.value) viewArticle(article.value);
 }
 
+const returnPath = (window.history.state as { journalReturnPath?: string } | null)?.journalReturnPath ?? '/me';
+const returnLabel = returnPath.startsWith('/me') ? '我的资产' : '首页';
+
 function returnToAssets(): void {
-  const state = window.history.state as { journalReturnPath?: string } | null;
-  void router.push(state?.journalReturnPath ?? '/me');
+  const { path, query, hash } = router.resolve(returnPath);
+  void router.push({
+    path,
+    query,
+    hash,
+    state: { journalAssetChanged: article.value !== null },
+  });
 }
 </script>
 
 <template>
   <main class="editor-view">
     <div class="editor-view__heading">
-      <button class="text-button" type="button" @click="returnToAssets">← 返回我的资产</button>
+      <button class="text-button" type="button" @click="returnToAssets">← 返回{{ returnLabel }}</button>
       <span>{{ isEditing ? '编辑文章' : '写文章' }}</span>
     </div>
     <ArticleDraftList v-if="!article && !isEditing" />

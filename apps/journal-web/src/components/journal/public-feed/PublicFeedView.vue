@@ -121,6 +121,10 @@ onMounted(async () => {
 
 onActivated(() => {
   journal.mergeRevealedPublicEntries(props.revealedPublicEntries);
+  if (
+    !initialLoadPending.value
+    && (window.history.state as { journalAssetChanged?: boolean } | null)?.journalAssetChanged
+  ) void refreshFeed();
 });
 
 function isArticleEntry(entry: PublicJournalFeedItem): entry is JournalEntry {
