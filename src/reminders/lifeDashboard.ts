@@ -85,19 +85,26 @@ function prepareDay(kind: LifeKind, date = bjDate(), rescheduleUnsent = false): 
   return getLifeDay(kind, date);
 }
 
-async function clearButtons(bot: Telegraf, kind: LifeKind, date: string): Promise<void> {
-  const rows = getDb().prepare('SELECT message_id FROM life_reminder_messages WHERE kind = ? AND date_key = ?').all(kind, date) as Array<{ message_id: number }>;
-  for (const row of rows) {
-    await bot.telegram.editMessageReplyMarkup(config.tgChatId, row.message_id, undefined, { inline_keyboard: [] });
-    getDb().prepare('DELETE FROM life_reminder_messages WHERE kind = ? AND date_key = ? AND message_id = ?').run(kind, date, row.message_id);
+async function clearMessage(bot: Telegraf, kind: LifeKind, date: string, messageId: number, deleteMessage: boolean): Promise<void> {
+  if (deleteMessage) await bot.telegram.deleteMessage(config.tgChatId, messageId);
+  else await bot.telegram.editMessageReplyMarkup(config.tgChatId, messageId, undefined, { inline_keyboard: [] });
+  if (kind === 'vitamin' && !deleteMessage) {
+    getDb().prepare('UPDATE life_reminder_messages SET buttons_cleared = 1 WHERE kind = ? AND date_key = ? AND message_id = ?').run(kind, date, messageId);
+  } else {
+    getDb().prepare('DELETE FROM life_reminder_messages WHERE kind = ? AND date_key = ? AND message_id = ?').run(kind, date, messageId);
   }
+}
+
+async function clearMessages(bot: Telegraf, kind: LifeKind, date: string, deleteMessages = false): Promise<void> {
+  const rows = getDb().prepare('SELECT message_id FROM life_reminder_messages WHERE kind = ? AND date_key = ? AND (? = 1 OR buttons_cleared = 0)').all(kind, date, Number(deleteMessages)) as Array<{ message_id: number }>;
+  for (const row of rows) await clearMessage(bot, kind, date, row.message_id, deleteMessages);
 }
 
 async function finishDay(bot: Telegraf, kind: LifeKind, date: string, status: 'confirmed' | 'stopped' | 'auto_closed', reason: string): Promise<void> {
   createLifeDay(kind, date, null);
   if (date === bjDate()) cancelJob(kind);
   patchLifeDay(kind, date, { status, reason, finished_at: new Date().toISOString(), next_trigger_at: null });
-  try { await clearButtons(bot, kind, date); }
+  try { await clearMessages(bot, kind, date, kind === 'vitamin' && status === 'confirmed'); }
   catch (error) { throw Object.assign(error instanceof Error ? error : new Error(String(error)), { applied: true }); }
 }
 
@@ -122,8 +129,7 @@ async function sendTracked(bot: Telegraf | undefined, kind: LifeKind, date: stri
   const planUnchanged = current.status === day.status && current.next_trigger_at === null;
   patchLifeDay(kind, date, { last_sent_at: new Date().toISOString(), sent_count: current.sent_count === null ? null : current.sent_count + 1, ...(stillActive && planUnchanged ? { status: 'awaiting' as const, finished_at: null, reason: null } : {}) });
   if (!stillActive && bot) {
-    await bot.telegram.editMessageReplyMarkup(config.tgChatId, messageId, undefined, { inline_keyboard: [] });
-    getDb().prepare('DELETE FROM life_reminder_messages WHERE kind = ? AND date_key = ? AND message_id = ?').run(kind, date, messageId);
+    await clearMessage(bot, kind, date, messageId, kind === 'vitamin' && current.status === 'confirmed');
   }
   return stillActive && planUnchanged;
 }
@@ -272,7 +278,7 @@ export async function actLife(bot: Telegraf, rawKind: unknown, date: string, raw
     patchLifeDay(kind, date, { status: 'snoozed', next_trigger_at: next.toISOString(), finished_at: null, reason: '30 分钟后提醒', error: null });
     try {
       scheduleAt(bot, kind, date, next.toISOString());
-      await clearButtons(bot, kind, date);
+      await clearMessages(bot, kind, date);
     }
     catch (error) { throw Object.assign(error instanceof Error ? error : new Error(String(error)), { applied: true }); }
   } else {

@@ -477,6 +477,12 @@ const MIGRATIONS: DbMigration[] = [
     },
   },
   { version: 23, up: migrateLifeDashboard },
+  {
+    version: 24,
+    up(db) {
+      db.exec('ALTER TABLE life_reminder_messages ADD COLUMN buttons_cleared INTEGER NOT NULL DEFAULT 0;');
+    },
+  },
 ];
 
 export function runDbMigrations(db: Database.Database): void {
