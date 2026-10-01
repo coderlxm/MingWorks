@@ -10,6 +10,8 @@ IMAGE_REPOSITORY=notinews-journal
 DEPLOY_COMMIT_FILE=${PROJECT_DIR}/.deploy-commit
 PREVIOUS_COMMIT_FILE=${PROJECT_DIR}/.previous-deploy-commit
 WEB_DIR=${PROJECT_DIR}/web
+WEB_RELEASES_DIR=${WEB_DIR}/releases
+WEB_RETIRED_DIR=${WEB_DIR}/retired
 WEB_COMMIT_FILE=${PROJECT_DIR}/.web-deploy-commit
 EXPECTED_ARCHIVE_OWNER=journal-deploy
 
@@ -43,10 +45,17 @@ HOST_ASSETS_ARCHIVE=${INCOMING_DIR}/journal-host-${RELEASE_SHA}.tar
 IMAGE_REFERENCE=${IMAGE_REPOSITORY}:${RELEASE_SHA}
 RELEASE_ROOT=$(mktemp -d /var/lib/journal-deploy/release.XXXXXX)
 HOST_ASSETS_ROOT=${RELEASE_ROOT}/host
-WEB_RELEASE_ROOT=${RELEASE_ROOT}/web
+WEB_STAGING_ROOT=
+WEB_LINK_TEMP=${WEB_DIR}/.current-${RELEASE_SHA}
+WEB_MIGRATION=false
+PREVIOUS_WEB_SHA=
 
 cleanup() {
   rm -rf -- "${RELEASE_ROOT}"
+  if [[ -n ${WEB_STAGING_ROOT} ]]; then
+    rm -rf -- "${WEB_STAGING_ROOT}"
+  fi
+  rm -f -- "${WEB_LINK_TEMP}"
 }
 trap cleanup EXIT
 
@@ -62,14 +71,51 @@ require_archive() {
   fi
 }
 
+activate_web() {
+  ln -s "releases/${RELEASE_SHA}" "${WEB_LINK_TEMP}"
+  mv -Tf -- "${WEB_LINK_TEMP}" "${WEB_DIR}/current"
+  if [[ -n ${PREVIOUS_WEB_SHA} && ${PREVIOUS_WEB_SHA} != ${RELEASE_SHA} ]]; then
+    touch "${WEB_RETIRED_DIR}/${PREVIOUS_WEB_SHA}"
+  fi
+  rm -f -- "${WEB_RETIRED_DIR}/${RELEASE_SHA}"
+}
+
 if [[ ${DEPLOY_WEB} == true ]]; then
   require_archive "${WEB_ARCHIVE}"
-  install -d -m 755 "${WEB_RELEASE_ROOT}" "${WEB_DIR}"
-  tar -xf "${WEB_ARCHIVE}" -C "${WEB_RELEASE_ROOT}"
-  chmod -R a+rX "${WEB_RELEASE_ROOT}"
-  # Keep the mounted directory and previous hashed assets; publish resources before HTML.
-  tar -C "${WEB_RELEASE_ROOT}" --exclude='./index.html' --exclude='./contribute.html' -cf - . | \
-    tar -xf - -C "${WEB_DIR}"
+  install -d -m 755 "${WEB_DIR}" "${WEB_RELEASES_DIR}" "${WEB_RETIRED_DIR}"
+  if [[ -L ${WEB_DIR}/current ]]; then
+    CURRENT_WEB_TARGET=$(readlink "${WEB_DIR}/current")
+    if [[ ! ${CURRENT_WEB_TARGET} =~ ^releases/([0-9a-f]{40})$ ]]; then
+      echo 'invalid current frontend release link' >&2
+      exit 65
+    fi
+    PREVIOUS_WEB_SHA=${BASH_REMATCH[1]}
+  elif [[ -e ${WEB_DIR}/current || ${DEPLOY_BACKEND} != true ]]; then
+    echo 'first atomic frontend release requires both frontend and backend and no existing current directory' >&2
+    exit 65
+  else
+    WEB_MIGRATION=true
+  fi
+
+  WEB_RELEASE_DIR=${WEB_RELEASES_DIR}/${RELEASE_SHA}
+  if [[ ! -d ${WEB_RELEASE_DIR} ]]; then
+    WEB_STAGING_ROOT=$(mktemp -d "${WEB_DIR}/.release.XXXXXX")
+    tar -xf "${WEB_ARCHIVE}" -C "${WEB_STAGING_ROOT}"
+    chmod -R a+rX "${WEB_STAGING_ROOT}"
+    for entry in index.html contribute.html version.json; do
+      if [[ ! -f ${WEB_STAGING_ROOT}/${entry} ]]; then
+        echo "frontend artifact is missing ${entry}" >&2
+        exit 65
+      fi
+    done
+    mv -T -- "${WEB_STAGING_ROOT}" "${WEB_RELEASE_DIR}"
+    WEB_STAGING_ROOT=
+  fi
+
+  # The first backend using /web/current needs the clean release before it starts.
+  if [[ ${WEB_MIGRATION} == true ]]; then
+    activate_web
+  fi
 fi
 
 if [[ ${DEPLOY_BACKEND} == true ]]; then
@@ -137,12 +183,26 @@ if [[ ${DEPLOY_BACKEND} == true ]]; then
 fi
 
 if [[ ${DEPLOY_WEB} == true ]]; then
-  for entry in index.html contribute.html; do
-    install -m 644 "${WEB_RELEASE_ROOT}/${entry}" "${WEB_DIR}/${entry}.new"
-    mv "${WEB_DIR}/${entry}.new" "${WEB_DIR}/${entry}"
-  done
+  if [[ ${WEB_MIGRATION} != true ]]; then
+    activate_web
+  fi
   printf '%s\n' "${RELEASE_SHA}" > "${WEB_COMMIT_FILE}.new"
   chmod 600 "${WEB_COMMIT_FILE}.new"
   mv "${WEB_COMMIT_FILE}.new" "${WEB_COMMIT_FILE}"
   rm -- "${WEB_ARCHIVE}"
+
+  # Remove the former merged layout only after the release has succeeded.
+  find "${WEB_DIR}" -mindepth 1 -maxdepth 1 \
+    ! -name releases ! -name current ! -name retired -exec rm -rf -- {} +
+  while IFS= read -r -d '' retired_marker; do
+    retired_sha=${retired_marker##*/}
+    if [[ ! ${retired_sha} =~ ^[0-9a-f]{40}$ ]]; then
+      echo "invalid retired frontend marker: ${retired_marker}" >&2
+      exit 65
+    fi
+    if [[ ${retired_sha} != ${RELEASE_SHA} ]]; then
+      rm -rf -- "${WEB_RELEASES_DIR}/${retired_sha}"
+      rm -- "${retired_marker}"
+    fi
+  done < <(find "${WEB_RETIRED_DIR}" -type f -mmin +10079 -print0)
 fi

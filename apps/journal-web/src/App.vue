@@ -12,11 +12,13 @@ import { useRoute, useRouter } from 'vue-router';
 import { publicFeedPath } from './journalChannels';
 import AppHeader from './components/app/AppHeader.vue';
 import AppRouteViewport from './components/app/AppRouteViewport.vue';
+import AppUpdateNotice from './components/app/AppUpdateNotice.vue';
 import PublicChannelNavigation from './components/journal/PublicChannelNavigation.vue';
 import { useAppRoute } from './composables/useAppRoute';
 import { useAppScrollRestoration } from './composables/useAppScrollRestoration';
 import { useDiscoveryEntryOverlay } from './composables/useDiscoveryEntryOverlay';
 import { useFeedEntryOverlay } from './composables/useFeedEntryOverlay';
+import { useFrontendUpdate } from './composables/useFrontendUpdate';
 import { useSessionStore } from './stores/session';
 import { useSiteProfileStore } from './stores/siteProfile';
 import type {
@@ -34,6 +36,7 @@ const currentRoute = useRoute();
 const router = useRouter();
 const session = useSessionStore();
 const siteProfile = useSiteProfileStore();
+const { updateVisible, refresh: refreshFrontend, defer: deferFrontendUpdate } = useFrontendUpdate();
 const isMobile = useMediaQuery('(max-width: 599px)');
 const { ownerAuthenticated, authenticationChecked } = storeToRefs(session);
 const { profile, loadError: profileLoadError } = storeToRefs(siteProfile);
@@ -191,6 +194,11 @@ onUnmounted(() => {
       'app-shell--resume-immersive': resumeImmersiveActive,
     }"
   >
+    <AppUpdateNotice
+      :visible="updateVisible"
+      @refresh="refreshFrontend"
+      @defer="deferFrontendUpdate"
+    />
     <AppHeader
       v-if="!immersiveActive"
       v-show="!resumeImmersiveActive"

@@ -315,9 +315,12 @@ jobs:
 
       - name: Build and package Journal frontend
         if: env.DEPLOY_WEB == 'true'
+        env:
+          VITE_JOURNAL_WEB_VERSION: ${{ github.sha }}
         run: |
           pnpm install --frozen-lockfile
           pnpm run build:journal
+          printf '{"version":"%s"}\n' "$VITE_JOURNAL_WEB_VERSION" > apps/journal-web/dist/version.json
           tar -C apps/journal-web/dist -cf "/tmp/journal-web-$GITHUB_SHA.tar" .
 
       - name: Set up Journal backend Docker Buildx

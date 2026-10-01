@@ -20,7 +20,7 @@ ENV TZ=Asia/Shanghai
 ENV JOURNAL_WEB_HOST=0.0.0.0
 ENV JOURNAL_WEB_PORT=3100
 ENV JOURNAL_DATA_DIR=/data
-ENV JOURNAL_WEB_ROOT=/web
+ENV JOURNAL_WEB_ROOT=/web/current
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ffmpeg libheif-examples poppler-utils \

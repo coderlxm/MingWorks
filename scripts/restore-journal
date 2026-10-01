@@ -16,7 +16,7 @@ if [[ ${EUID} -ne 0 ]]; then
 fi
 
 if [[ $# -ne 1 ]]; then
-  echo 'usage: restore-journal <journal-v2-archive.tar.gz>' >&2
+  echo 'usage: restore-journal <journal-v3-archive.tar.gz>' >&2
   exit 64
 fi
 
@@ -25,7 +25,7 @@ CHECKSUM_PATH=${ARCHIVE_PATH}.sha256
 ARCHIVE_DIR=$(dirname "${ARCHIVE_PATH}")
 CHECKSUM_NAME=$(basename "${CHECKSUM_PATH}")
 RESTORE_ROOT=$(mktemp -d /var/tmp/journal-restore.XXXXXX)
-BUNDLE_ROOT=${RESTORE_ROOT}/journal-backup-v2
+BUNDLE_ROOT=${RESTORE_ROOT}/journal-backup-v3
 
 cleanup() {
   rm -rf -- "${RESTORE_ROOT}"
@@ -50,8 +50,8 @@ COMPONENT=$(manifest_value component)
 BACKEND_COMMIT=$(manifest_value backend_commit)
 WEB_COMMIT=$(manifest_value web_commit)
 
-if [[ ${FORMAT_VERSION} != 2 || ${COMPONENT} != journal ]]; then
-  echo 'archive is not a Journal v2 recovery package' >&2
+if [[ ${FORMAT_VERSION} != 3 || ${COMPONENT} != journal ]]; then
+  echo 'archive is not a Journal v3 recovery package' >&2
   exit 65
 fi
 
@@ -77,8 +77,10 @@ install -d -m 700 "${PROJECT_DIR}/data"
 cp -a "${PAYLOAD_ROOT}/data/." "${PROJECT_DIR}/data/"
 install -d -m 755 "${PROJECT_DIR}/web"
 find "${PROJECT_DIR}/web" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
-cp -a "${PAYLOAD_ROOT}/web/." "${PROJECT_DIR}/web/"
+install -d -m 755 "${PROJECT_DIR}/web/releases/${WEB_COMMIT}"
+cp -a "${PAYLOAD_ROOT}/web/." "${PROJECT_DIR}/web/releases/${WEB_COMMIT}/"
 chmod -R a+rX "${PROJECT_DIR}/web"
+ln -s "releases/${WEB_COMMIT}" "${PROJECT_DIR}/web/current"
 install -m 600 "${PAYLOAD_ROOT}/app.env" "${PROJECT_DIR}/.env"
 install -m 600 "${PAYLOAD_ROOT}/deploy-commit" "${PROJECT_DIR}/.deploy-commit"
 install -m 600 "${PAYLOAD_ROOT}/web-deploy-commit" "${PROJECT_DIR}/.web-deploy-commit"

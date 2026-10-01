@@ -14,13 +14,19 @@ MONTHLY_REMOTE=${REMOTE_ROOT}/monthly
 BACKUP_TIMESTAMP=$(TZ=Asia/Shanghai date +%Y-%m-%d-%H%M%S)
 BACKUP_DAY=$(TZ=Asia/Shanghai date +%d)
 DEPLOY_COMMIT=$(<"${PROJECT_DIR}/.deploy-commit")
-WEB_DEPLOY_COMMIT=$(<"${PROJECT_DIR}/.web-deploy-commit")
-BACKUP_NAME=journal-v2-${BACKUP_TIMESTAMP}-${DEPLOY_COMMIT:0:7}-${WEB_DEPLOY_COMMIT:0:7}.tar.gz
+WEB_TARGET=$(readlink "${PROJECT_DIR}/web/current")
+if [[ ! ${WEB_TARGET} =~ ^releases/([0-9a-f]{40})$ ]]; then
+  echo 'invalid current frontend release link' >&2
+  exit 65
+fi
+WEB_DEPLOY_COMMIT=${BASH_REMATCH[1]}
+WEB_SOURCE_DIR=${PROJECT_DIR}/web/${WEB_TARGET}
+BACKUP_NAME=journal-v3-${BACKUP_TIMESTAMP}-${DEPLOY_COMMIT:0:7}-${WEB_DEPLOY_COMMIT:0:7}.tar.gz
 ARCHIVE_PATH=${BACKUP_WORK_DIR}/${BACKUP_NAME}
 ARCHIVE_CHECKSUM_PATH=${ARCHIVE_PATH}.sha256
 install -d -m 700 "${BACKUP_WORK_DIR}"
 STAGING_ROOT=$(mktemp -d "${BACKUP_WORK_DIR}/staging.XXXXXX")
-BUNDLE_ROOT=${STAGING_ROOT}/journal-backup-v2
+BUNDLE_ROOT=${STAGING_ROOT}/journal-backup-v3
 PAYLOAD_ROOT=${BUNDLE_ROOT}/payload
 RCLONE_ARGS=(--retries 1 --low-level-retries 1)
 
@@ -37,15 +43,16 @@ install -d -m 700 \
 
 install -m 600 "${PROJECT_DIR}/.env" "${PAYLOAD_ROOT}/app.env"
 install -m 600 "${PROJECT_DIR}/.deploy-commit" "${PAYLOAD_ROOT}/deploy-commit"
-install -m 600 "${PROJECT_DIR}/.web-deploy-commit" "${PAYLOAD_ROOT}/web-deploy-commit"
+printf '%s\n' "${WEB_DEPLOY_COMMIT}" > "${PAYLOAD_ROOT}/web-deploy-commit"
+chmod 600 "${PAYLOAD_ROOT}/web-deploy-commit"
 install -m 600 "${PROJECT_DIR}/compose.yaml" "${PAYLOAD_ROOT}/compose.yaml"
 install -m 600 "${OPENRESTY_SITE_CONFIG}" "${PAYLOAD_ROOT}/proxy/site.conf"
 cp -a "${PROJECT_DIR}/data/." "${PAYLOAD_ROOT}/data/"
-cp -a "${PROJECT_DIR}/web/." "${PAYLOAD_ROOT}/web/"
+cp -a "${WEB_SOURCE_DIR}/." "${PAYLOAD_ROOT}/web/"
 cp -a "${OPENRESTY_SITE_SSL}/." "${PAYLOAD_ROOT}/proxy/ssl/"
 
 {
-  echo 'format_version=2'
+  echo 'format_version=3'
   echo 'component=journal'
   echo "created_at=$(TZ=Asia/Shanghai date --iso-8601=seconds)"
   echo "backend_commit=${DEPLOY_COMMIT}"
@@ -63,7 +70,7 @@ chmod 600 "${BUNDLE_ROOT}/manifest.env"
 ) > "${BUNDLE_ROOT}/payload.sha256"
 chmod 600 "${BUNDLE_ROOT}/payload.sha256"
 
-tar -czf "${ARCHIVE_PATH}" -C "${STAGING_ROOT}" journal-backup-v2
+tar -czf "${ARCHIVE_PATH}" -C "${STAGING_ROOT}" journal-backup-v3
 (
   cd "${BACKUP_WORK_DIR}"
   sha256sum "${BACKUP_NAME}" > "${BACKUP_NAME}.sha256"

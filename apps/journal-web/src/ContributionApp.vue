@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { onMounted, shallowRef } from 'vue';
+import AppUpdateNotice from './components/app/AppUpdateNotice.vue';
 import ContributionForm from './components/contribution/ContributionForm.vue';
 import ContributionHeader from './components/contribution/ContributionHeader.vue';
 import ContributionSuccess from './components/contribution/ContributionSuccess.vue';
 import type { ContributionSuccessResult } from './composables/useContributionSubmit';
+import { useFrontendUpdate } from './composables/useFrontendUpdate';
 import { showMessage } from './utils/message';
 
 type LinkState = 'loading' | 'ready' | 'error';
@@ -26,6 +28,7 @@ interface ContributionLinkResponse {
 const linkState = shallowRef<LinkState>('loading');
 const linkInfo = shallowRef<ContributionLinkResponse | null>(null);
 const successResult = shallowRef<ContributionSuccessResult | null>(null);
+const { updateVisible, refresh: refreshFrontend, defer: deferFrontendUpdate } = useFrontendUpdate();
 
 const token = new URLSearchParams(window.location.hash.slice(1)).get('token') ?? '';
 
@@ -83,6 +86,11 @@ onMounted(() => {
 
 <template>
   <main class="contribution-page">
+    <AppUpdateNotice
+      :visible="updateVisible"
+      @refresh="refreshFrontend"
+      @defer="deferFrontendUpdate"
+    />
     <div class="contribution-shell">
       <ContributionHeader />
 

@@ -261,6 +261,11 @@ export async function createJournalServer(config: JournalServerConfig): Promise<
   };
   server.get('/', sendApplication);
 
+  server.get('/version.json', async (_request, reply) => {
+    reply.header('Cache-Control', 'no-store');
+    return reply.sendFile('version.json', { cacheControl: false, etag: false, lastModified: false });
+  });
+
   server.get('/contribute', async (_request, reply) => {
     reply.header('Cache-Control', 'no-cache');
     reply.header('Referrer-Policy', 'no-referrer');
