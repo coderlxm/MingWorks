@@ -383,8 +383,8 @@ onUnmounted(() => {
 }
 
 .app-compose__icon {
-  width: 1.3rem;
-  height: 1.3rem;
+  width: 1.6rem;
+  height: 1.6rem;
 }
 
 .app-main--photo-immersive,
