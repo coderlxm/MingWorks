@@ -122,7 +122,7 @@ const formattedDate = computed(() => dateFormatter.format(new Date(props.entry.s
   grid-template-columns: 7.8rem minmax(0, 1fr) auto;
   align-items: start;
   gap: 1.35rem;
-  padding: 1.35rem 0.2rem;
+  padding: 1.35rem clamp(0.9rem, 2.4vw, 1.5rem);
   border: 0;
   background: transparent;
   color: inherit;
@@ -221,7 +221,7 @@ const formattedDate = computed(() => dateFormatter.format(new Date(props.entry.s
   .discovery-item__button {
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 0.8rem;
-    padding: 1.1rem 0.15rem;
+    padding: 1.1rem 0.85rem;
   }
 
   .discovery-item__date-rail {

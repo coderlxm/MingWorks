@@ -1,5 +1,5 @@
 <script setup lang="ts" name="PublicArchiveView">
-import { nextTick, onBeforeUnmount, onMounted, onUpdated, shallowRef } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, onUpdated, shallowRef } from 'vue';
 import { onBeforeRouteUpdate, useRoute, useRouter } from 'vue-router';
 import { fetchPublicDiscoveryArchive } from '../../api';
 import { usePublicDiscoveryCache } from '../../composables/usePublicDiscoveryCache';
@@ -25,6 +25,23 @@ const error = shallowRef<string | null>(null);
 let activeIdentity = '';
 
 const canonicalPath = '/archive';
+
+const almanac = computed(() => {
+  const maxCount = Math.max(...years.value.flatMap(yearEntry => yearEntry.months.map(monthEntry => monthEntry.count)));
+  return years.value.map((yearEntry) => {
+    const counts = new Map(yearEntry.months.map(monthEntry => [monthEntry.month, monthEntry.count]));
+    return {
+      year: yearEntry.year,
+      total: yearEntry.months.reduce((sum, monthEntry) => sum + monthEntry.count, 0),
+      activeMonths: yearEntry.months.length,
+      months: Array.from({ length: 12 }, (_, index) => {
+        const month = index + 1;
+        const count = counts.get(month) ?? 0;
+        return { month, count, ratio: count / maxCount };
+      }),
+    };
+  });
+});
 
 function archiveHead() {
   return {
@@ -122,29 +139,39 @@ onBeforeUnmount(() => {
 
     <div v-else class="archive-view__years">
       <section
-        v-for="yearEntry in years"
+        v-for="yearEntry in almanac"
         :key="yearEntry.year"
         class="archive-year"
         :aria-labelledby="`archive-year-${yearEntry.year}`"
       >
-        <h2 :id="`archive-year-${yearEntry.year}`" class="archive-year__title">
-          {{ yearEntry.year }}
-        </h2>
-        <div class="archive-year__months">
-          <RouterLink
-            v-for="monthEntry in yearEntry.months"
-            :key="monthEntry.month"
-            class="archive-month"
-            :to="publicArchiveMonthPath(yearEntry.year, monthEntry.month)"
-          >
-            <span class="archive-month__number">{{ String(monthEntry.month).padStart(2, '0') }}</span>
-            <span class="archive-month__label">{{ monthEntry.month }}月</span>
-            <span class="archive-month__count">{{ monthEntry.count }} 项</span>
-            <svg class="archive-month__arrow" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="m9 5 7 7-7 7" />
-            </svg>
-          </RouterLink>
-        </div>
+        <header class="archive-year__header">
+          <h2 :id="`archive-year-${yearEntry.year}`" class="archive-year__title">
+            {{ yearEntry.year }}
+          </h2>
+          <p class="archive-year__summary">
+            {{ yearEntry.total }} 项<span aria-hidden="true">/</span>{{ yearEntry.activeMonths }} 个月
+          </p>
+        </header>
+        <ol class="archive-year__months">
+          <li v-for="monthEntry in yearEntry.months" :key="monthEntry.month">
+            <RouterLink
+              v-if="monthEntry.count"
+              class="archive-month"
+              :to="publicArchiveMonthPath(yearEntry.year, monthEntry.month)"
+              :aria-label="`${yearEntry.year}年${monthEntry.month}月，${monthEntry.count} 项`"
+              :style="{ '--ratio': monthEntry.ratio }"
+            >
+              <span class="archive-month__bar" aria-hidden="true" />
+              <span class="archive-month__number">{{ String(monthEntry.month).padStart(2, '0') }}</span>
+              <span class="archive-month__count">{{ monthEntry.count }}</span>
+            </RouterLink>
+            <span v-else class="archive-month archive-month--empty" aria-hidden="true">
+              <span class="archive-month__bar" />
+              <span class="archive-month__number">{{ String(monthEntry.month).padStart(2, '0') }}</span>
+              <span class="archive-month__count">·</span>
+            </span>
+          </li>
+        </ol>
       </section>
     </div>
   </main>
@@ -223,85 +250,126 @@ onBeforeUnmount(() => {
 
 .archive-view__years {
   display: grid;
-  gap: clamp(2.4rem, 6vw, 4rem);
+  gap: clamp(2.8rem, 7vw, 4.8rem);
 }
 
 .archive-year {
   display: grid;
-  grid-template-columns: 7rem minmax(0, 1fr);
-  gap: 1.5rem;
+  gap: clamp(1.2rem, 3vw, 1.8rem);
+}
+
+.archive-year__header {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  padding-bottom: 0.7rem;
+  border-bottom: 1px solid var(--text-primary);
 }
 
 .archive-year__title {
   color: var(--text-primary);
-  font-size: 1.55rem;
+  font-size: clamp(2.4rem, 7vw, 3.8rem);
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  line-height: 0.9;
+}
+
+.archive-year__summary {
+  margin: 0 0 0 auto;
+  color: var(--text-muted);
+  font-family: var(--font-condensed);
+  font-size: 0.74rem;
+  letter-spacing: 0.06em;
+}
+
+.archive-year__summary span {
+  margin: 0 0.45rem;
+  color: var(--border-strong);
 }
 
 .archive-year__months {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.75rem;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
 .archive-month {
   display: grid;
-  min-width: 0;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: end;
-  gap: 0.25rem 0.65rem;
-  padding: 1rem;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-card);
-  background: var(--surface-card);
+  justify-items: center;
+  gap: 0.3rem;
+  padding-bottom: 0.4rem;
   color: inherit;
   text-decoration: none;
-  transition: border-color 150ms ease, transform 150ms ease;
 }
 
-.archive-month:hover {
-  border-color: var(--border-strong);
-  transform: translateY(-2px);
+.archive-month__bar {
+  position: relative;
+  width: 100%;
+  height: clamp(4.2rem, 10vw, 6.5rem);
+  margin-bottom: 0.45rem;
+  border-bottom: 1px solid var(--border-strong);
+}
+
+.archive-month__bar::after {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: clamp(4px, 0.9vw, 7px);
+  height: max(3px, calc(var(--ratio) * 100%));
+  background: var(--text-primary);
+  content: '';
+  transform: translateX(-50%);
+  transition: background-color 150ms ease, width 150ms ease;
 }
 
 .archive-month__number {
-  grid-column: 1 / -1;
   color: var(--text-primary);
   font-family: var(--font-serif);
-  font-size: 1.65rem;
-  font-weight: 720;
+  font-size: clamp(0.95rem, 2vw, 1.25rem);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
   line-height: 1;
+  transition: color 150ms ease;
 }
 
-.archive-month__label,
 .archive-month__count {
   color: var(--text-muted);
-  font-size: 0.7rem;
+  font-family: var(--font-condensed);
+  font-size: 0.68rem;
+  font-variant-numeric: tabular-nums;
+  transition: color 150ms ease;
 }
 
-.archive-month__arrow {
-  width: 0.95rem;
+.archive-month:hover .archive-month__bar::after,
+.archive-month:focus-visible .archive-month__bar::after {
+  width: clamp(6px, 1.4vw, 11px);
+  background: var(--accent);
+}
+
+.archive-month:hover .archive-month__number,
+.archive-month:hover .archive-month__count,
+.archive-month:focus-visible .archive-month__number,
+.archive-month:focus-visible .archive-month__count {
+  color: var(--accent-strong);
+}
+
+.archive-month--empty .archive-month__bar::after {
+  display: none;
+}
+
+.archive-month--empty .archive-month__number,
+.archive-month--empty .archive-month__count {
   color: var(--border-strong);
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.8;
+  font-weight: 500;
 }
 
-@media (max-width: 760px) {
-  .archive-year {
-    grid-template-columns: 1fr;
-    gap: 1rem;
-  }
-
+@media (max-width: 520px) {
   .archive-year__months {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 420px) {
-  .archive-year__months {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    row-gap: 1.2rem;
   }
 }
 </style>
