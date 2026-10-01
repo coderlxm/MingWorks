@@ -360,8 +360,8 @@ onUnmounted(() => {
 .app-compose {
   z-index: 20;
   display: grid;
-  width: 3.25rem;
-  height: 3.25rem;
+  width: 3.5rem;
+  height: 3.5rem;
   align-self: end;
   justify-self: end;
   margin: 0 1.5rem 1.75rem 0;
@@ -419,8 +419,8 @@ onUnmounted(() => {
   }
 
   .app-compose {
-    width: 3rem;
-    height: 3rem;
+    width: 3.25rem;
+    height: 3.25rem;
     margin: 0 1rem 1rem 0;
   }
 }
