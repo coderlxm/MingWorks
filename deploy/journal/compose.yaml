@@ -10,9 +10,10 @@ services:
       JOURNAL_WEB_HOST: 0.0.0.0
       JOURNAL_WEB_PORT: "3100"
       JOURNAL_DATA_DIR: /data
-      JOURNAL_WEB_ROOT: /app/apps/journal-web/dist
+      JOURNAL_WEB_ROOT: /web
     volumes:
       - /opt/journal/data:/data
+      - /opt/journal/web:/web:ro
     ports:
       - "127.0.0.1:3100:3100"
     cpus: 1.0

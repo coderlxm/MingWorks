@@ -9,107 +9,140 @@ INCOMING_DIR=/var/lib/journal-deploy/incoming
 IMAGE_REPOSITORY=notinews-journal
 DEPLOY_COMMIT_FILE=${PROJECT_DIR}/.deploy-commit
 PREVIOUS_COMMIT_FILE=${PROJECT_DIR}/.previous-deploy-commit
+WEB_DIR=${PROJECT_DIR}/web
+WEB_COMMIT_FILE=${PROJECT_DIR}/.web-deploy-commit
 EXPECTED_ARCHIVE_OWNER=journal-deploy
 
-if [[ $# -lt 1 || $# -gt 2 || ! $1 =~ ^[0-9a-f]{40}$ ]]; then
-  echo 'usage: journal-deploy-release <40-character-lowercase-commit-sha> [--install-host-assets]' >&2
+if [[ $# -lt 2 || $# -gt 3 || ! $1 =~ ^[0-9a-f]{40}$ ]]; then
+  echo 'usage: journal-deploy-release <40-character-lowercase-commit-sha> <web|backend|both> [--install-host-assets]' >&2
   exit 64
 fi
 
 RELEASE_SHA=$1
+DEPLOY_WEB=false
+DEPLOY_BACKEND=false
+case $2 in
+  web) DEPLOY_WEB=true ;;
+  backend) DEPLOY_BACKEND=true ;;
+  both) DEPLOY_WEB=true; DEPLOY_BACKEND=true ;;
+  *) echo 'release scope must be web, backend or both' >&2; exit 64 ;;
+esac
+
 INSTALL_HOST_ASSETS=false
-if [[ $# -eq 2 ]]; then
-  if [[ $2 != --install-host-assets ]]; then
-    echo 'second argument must be --install-host-assets' >&2
+if [[ $# -eq 3 ]]; then
+  if [[ $3 != --install-host-assets || ${DEPLOY_BACKEND} != true ]]; then
+    echo '--install-host-assets requires a backend release' >&2
     exit 64
   fi
   INSTALL_HOST_ASSETS=true
 fi
 
 IMAGE_ARCHIVE=${INCOMING_DIR}/journal-${RELEASE_SHA}.tar
+WEB_ARCHIVE=${INCOMING_DIR}/journal-web-${RELEASE_SHA}.tar
 HOST_ASSETS_ARCHIVE=${INCOMING_DIR}/journal-host-${RELEASE_SHA}.tar
 IMAGE_REFERENCE=${IMAGE_REPOSITORY}:${RELEASE_SHA}
-HOST_ASSETS_ROOT=$(mktemp -d /var/lib/journal-deploy/host-assets.XXXXXX)
+RELEASE_ROOT=$(mktemp -d /var/lib/journal-deploy/release.XXXXXX)
+HOST_ASSETS_ROOT=${RELEASE_ROOT}/host
+WEB_RELEASE_ROOT=${RELEASE_ROOT}/web
 
 cleanup() {
-  rm -rf -- "${HOST_ASSETS_ROOT}"
+  rm -rf -- "${RELEASE_ROOT}"
 }
 trap cleanup EXIT
 
-if [[ ! -f ${IMAGE_ARCHIVE} || -L ${IMAGE_ARCHIVE} ]]; then
-  echo "release archive is missing or is not a regular file: ${IMAGE_ARCHIVE}" >&2
-  exit 66
-fi
-
-if [[ $(stat -c '%U' "${IMAGE_ARCHIVE}") != ${EXPECTED_ARCHIVE_OWNER} ]]; then
-  echo "release archive must be owned by ${EXPECTED_ARCHIVE_OWNER}" >&2
-  exit 77
-fi
-
-if [[ ${INSTALL_HOST_ASSETS} == true ]]; then
-  if [[ ! -f ${HOST_ASSETS_ARCHIVE} || -L ${HOST_ASSETS_ARCHIVE} ]]; then
-    echo "host assets archive is missing or is not a regular file: ${HOST_ASSETS_ARCHIVE}" >&2
+require_archive() {
+  local archive=$1
+  if [[ ! -f ${archive} || -L ${archive} ]]; then
+    echo "release archive is missing or is not a regular file: ${archive}" >&2
     exit 66
   fi
-  if [[ $(stat -c '%U' "${HOST_ASSETS_ARCHIVE}") != ${EXPECTED_ARCHIVE_OWNER} ]]; then
-    echo "host assets archive must be owned by ${EXPECTED_ARCHIVE_OWNER}" >&2
+  if [[ $(stat -c '%U' "${archive}") != ${EXPECTED_ARCHIVE_OWNER} ]]; then
+    echo "release archive must be owned by ${EXPECTED_ARCHIVE_OWNER}" >&2
     exit 77
   fi
+}
 
-  tar -xf "${HOST_ASSETS_ARCHIVE}" -C "${HOST_ASSETS_ROOT}"
-  install -m 755 "${HOST_ASSETS_ROOT}/scripts/journal-backup" /usr/local/sbin/journal-backup
-  install -m 755 "${HOST_ASSETS_ROOT}/deploy/journal/deploy-release" /usr/local/sbin/journal-deploy-release
-  install -m 644 "${HOST_ASSETS_ROOT}/deploy/journal/compose.yaml" "${COMPOSE_FILE}"
-  install -m 644 "${HOST_ASSETS_ROOT}/deploy/journal/journal-backup.service" /etc/systemd/system/journal-backup.service
-  install -m 644 "${HOST_ASSETS_ROOT}/deploy/journal/journal-backup.timer" /etc/systemd/system/journal-backup.timer
-  systemctl daemon-reload
-  systemctl enable --now journal-backup.timer
-  rm -- "${HOST_ASSETS_ARCHIVE}"
+if [[ ${DEPLOY_WEB} == true ]]; then
+  require_archive "${WEB_ARCHIVE}"
+  install -d -m 755 "${WEB_RELEASE_ROOT}" "${WEB_DIR}"
+  tar -xf "${WEB_ARCHIVE}" -C "${WEB_RELEASE_ROOT}"
+  chmod -R a+rX "${WEB_RELEASE_ROOT}"
+  # Keep the mounted directory and previous hashed assets; publish resources before HTML.
+  tar -C "${WEB_RELEASE_ROOT}" --exclude='./index.html' --exclude='./contribute.html' -cf - . | \
+    tar -xf - -C "${WEB_DIR}"
 fi
 
-docker image load --input "${IMAGE_ARCHIVE}"
-rm -- "${IMAGE_ARCHIVE}"
-docker image inspect "${IMAGE_REFERENCE}" >/dev/null
-
-CURRENT_SHA=
-if [[ -f ${DEPLOY_COMMIT_FILE} ]]; then
-  CURRENT_SHA=$(<"${DEPLOY_COMMIT_FILE}")
-  if [[ ! ${CURRENT_SHA} =~ ^[0-9a-f]{40}$ ]]; then
-    echo "invalid current release marker: ${DEPLOY_COMMIT_FILE}" >&2
-    exit 65
+if [[ ${DEPLOY_BACKEND} == true ]]; then
+  require_archive "${IMAGE_ARCHIVE}"
+  if [[ ${INSTALL_HOST_ASSETS} == true ]]; then
+    require_archive "${HOST_ASSETS_ARCHIVE}"
+    install -d "${HOST_ASSETS_ROOT}"
+    tar -xf "${HOST_ASSETS_ARCHIVE}" -C "${HOST_ASSETS_ROOT}"
+    install -m 755 "${HOST_ASSETS_ROOT}/scripts/journal-backup" /usr/local/sbin/journal-backup
+    install -m 755 "${HOST_ASSETS_ROOT}/deploy/journal/deploy-release" /usr/local/sbin/journal-deploy-release
+    install -m 644 "${HOST_ASSETS_ROOT}/deploy/journal/compose.yaml" "${COMPOSE_FILE}"
+    install -m 644 "${HOST_ASSETS_ROOT}/deploy/journal/journal-backup.service" /etc/systemd/system/journal-backup.service
+    install -m 644 "${HOST_ASSETS_ROOT}/deploy/journal/journal-backup.timer" /etc/systemd/system/journal-backup.timer
+    systemctl daemon-reload
+    systemctl enable --now journal-backup.timer
+    rm -- "${HOST_ASSETS_ARCHIVE}"
   fi
+
+  docker image load --input "${IMAGE_ARCHIVE}"
+  rm -- "${IMAGE_ARCHIVE}"
+  docker image inspect "${IMAGE_REFERENCE}" >/dev/null
+
+  CURRENT_SHA=
+  if [[ -f ${DEPLOY_COMMIT_FILE} ]]; then
+    CURRENT_SHA=$(<"${DEPLOY_COMMIT_FILE}")
+    if [[ ! ${CURRENT_SHA} =~ ^[0-9a-f]{40}$ ]]; then
+      echo "invalid current release marker: ${DEPLOY_COMMIT_FILE}" >&2
+      exit 65
+    fi
+  fi
+
+  JOURNAL_IMAGE_TAG=${RELEASE_SHA} docker compose \
+    --project-name journal \
+    --file "${COMPOSE_FILE}" \
+    up --detach --no-deps --wait --wait-timeout 90 journal
+
+  if [[ -n ${CURRENT_SHA} && ${CURRENT_SHA} != ${RELEASE_SHA} ]]; then
+    printf '%s\n' "${CURRENT_SHA}" > "${PREVIOUS_COMMIT_FILE}.new"
+    chmod 600 "${PREVIOUS_COMMIT_FILE}.new"
+    mv "${PREVIOUS_COMMIT_FILE}.new" "${PREVIOUS_COMMIT_FILE}"
+  fi
+
+  printf '%s\n' "${RELEASE_SHA}" > "${DEPLOY_COMMIT_FILE}.new"
+  chmod 600 "${DEPLOY_COMMIT_FILE}.new"
+  mv "${DEPLOY_COMMIT_FILE}.new" "${DEPLOY_COMMIT_FILE}"
+
+  PREVIOUS_SHA=
+  if [[ -f ${PREVIOUS_COMMIT_FILE} ]]; then
+    PREVIOUS_SHA=$(<"${PREVIOUS_COMMIT_FILE}")
+    if [[ ! ${PREVIOUS_SHA} =~ ^[0-9a-f]{40}$ ]]; then
+      echo "invalid previous release marker: ${PREVIOUS_COMMIT_FILE}" >&2
+      exit 65
+    fi
+  fi
+
+  while IFS= read -r image_tag; do
+    if [[ ! ${image_tag} =~ ^[0-9a-f]{40}$ ]]; then
+      continue
+    fi
+    if [[ ${image_tag} == ${RELEASE_SHA} || ${image_tag} == ${PREVIOUS_SHA} ]]; then
+      continue
+    fi
+    docker image rm "${IMAGE_REPOSITORY}:${image_tag}"
+  done < <(docker image ls "${IMAGE_REPOSITORY}" --format '{{.Tag}}')
 fi
 
-JOURNAL_IMAGE_TAG=${RELEASE_SHA} docker compose \
-  --project-name journal \
-  --file "${COMPOSE_FILE}" \
-  up --detach --no-deps --wait --wait-timeout 90 journal
-
-if [[ -n ${CURRENT_SHA} && ${CURRENT_SHA} != ${RELEASE_SHA} ]]; then
-  printf '%s\n' "${CURRENT_SHA}" > "${PREVIOUS_COMMIT_FILE}.new"
-  chmod 600 "${PREVIOUS_COMMIT_FILE}.new"
-  mv "${PREVIOUS_COMMIT_FILE}.new" "${PREVIOUS_COMMIT_FILE}"
+if [[ ${DEPLOY_WEB} == true ]]; then
+  for entry in index.html contribute.html; do
+    install -m 644 "${WEB_RELEASE_ROOT}/${entry}" "${WEB_DIR}/${entry}.new"
+    mv "${WEB_DIR}/${entry}.new" "${WEB_DIR}/${entry}"
+  done
+  printf '%s\n' "${RELEASE_SHA}" > "${WEB_COMMIT_FILE}.new"
+  chmod 600 "${WEB_COMMIT_FILE}.new"
+  mv "${WEB_COMMIT_FILE}.new" "${WEB_COMMIT_FILE}"
+  rm -- "${WEB_ARCHIVE}"
 fi
-
-printf '%s\n' "${RELEASE_SHA}" > "${DEPLOY_COMMIT_FILE}.new"
-chmod 600 "${DEPLOY_COMMIT_FILE}.new"
-mv "${DEPLOY_COMMIT_FILE}.new" "${DEPLOY_COMMIT_FILE}"
-
-PREVIOUS_SHA=
-if [[ -f ${PREVIOUS_COMMIT_FILE} ]]; then
-  PREVIOUS_SHA=$(<"${PREVIOUS_COMMIT_FILE}")
-  if [[ ! ${PREVIOUS_SHA} =~ ^[0-9a-f]{40}$ ]]; then
-    echo "invalid previous release marker: ${PREVIOUS_COMMIT_FILE}" >&2
-    exit 65
-  fi
-fi
-
-while IFS= read -r image_tag; do
-  if [[ ! ${image_tag} =~ ^[0-9a-f]{40}$ ]]; then
-    continue
-  fi
-  if [[ ${image_tag} == ${RELEASE_SHA} || ${image_tag} == ${PREVIOUS_SHA} ]]; then
-    continue
-  fi
-  docker image rm "${IMAGE_REPOSITORY}:${image_tag}"
-done < <(docker image ls "${IMAGE_REPOSITORY}" --format '{{.Tag}}')

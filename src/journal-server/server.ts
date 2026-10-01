@@ -181,7 +181,7 @@ export async function createJournalServer(config: JournalServerConfig): Promise<
   await server.register(fastifyStatic, {
     root: config.webRoot,
     prefix: '/',
-    wildcard: false,
+    wildcard: true,
     index: false,
   });
 

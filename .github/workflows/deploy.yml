@@ -9,8 +9,13 @@ on:
       - '**/*.md'
   workflow_dispatch:
     inputs:
-      deploy_journal:
-        description: Deploy Journal to rndc02
+      deploy_journal_web:
+        description: Deploy Journal frontend to rndc02
+        required: true
+        type: boolean
+        default: true
+      deploy_journal_backend:
+        description: Deploy Journal backend to rndc02
         required: true
         type: boolean
         default: true
@@ -49,6 +54,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       journal: ${{ steps.scope.outputs.journal }}
+      journal_web: ${{ steps.scope.outputs.journal_web }}
+      journal_backend: ${{ steps.scope.outputs.journal_backend }}
       bot: ${{ steps.scope.outputs.bot }}
       lu_dashboard: ${{ steps.scope.outputs.lu_dashboard }}
       startgg_dashboard: ${{ steps.scope.outputs.startgg_dashboard }}
@@ -64,13 +71,24 @@ jobs:
         uses: dorny/paths-filter@v4
         with:
           filters: |
-            journal:
+            journal_web:
+              - 'apps/journal-web/**'
+              - 'src/shared/**'
+              - 'deploy/journal/deploy-release'
+              - '.github/workflows/deploy.yml'
+              - '.npmrc'
+              - 'tsconfig.json'
+            journal_backend:
               - 'src/ai/models.ts'
+              - 'src/fetchers/qweatherCurrent.ts'
               - 'src/journal-server/**'
               - 'src/shared/**'
-              - 'apps/journal-web/**'
               - 'deploy/journal/**'
               - 'scripts/journal-backup'
+              - 'scripts/restore-journal'
+              - '.github/workflows/deploy.yml'
+              - '.dockerignore'
+              - '.npmrc'
               - 'tsconfig.json'
             bot:
               - 'src/*.ts'
@@ -123,28 +141,35 @@ jobs:
             [ "$before" != "$after" ]
           }
 
-          root_journal=false
+          root_journal_web=false
+          root_journal_backend=false
           root_bot=false
           root_lu=false
           root_startgg=false
           root_reminder=false
 
-          if manifest_changed '.scripts | with_entries(select(.key | endswith(":journal")))'; then
-            root_journal=true
+          if manifest_changed '.scripts | with_entries(select(.key == "dev:journal" or .key == "build:journal"))'; then
+            root_journal_web=true
+          fi
+          if manifest_changed '.scripts | with_entries(select(.key | endswith(":journal") and . != "dev:journal" and . != "build:journal"))'; then
+            root_journal_backend=true
           fi
           if manifest_changed '.scripts | with_entries(select(.key | endswith(":bot") or (.key == "start" or .key == "prestart")))'; then
             root_bot=true
           fi
           if manifest_changed '{dependencies, devDependencies}'; then
-            root_journal=true
+            root_journal_web=true
+            root_journal_backend=true
             root_bot=true
           fi
           if manifest_changed '{engines}'; then
-            root_journal=true
+            root_journal_web=true
+            root_journal_backend=true
             root_bot=true
           fi
           if manifest_changed '{packageManager}'; then
-            root_journal=true
+            root_journal_web=true
+            root_journal_backend=true
             root_bot=true
             root_lu=true
             root_startgg=true
@@ -152,13 +177,13 @@ jobs:
           fi
 
           python3 -m pip install --quiet --target "$RUNNER_TEMP/deploy-scope" PyYAML==6.0.3
-          PYTHONPATH="$RUNNER_TEMP/deploy-scope" python3 - "$root_journal" "$root_bot" "$root_lu" "$root_startgg" "$root_reminder" <<'PYTHON'
+          PYTHONPATH="$RUNNER_TEMP/deploy-scope" python3 - "$root_journal_web" "$root_journal_backend" "$root_bot" "$root_lu" "$root_startgg" "$root_reminder" <<'PYTHON'
           import os
           import subprocess
           import sys
           import yaml
 
-          scopes = dict(zip(('journal', 'bot', 'lu_dashboard', 'startgg_dashboard', 'reminder_dashboard'), (value == 'true' for value in sys.argv[1:])))
+          scopes = dict(zip(('journal_web', 'journal_backend', 'bot', 'lu_dashboard', 'startgg_dashboard', 'reminder_dashboard'), (value == 'true' for value in sys.argv[1:])))
           def version_file(revision, path):
               # pnpm may prepend an environment document before the dependency lockfile.
               return list(yaml.safe_load_all(subprocess.check_output(['git', 'show', f'{revision}:{path}'], text=True)))[-1]
@@ -167,7 +192,7 @@ jobs:
           after = version_file(os.environ['GITHUB_SHA'], 'pnpm-lock.yaml')
           before_importers, after_importers = before['importers'], after['importers']
           affected = {
-              '.': ('journal', 'bot'),
+              '.': ('journal_web', 'journal_backend', 'bot'),
               'apps/lu-dashboard': ('lu_dashboard',),
               'apps/startgg-dashboard': ('startgg_dashboard',),
               'apps/reminder-dashboard': ('reminder_dashboard',),
@@ -196,38 +221,45 @@ jobs:
       - name: Resolve deployment scope
         id: scope
         env:
-          PUSH_JOURNAL: ${{ steps.paths.outputs.journal }}
+          PUSH_JOURNAL_WEB: ${{ steps.paths.outputs.journal_web }}
+          PUSH_JOURNAL_BACKEND: ${{ steps.paths.outputs.journal_backend }}
           PUSH_BOT: ${{ steps.paths.outputs.bot }}
           PUSH_LU_DASHBOARD: ${{ steps.paths.outputs.lu_dashboard }}
           PUSH_STARTGG_DASHBOARD: ${{ steps.paths.outputs.startgg_dashboard }}
           PUSH_REMINDER_DASHBOARD: ${{ steps.paths.outputs.reminder_dashboard }}
-          ROOT_JOURNAL: ${{ steps.root-manifest.outputs.root_journal }}
+          ROOT_JOURNAL_WEB: ${{ steps.root-manifest.outputs.root_journal_web }}
+          ROOT_JOURNAL_BACKEND: ${{ steps.root-manifest.outputs.root_journal_backend }}
           ROOT_BOT: ${{ steps.root-manifest.outputs.root_bot }}
           ROOT_LU_DASHBOARD: ${{ steps.root-manifest.outputs.root_lu_dashboard }}
           ROOT_STARTGG_DASHBOARD: ${{ steps.root-manifest.outputs.root_startgg_dashboard }}
           ROOT_REMINDER_DASHBOARD: ${{ steps.root-manifest.outputs.root_reminder_dashboard }}
-          MANUAL_JOURNAL: ${{ inputs.deploy_journal }}
+          MANUAL_JOURNAL_WEB: ${{ inputs.deploy_journal_web }}
+          MANUAL_JOURNAL_BACKEND: ${{ inputs.deploy_journal_backend }}
           MANUAL_BOT: ${{ inputs.deploy_bot }}
           MANUAL_LU_DASHBOARD: ${{ inputs.deploy_lu_dashboard }}
           MANUAL_STARTGG_DASHBOARD: ${{ inputs.deploy_startgg_dashboard }}
           MANUAL_REMINDER_DASHBOARD: ${{ inputs.deploy_reminder_dashboard }}
         run: |
           if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
-            echo "journal=$MANUAL_JOURNAL" >> "$GITHUB_OUTPUT"
+            journal_web=$MANUAL_JOURNAL_WEB
+            journal_backend=$MANUAL_JOURNAL_BACKEND
             echo "bot=$MANUAL_BOT" >> "$GITHUB_OUTPUT"
             echo "lu_dashboard=$MANUAL_LU_DASHBOARD" >> "$GITHUB_OUTPUT"
             echo "startgg_dashboard=$MANUAL_STARTGG_DASHBOARD" >> "$GITHUB_OUTPUT"
             echo "reminder_dashboard=$MANUAL_REMINDER_DASHBOARD" >> "$GITHUB_OUTPUT"
           else
-            journal=false
+            journal_web=false
+            journal_backend=false
             bot=false
             lu_dashboard=false
             startgg_dashboard=false
             reminder_dashboard=false
-            [ "$PUSH_JOURNAL" = "true" ] && journal=true
+            [ "$PUSH_JOURNAL_WEB" = "true" ] && journal_web=true
+            [ "$PUSH_JOURNAL_BACKEND" = "true" ] && journal_backend=true
             [ "$PUSH_BOT" = "true" ] && bot=true
             [ "$PUSH_LU_DASHBOARD" = "true" ] && lu_dashboard=true
-            [ "$ROOT_JOURNAL" = "true" ] && journal=true
+            [ "$ROOT_JOURNAL_WEB" = "true" ] && journal_web=true
+            [ "$ROOT_JOURNAL_BACKEND" = "true" ] && journal_backend=true
             [ "$ROOT_BOT" = "true" ] && bot=true
             [ "$ROOT_LU_DASHBOARD" = "true" ] && lu_dashboard=true
             [ "$PUSH_STARTGG_DASHBOARD" = "true" ] && startgg_dashboard=true
@@ -236,10 +268,16 @@ jobs:
             [ "$ROOT_REMINDER_DASHBOARD" = "true" ] && reminder_dashboard=true
             echo "reminder_dashboard=$reminder_dashboard" >> "$GITHUB_OUTPUT"
             echo "startgg_dashboard=$startgg_dashboard" >> "$GITHUB_OUTPUT"
-            echo "journal=$journal" >> "$GITHUB_OUTPUT"
             echo "bot=$bot" >> "$GITHUB_OUTPUT"
             echo "lu_dashboard=$lu_dashboard" >> "$GITHUB_OUTPUT"
           fi
+          journal=false
+          if [ "$journal_web" = "true" ] || [ "$journal_backend" = "true" ]; then
+            journal=true
+          fi
+          echo "journal=$journal" >> "$GITHUB_OUTPUT"
+          echo "journal_web=$journal_web" >> "$GITHUB_OUTPUT"
+          echo "journal_backend=$journal_backend" >> "$GITHUB_OUTPUT"
 
   journal:
     needs: changes
@@ -250,6 +288,9 @@ jobs:
       JOURNAL_SERVER_HOST: ${{ secrets.JOURNAL_SERVER_HOST }}
       JOURNAL_SERVER_PORT: ${{ secrets.JOURNAL_SERVER_PORT }}
       JOURNAL_SERVER_USER: ${{ secrets.JOURNAL_SERVER_USER }}
+      DEPLOY_WEB: ${{ needs.changes.outputs.journal_web }}
+      DEPLOY_BACKEND: ${{ needs.changes.outputs.journal_backend }}
+      HUSKY: '0'
 
     steps:
       - name: Checkout
@@ -262,10 +303,29 @@ jobs:
           test -n "${{ secrets.JOURNAL_SERVER_SSH_KEY }}"
           test -n "${{ secrets.JOURNAL_SERVER_KNOWN_HOSTS }}"
 
-      - name: Set up Docker Buildx
+      - name: Setup Journal frontend Node
+        if: env.DEPLOY_WEB == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Setup Journal frontend pnpm
+        if: env.DEPLOY_WEB == 'true'
+        uses: pnpm/action-setup@v6
+
+      - name: Build and package Journal frontend
+        if: env.DEPLOY_WEB == 'true'
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm run build:journal
+          tar -C apps/journal-web/dist -cf "/tmp/journal-web-$GITHUB_SHA.tar" .
+
+      - name: Set up Journal backend Docker Buildx
+        if: env.DEPLOY_BACKEND == 'true'
         uses: docker/setup-buildx-action@v4
 
-      - name: Build immutable Journal image
+      - name: Build immutable Journal backend image
+        if: env.DEPLOY_BACKEND == 'true'
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -275,7 +335,8 @@ jobs:
           cache-from: type=gha,scope=journal
           cache-to: type=gha,mode=max,scope=journal
 
-      - name: Package immutable Journal image
+      - name: Package Journal backend image and host assets
+        if: env.DEPLOY_BACKEND == 'true'
         run: |
           docker save "notinews-journal:$GITHUB_SHA" > "/tmp/journal-$GITHUB_SHA.tar"
           tar --create \
@@ -297,7 +358,16 @@ jobs:
           printf '%s\n' '${{ secrets.JOURNAL_SERVER_KNOWN_HOSTS }}' > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Upload Journal image
+      - name: Upload Journal frontend artifact
+        if: env.DEPLOY_WEB == 'true'
+        run: |
+          PORT="${JOURNAL_SERVER_PORT:-22}"
+          tar -C /tmp -cf - "journal-web-$GITHUB_SHA.tar" | \
+            ssh -p "$PORT" "$JOURNAL_SERVER_USER@$JOURNAL_SERVER_HOST" \
+              "tar -xf - -C /var/lib/journal-deploy/incoming"
+
+      - name: Upload Journal backend image and host assets
+        if: env.DEPLOY_BACKEND == 'true'
         run: |
           PORT="${JOURNAL_SERVER_PORT:-22}"
           tar -C /tmp -cf - \
@@ -306,11 +376,18 @@ jobs:
             ssh -p "$PORT" "$JOURNAL_SERVER_USER@$JOURNAL_SERVER_HOST" \
               "tar -xf - -C /var/lib/journal-deploy/incoming"
 
-      - name: Activate Journal release
+      - name: Activate selected Journal frontend and backend release
         run: |
           PORT="${JOURNAL_SERVER_PORT:-22}"
+          if [ "$DEPLOY_WEB" = "true" ] && [ "$DEPLOY_BACKEND" = "true" ]; then
+            RELEASE_ARGS='both --install-host-assets'
+          elif [ "$DEPLOY_BACKEND" = "true" ]; then
+            RELEASE_ARGS='backend --install-host-assets'
+          else
+            RELEASE_ARGS=web
+          fi
           ssh -p "$PORT" "$JOURNAL_SERVER_USER@$JOURNAL_SERVER_HOST" \
-            "sudo -n /usr/local/sbin/journal-deploy-release '$GITHUB_SHA' --install-host-assets"
+            "sudo -n /usr/local/sbin/journal-deploy-release '$GITHUB_SHA' $RELEASE_ARGS"
 
       - name: Notify Journal deploy success to Telegram
         env:
@@ -319,7 +396,14 @@ jobs:
         run: |
           SHORT_SHA="${GITHUB_SHA::7}"
           RELEASE_TIME="$(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M:%S %Z')"
-          MSG="$(printf '✅ Journal 已更新\n发布时间: %s\nCommit: %s\n服务: feeds.xmcloud.buzz' "$RELEASE_TIME" "$SHORT_SHA")"
+          if [ "$DEPLOY_WEB" = "true" ] && [ "$DEPLOY_BACKEND" = "true" ]; then
+            RELEASE_SCOPE='前端与后端'
+          elif [ "$DEPLOY_BACKEND" = "true" ]; then
+            RELEASE_SCOPE='后端'
+          else
+            RELEASE_SCOPE='前端'
+          fi
+          MSG="$(printf '✅ Journal %s已更新\n发布时间: %s\nCommit: %s\n服务: feeds.xmcloud.buzz' "$RELEASE_SCOPE" "$RELEASE_TIME" "$SHORT_SHA")"
           curl -sS -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
             --data-urlencode "chat_id=${TG_CHAT_ID}" \
             --data-urlencode "text=${MSG}" >/dev/null
