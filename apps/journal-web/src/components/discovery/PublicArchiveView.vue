@@ -149,7 +149,7 @@ onBeforeUnmount(() => {
             {{ yearEntry.year }}
           </h2>
           <p class="archive-year__summary">
-            {{ yearEntry.total }} 项<span aria-hidden="true">/</span>{{ yearEntry.activeMonths }} 个月
+            <strong class="archive-year__total">{{ yearEntry.total }}</strong> 项<span aria-hidden="true">/</span>{{ yearEntry.activeMonths }} 个月
           </p>
         </header>
         <ol class="archive-year__months">
@@ -255,15 +255,25 @@ onBeforeUnmount(() => {
 
 .archive-year {
   display: grid;
-  gap: clamp(1.2rem, 3vw, 1.8rem);
 }
 
 .archive-year__header {
+  position: relative;
   display: flex;
   align-items: baseline;
   gap: 1rem;
   padding-bottom: 0.7rem;
   border-bottom: 1px solid var(--text-primary);
+}
+
+.archive-year__header::after {
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  width: 2.6rem;
+  height: 3px;
+  background: var(--accent);
+  content: '';
 }
 
 .archive-year__title {
@@ -281,6 +291,12 @@ onBeforeUnmount(() => {
   font-family: var(--font-condensed);
   font-size: 0.74rem;
   letter-spacing: 0.06em;
+}
+
+.archive-year__total {
+  color: var(--accent-strong);
+  font-size: 0.95rem;
+  font-weight: 700;
 }
 
 .archive-year__summary span {
@@ -308,9 +324,20 @@ onBeforeUnmount(() => {
 .archive-month__bar {
   position: relative;
   width: 100%;
-  height: clamp(4.2rem, 10vw, 6.5rem);
+  height: clamp(5.4rem, 13vw, 8.3rem);
   margin-bottom: 0.45rem;
   border-bottom: 1px solid var(--border-strong);
+  background:
+    linear-gradient(var(--border-subtle), var(--border-subtle)) center / 1px 100% no-repeat;
+}
+
+.archive-month__bar::before {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, color-mix(in srgb, var(--accent-soft) 85%, transparent), transparent);
+  content: '';
+  opacity: 0;
+  transition: opacity 150ms ease;
 }
 
 .archive-month__bar::after {
@@ -318,8 +345,8 @@ onBeforeUnmount(() => {
   bottom: 0;
   left: 50%;
   width: clamp(4px, 0.9vw, 7px);
-  height: max(3px, calc(var(--ratio) * 100%));
-  background: var(--text-primary);
+  height: max(3px, calc(var(--ratio) * 78%));
+  background: color-mix(in srgb, var(--accent) calc(30% + var(--ratio) * 70%), var(--border-strong));
   content: '';
   transform: translateX(-50%);
   transition: background-color 150ms ease, width 150ms ease;
@@ -343,16 +370,21 @@ onBeforeUnmount(() => {
   transition: color 150ms ease;
 }
 
-.archive-month:hover .archive-month__bar::after,
-.archive-month:focus-visible .archive-month__bar::after {
-  width: clamp(6px, 1.4vw, 11px);
-  background: var(--accent);
+a.archive-month:hover .archive-month__bar::before,
+a.archive-month:focus-visible .archive-month__bar::before {
+  opacity: 1;
 }
 
-.archive-month:hover .archive-month__number,
-.archive-month:hover .archive-month__count,
-.archive-month:focus-visible .archive-month__number,
-.archive-month:focus-visible .archive-month__count {
+a.archive-month:hover .archive-month__bar::after,
+a.archive-month:focus-visible .archive-month__bar::after {
+  width: clamp(6px, 1.4vw, 11px);
+  background: var(--accent-strong);
+}
+
+a.archive-month:hover .archive-month__number,
+a.archive-month:hover .archive-month__count,
+a.archive-month:focus-visible .archive-month__number,
+a.archive-month:focus-visible .archive-month__count {
   color: var(--accent-strong);
 }
 
