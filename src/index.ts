@@ -20,7 +20,7 @@ const SPECIAL_SCHEDULE = {
   av_update_night: 23 * 60 + 30, // 23:30
   startgg_watch_day: 10 * 60 + 20, // 10:20
   startgg_watch_night: 22 * 60 + 20, // 22:20
-  github: 15 * 60,     // 15:00
+  github: 15 * 60,     // 15:00 (周六)
   vitamin_dinner: 18 * 60 + 30, // 18:30
   v2ex: 20 * 60,       // 20:00
   fitness_weekday: 20 * 60 + 30, // 20:30 (周一, 周三)
@@ -81,7 +81,7 @@ async function main() {
     ) {
       selectedMode = 'startgg_watch';
     } else if (isNearSchedule(chinaMinuteOfDay, SPECIAL_SCHEDULE.github)) {
-      selectedMode = 'github';
+      selectedMode = chinaDayOfWeek === 6 ? 'github' : null;
     } else if (isNearSchedule(chinaMinuteOfDay, SPECIAL_SCHEDULE.vitamin_dinner)) {
       selectedMode = 'vitamin';
     } else if (isNearSchedule(chinaMinuteOfDay, SPECIAL_SCHEDULE.v2ex)) {

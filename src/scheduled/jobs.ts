@@ -2,7 +2,7 @@ import schedule from 'node-schedule';
 import type { Telegraf } from 'telegraf';
 import { config } from '../config/index.js';
 import { runMode } from './runMode.js';
-import { bjDate, diffBjDays, getChinaDayOfWeek } from '../utils/time.js';
+import { bjDate, getChinaDayOfWeek } from '../utils/time.js';
 import { isChinaWorkday, isChinaWorkdayStrict } from '../calendar/chinaWorkday.js';
 import { runStartggWatchNow } from '../services/startggPresetSync.js';
 import { runStartggWatchOnce } from '../services/startgg/index.js';
@@ -33,15 +33,10 @@ import { markDashboardAttempt, markDashboardError, setDashboardStopReason } from
 
 const PHOTO_WORKDAY_RANDOM_WINDOW_MS = 65 * 60 * 1000;
 const STARTGG_FAST_WATCH_INTERVAL_MS = 2 * 60 * 1000;
-const GITHUB_PUSH_ANCHOR_DATE = '1970-01-01';
 
 let startggFastWatchTimer: ReturnType<typeof setTimeout> | null = null;
 let startggFastWatchDueAt: Date | null = null;
 let startggPollJob: schedule.Job | null = null;
-
-function isGithubPushDay(input = new Date()): boolean {
-  return diffBjDays(GITHUB_PUSH_ANCHOR_DATE, input) % 2 === 0;
-}
 
 function scheduleWorkdayPhotoReminder(bot: Telegraf): void {
   const delay = Math.floor(Math.random() * PHOTO_WORKDAY_RANDOM_WINDOW_MS);
@@ -243,9 +238,8 @@ export function registerFixedJobs(bot: Telegraf): void {
     scheduleWorkdayPhotoReminder(bot);
   });
 
-  // github: 15:00 every other day
-  schedule.scheduleJob({ hour: 15, minute: 0, tz: 'Asia/Shanghai' }, async () => {
-    if (!isGithubPushDay()) return;
+  // github: Sat(6) 15:00
+  schedule.scheduleJob({ dayOfWeek: 6, hour: 15, minute: 0, tz: 'Asia/Shanghai' }, async () => {
     await runMode('github', getChinaDayOfWeek(), bot);
   });
 

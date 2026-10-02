@@ -121,6 +121,12 @@ MingWorks 的现有发布路径是：
 - Journal 部署在 `rndc02`，通过 `ssh rndc02` 调查线上状态；项目目录为 `/opt/journal`，数据目录为 `/opt/journal/data`，容器名为 `notinews-journal`。
 - bot 与 Lu Dashboard 部署在 `bwgdc01`，通过 `ssh bwgdc01` 调查对应服务。
 
+Journal 由 `.github/workflows/deploy.yml` 按变更范围独立发布前后端：
+
+- 前端：完整产物通过 `/opt/journal/web/current` 链接原子切换，不重启后端；旧版退役后保留 7 天。
+- 后端：发布以提交 SHA 为标签的 Docker 镜像，保留当前与上一版。
+- 前后端版本独立记录；页面发现前端新版本后提示用户确认刷新。
+
 本项目部署不使用 `deploy-to-rndc02`。不得因为用户说“部署”就重新搜索或设计其他部署架构。
 
 在已经明确进入发布阶段后，用户说“部署”“继续后续操作”或同等表达，应直接沿用上述现有流程，不得重复核对已经确定的部署方式。
