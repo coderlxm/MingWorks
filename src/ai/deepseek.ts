@@ -237,8 +237,11 @@ export async function generateEnglishFallbackWithAI(): Promise<string> {
 }
 
 export async function summarizeV2exWithAI(topics: V2exTopic[]): Promise<string> {
-  if (!config.deepseekApiKey || topics.length === 0) {
+  if (topics.length === 0) {
     return '今日 V2EX 暂无热点讨论。';
+  }
+  if (!config.deepseekApiKey) {
+    throw new Error('DeepSeek API Key is not set.');
   }
 
   const openai = getDeepSeekClient();
@@ -274,17 +277,35 @@ Task:
 注意：引用帖子时，请使用输入中提供的完整链接，格式为 [标题](完整链接)。禁止省略、截断或改写链接。
   `;
 
-  try {
-    const completion = await openai.chat.completions.create({
-      messages: [{ role: 'user', content: prompt }],
-      model: DEEPSEEK_TASK_MODELS.writing,
-    });
-
-    return completion.choices[0].message.content || 'AI 总结失败。';
-  } catch (error) {
-    console.error('Failed to summarize V2EX with DeepSeek:', error);
-    return 'V2EX 今日总结暂时不可用。';
+  const completion = await openai.chat.completions.create({
+    messages: [{ role: 'user', content: prompt }],
+    model: DEEPSEEK_TASK_MODELS.writing,
+  }, { maxRetries: 0 });
+  const summary = completion.choices[0].message.content?.trim();
+  if (!summary) {
+    throw new Error('DeepSeek returned an empty V2EX summary.');
   }
+
+  const reviewed = await openai.chat.completions.create({
+    messages: [
+      {
+        role: 'system',
+        content: `你是 V2EX 简报的文字编辑。请对用户提供的总结全文进行一次自检，并输出修改后的完整正文。
+要求：
+1. 将“不是……而是……”“并非……而是……”“不在于……而在于……”及类似的否定转折句式改为直接陈述，表达具体事实或判断，不保留这类修辞。
+2. 保留原有事实、要点和语义；不要增加信息、观点或编造评论。
+3. 保留分类、列表、Markdown 标记和 emoji；所有帖子链接必须原样保留，不得省略、截断或改写。
+4. 只输出修改后的完整正文，不输出自检过程、修改说明或前后对照，不使用 HTML 标签。没有需要修改的表达时，返回原文。`,
+      },
+      { role: 'user', content: summary },
+    ],
+    model: DEEPSEEK_TASK_MODELS.writing,
+  }, { maxRetries: 0 });
+  const reviewedSummary = reviewed.choices[0].message.content?.trim();
+  if (!reviewedSummary) {
+    throw new Error('DeepSeek returned an empty reviewed V2EX summary.');
+  }
+  return reviewedSummary;
 }
 
 export async function generateFitnessPlanWithAI(dayOfWeek: number, weatherText: string, fitnessContext: FitnessContext): Promise<string> {
