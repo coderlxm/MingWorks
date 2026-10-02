@@ -58,6 +58,8 @@ export async function runLocalVideoDownload(
       '--match-filter', '!is_live',
       '--max-filesize', '8G',
       '--format', 'bestvideo*+bestaudio/best',
+      '--merge-output-format', 'mp4',
+      '--remux-video', 'mp4',
       '--no-progress',
       '--no-warnings',
       '--js-runtimes', `node:${options.nodePath}`,
