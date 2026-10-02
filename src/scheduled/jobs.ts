@@ -222,8 +222,9 @@ export function registerFixedJobs(bot: Telegraf): void {
     await closeExpiredWorkCheckin(bot);
   });
 
-  // english: 10:30
+  // english: 10:30 on China non-workdays
   schedule.scheduleJob({ hour: 10, minute: 30, tz: 'Asia/Shanghai' }, async () => {
+    if (isChinaWorkdayStrict(new Date())) return;
     await runMode('english', getChinaDayOfWeek(), bot);
   });
 

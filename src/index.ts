@@ -1,6 +1,6 @@
 import { runMode, parseForcedMode } from './scheduled/runMode.js';
 import type { PushMode } from './scheduled/runMode.js';
-import { isChinaWorkday } from './calendar/chinaWorkday.js';
+import { isChinaWorkday, isChinaWorkdayStrict } from './calendar/chinaWorkday.js';
 import { bj } from './utils/time.js';
 
 const MINUTES_PER_DAY = 24 * 60;
@@ -15,6 +15,7 @@ const SPECIAL_SCHEDULE = {
   v2ex_buffered_push: 8 * 60 + 41, // 08:41
   server_health: 9 * 60 + 10, // 09:10
   news: 9 * 60 + 55,   // 09:55
+  english_afternoon: 13 * 60 + 30, // 13:30
   av_update_morning: 7 * 60 + 30, // 07:30
   av_update_afternoon: 15 * 60 + 30, // 15:30
   av_update_night: 23 * 60 + 30, // 23:30
@@ -93,6 +94,13 @@ async function main() {
     // ) {
     //   selectedMode = 'fitness';
     // }
+    if (
+      selectedMode === 'english' &&
+      isChinaWorkdayStrict(now) &&
+      !isNearSchedule(chinaMinuteOfDay, SPECIAL_SCHEDULE.english_afternoon)
+    ) {
+      selectedMode = null;
+    }
     if (selectedMode) {
       await runMode(selectedMode, chinaDayOfWeek);
     }
