@@ -71,6 +71,7 @@ function preserveAssetRatio(asset: DisplayAsset): { aspectRatio: string } | unde
       :class="{
         'media__visuals--single': visualAssets.length === 1,
         'media__visuals--multiple': visualAssets.length > 1,
+        'media__visuals--pair': renderedVisualAssets.length === 2,
       }"
     >
       <figure
@@ -271,6 +272,14 @@ function preserveAssetRatio(asset: DisplayAsset): { aspectRatio: string } | unde
   grid-template-rows: minmax(0, 3fr) minmax(0, 2fr);
   max-height: var(--media-card-max-height);
   aspect-ratio: 4 / 5;
+}
+
+.media--card .media__visuals--pair {
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+
+.media--card .media__visuals--pair .media__visual {
+  grid-column: 1 / -1;
 }
 
 .media--card .media__visual {
