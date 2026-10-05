@@ -144,7 +144,8 @@ export function parseReminderCommand(input: string, now: Date): ParsedReminder |
 }
 
 function parseChineseRelative(text: string, now: Date): ParsedReminder | null {
-  const primaryMatch = text.match(/(\d+)\s*(分钟|小时|秒钟?)?[之以]?后(?:提醒我?)?\s*(.+)/);
+  // 快捷规则只从句首解析，避免截取复合时长的尾部并提前结束自然语言解析。
+  const primaryMatch = text.match(/^\s*(\d+)\s*(分钟|小时|秒钟?)?[之以]?后(?:提醒我?)?\s*(.+)$/s);
   if (primaryMatch) {
     const num = parseInt(primaryMatch[1]!, 10);
     const unit = (primaryMatch[2] || '分钟') as string;
@@ -156,7 +157,7 @@ function parseChineseRelative(text: string, now: Date): ParsedReminder | null {
     }
   }
 
-  const halfHourMatch = text.match(/半小时[之以]?后(?:提醒我?)?\s*(.+)/);
+  const halfHourMatch = text.match(/^\s*半小时[之以]?后(?:提醒我?)?\s*(.+)$/s);
   if (halfHourMatch && halfHourMatch[1]!.trim()) {
     return {
       triggerAt: new Date(now.getTime() + 30 * 60 * 1000),
@@ -165,7 +166,7 @@ function parseChineseRelative(text: string, now: Date): ParsedReminder | null {
     };
   }
 
-  const remindBeforeMatch = text.match(/提醒\s*我\s*(.+?)\s*在\s*(\d+)\s*分钟[之以]?后/);
+  const remindBeforeMatch = text.match(/^\s*提醒\s*我\s*(.+?)\s*在\s*(\d+)\s*分钟[之以]?后\s*$/s);
   if (remindBeforeMatch) {
     const num = parseInt(remindBeforeMatch[2]!, 10);
     const reminderText = remindBeforeMatch[1]!.trim();
@@ -248,6 +249,8 @@ export async function parseNaturalReminder(
   "trigger_at": "2026-05-07T21:20:00+08:00",
   "text": "收衣服"
 }
+
+相对时间必须按完整时长计算，不能只取末尾的小时或分钟。“两个半小时”“两小时半”“2个半小时”“两个小时零30分钟”均为150分钟；“一个半小时”为90分钟；“半小时”为30分钟。从当前北京时间加上完整时长得到 trigger_at。
 
 如果用户想要查询提醒（如"明天有什么提醒""下周有哪些安排""今天下午要做什么"），输出：
 {
