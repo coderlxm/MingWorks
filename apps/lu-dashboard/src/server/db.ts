@@ -4,7 +4,7 @@ import type { MasturbationRecord } from '../shared/dashboard'
 import { config } from './config'
 
 const dbPath = resolve(config.databasePath)
-const db = new Database(dbPath, { readonly: true, fileMustExist: true })
+const db = new Database(dbPath, { fileMustExist: true })
 
 interface RecordRow {
   id: number
@@ -20,4 +20,13 @@ export function loadRecords(): MasturbationRecord[] {
     id: row.id,
     occurredAt: row.occurred_at,
   }))
+}
+
+const insertRecord = db.prepare(
+  'INSERT INTO masturbation_records (occurred_at, created_at, note) VALUES (?, ?, NULL)',
+)
+
+export function recordNow(): void {
+  const now = new Date().toISOString()
+  insertRecord.run(now, now)
 }

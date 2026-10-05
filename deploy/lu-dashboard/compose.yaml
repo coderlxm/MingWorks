@@ -2,6 +2,8 @@ services:
   lu-dashboard:
     image: "notinews-lu-dashboard:${LU_DASHBOARD_IMAGE_TAG:?LU_DASHBOARD_IMAGE_TAG must be a 40-character commit SHA}"
     container_name: notinews-lu-dashboard
+    # Match the existing Bot database owner without changing its files' ownership.
+    user: "0:0"
     init: true
     env_file:
       - /opt/lu-dashboard/.env
@@ -11,7 +13,7 @@ services:
       LU_DASHBOARD_PORT: "8787"
       LU_DATABASE_PATH: /data/notinews.sqlite
     volumes:
-      - /root/NotiNewsForXiaoming/data:/data:ro
+      - /root/NotiNewsForXiaoming/data:/data
     cpus: 0.5
     mem_limit: 512m
     healthcheck:

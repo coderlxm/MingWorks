@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { createSession, deleteSession, getSession, requireSession } from './auth'
-import { loadRecords } from './db'
+import { loadRecords, recordNow } from './db'
 
 export const app = new Hono()
 
@@ -17,6 +17,11 @@ const dashboardResponseSchema = z.object({
 app.get('/api/session', getSession)
 app.post('/api/session', createSession)
 app.delete('/api/session', deleteSession)
+
+app.post('/api/records/quick', (c) => {
+  recordNow()
+  return c.body(null, 204)
+})
 
 app.get('/api/dashboard', requireSession, (c) => {
   const response = dashboardResponseSchema.parse({
