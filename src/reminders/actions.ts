@@ -76,7 +76,11 @@ async function syncOnceCards(bot: Telegraf, before: repo.Reminder, after: repo.R
   const result = action === 'done' ? '✅ 已完成' : action === 'cancelled' ? '已取消' : `已调整到 ${bjFormat(after.trigger_at)}`;
   const ids = [...new Set([before.source_message_id, before.sent_message_id].filter((id): id is number => id !== null))];
   await updateTelegram(async () => {
+    if (action === 'done' && before.sent_message_id !== null) {
+      await bot.telegram.deleteMessage(before.chat_id, before.sent_message_id);
+    }
     for (const id of ids) {
+      if (action === 'done' && id === before.sent_message_id) continue;
       await bot.telegram.editMessageText(before.chat_id, id, undefined,
         `${result}\n${escapeHtml(after.text)}`,
         { parse_mode: 'HTML', ...(after.status === 'pending' && id === before.source_message_id
@@ -204,9 +208,13 @@ export async function actReminderRun(bot: Telegraf, id: number, expectedRevision
     })();
     const after = requireRun(id);
     if (before.sent_message_id !== null) await updateTelegram(async () => {
-      await bot.telegram.editMessageText(requireRule(before.rule_id).chat_id, before.sent_message_id!, undefined,
-        `${action === 'done' ? '✅ 本次已完成' : '⏭️ 本次已跳过'}\n${escapeHtml(after.text_snapshot ?? requireRule(after.rule_id).text)}`,
-        { parse_mode: 'HTML', reply_markup: { inline_keyboard: [] } });
+      if (action === 'done') {
+        await bot.telegram.deleteMessage(requireRule(before.rule_id).chat_id, before.sent_message_id!);
+      } else {
+        await bot.telegram.editMessageText(requireRule(before.rule_id).chat_id, before.sent_message_id!, undefined,
+          `⏭️ 本次已跳过\n${escapeHtml(after.text_snapshot ?? requireRule(after.rule_id).text)}`,
+          { parse_mode: 'HTML', reply_markup: { inline_keyboard: [] } });
+      }
     });
     return after;
   });
