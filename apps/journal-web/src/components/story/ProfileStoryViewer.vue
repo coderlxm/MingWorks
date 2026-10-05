@@ -173,8 +173,10 @@ onUnmounted(() => {
         @click.stop
         @mousedown="handlePointerDown"
         @mouseup="handlePointerUp"
+        @mouseleave="handlePointerUp"
         @touchstart.passive="handlePointerDown"
         @touchend.passive="handlePointerUp"
+        @touchcancel.passive="handlePointerUp"
       >
         <!-- Top controls & progress -->
         <div class="story-card__top">
@@ -270,7 +272,7 @@ onUnmounted(() => {
               <h3 v-if="currentStory.title" class="story-text-poster__title">
                 {{ currentStory.title }}
               </h3>
-              <div class="story-text-poster__body">
+              <div :key="currentStory.publicId" class="story-text-poster__body">
                 {{ currentText }}
               </div>
             </div>
@@ -601,7 +603,8 @@ onUnmounted(() => {
   max-height: 60%;
   overflow-y: auto;
   position: relative;
-  z-index: 2;
+  /* 正文接收滚动操作，翻页点击层位于其下方。 */
+  z-index: 11;
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 }
