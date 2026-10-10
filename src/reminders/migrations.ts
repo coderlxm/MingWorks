@@ -483,6 +483,23 @@ const MIGRATIONS: DbMigration[] = [
       db.exec('ALTER TABLE life_reminder_messages ADD COLUMN buttons_cleared INTEGER NOT NULL DEFAULT 0;');
     },
   },
+  {
+    version: 25,
+    up(db) {
+      db.exec(`
+        CREATE TABLE startgg_push_subscriptions (
+          endpoint TEXT PRIMARY KEY,
+          subscription_json TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        );
+        CREATE TABLE startgg_push_vapid (
+          id INTEGER PRIMARY KEY CHECK (id = 1),
+          public_key TEXT NOT NULL,
+          private_key TEXT NOT NULL
+        );
+      `);
+    },
+  },
 ];
 
 export function runDbMigrations(db: Database.Database): void {

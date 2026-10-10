@@ -62,7 +62,7 @@ function closeLogin() { loginOpen.value = false; sessionError.value = '' }
     <div v-if="sessionError && !loginOpen" class="collection-error" role="alert"><span>{{ sessionError }}</span><button class="text-button" :disabled="sessionSubmitting" @click="data.checkSession">重新读取管理会话</button></div>
     <div v-if="error" class="connection-error" role="alert"><div><strong>连接中断，自动读取已停止</strong><span>{{ error }}。现有内容为上次成功读取的数据。</span></div><button @click="data.reconnect">重新连接</button></div>
     <div v-if="board?.runtime.lastError" class="collection-error" role="alert">最近采集失败：{{ board.runtime.lastError }} <button v-if="canManage" class="text-button" @click="open('settings')">查看采集状态 →</button></div>
-    <div v-if="board?.runtime.notificationError" class="collection-error" role="alert">比赛数据已采集，Telegram 通知失败：{{ board.runtime.notificationError }}</div>
+    <div v-if="board?.runtime.notificationError" class="collection-error" role="alert">比赛数据已采集，通知发送失败：{{ board.runtime.notificationError }}</div>
     <div v-if="canManage && actionError" class="collection-error" role="alert">{{ actionError }}</div>
     <div v-if="canManage && operation && (busy || operation.status === 'failed')" class="operation-strip" role="status"><span>{{ operation.status === 'failed' ? `操作失败：${operation.error}` : operation.status === 'queued' ? (operation.type === 'pause' || operation.type === '/monitoring/pause' ? '暂停中，当前采集结束后生效' : '操作已接受，等待当前任务完成') : '正在处理监控操作…' }}</span><button class="text-button" @click="open('settings')">查看详情 →</button></div>
     <div class="workspace">

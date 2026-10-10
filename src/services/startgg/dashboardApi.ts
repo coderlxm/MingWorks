@@ -7,6 +7,10 @@ import { getStartggPollingRuntimeStatus } from '../../scheduled/jobs.js';
 import { dashboardEvent, dashboardFollowing, dashboardEventPlayers, dashboardSeeds, findDashboardEvent, readDashboardSets, readRecentDashboardSets, readDashboardSnapshot, readDashboardSync, markDashboardError } from './dashboardRepository.js';
 import { dismissDiscoveredStartggEvent, addStartggDashboardPlayer, removeStartggDashboardPlayer, applyStartggInterest, discoverStartggDashboard, pauseStartggDashboard, resolveStartggDashboardPlayers, setStartggDashboardSeeds, startStartggDashboardEvent, syncStartggDashboard, type ResolvedDashboardPlayer } from './control.js';
 import { queueStartggTask, getStartggTaskQueueStatus } from './taskQueue.js';
+import { startggPushPublicKey, saveStartggPushSubscription, deleteStartggPushSubscription, sendStartggWebPush } from './webPush.js';
+
+const pushEndpointSchema = z.object({ endpoint: z.string().url() });
+const pushSubscriptionSchema = pushEndpointSchema.extend({ keys: z.object({ p256dh: z.string().min(1), auth: z.string().min(1) }) });
 
 interface Operation {
   id: string; type: string; status: 'queued' | 'running' | 'succeeded' | 'failed';
@@ -59,6 +63,21 @@ export async function startStartggDashboardApi(bot: Telegraf): Promise<void> {
   api.setErrorHandler((error, _request, reply) => {
     const statusCode = error instanceof z.ZodError ? 400 : (error as { statusCode?: number }).statusCode ?? 500;
     reply.code(statusCode).send({ error: error instanceof Error ? error.message : String(error) });
+  });
+  api.get('/api/startgg/push/public-key', async () => ({ publicKey: startggPushPublicKey() }));
+  api.put('/api/startgg/push/subscriptions', async (request) => {
+    saveStartggPushSubscription(pushSubscriptionSchema.parse(request.body));
+    return { ok: true };
+  });
+  api.delete('/api/startgg/push/subscriptions', async (request) => {
+    const { endpoint } = pushEndpointSchema.parse(request.body);
+    deleteStartggPushSubscription(endpoint);
+    return { ok: true };
+  });
+  api.post('/api/startgg/push/test', async (request) => {
+    const { endpoint } = pushEndpointSchema.parse(request.body);
+    await sendStartggWebPush({ title: 'FTG 看板', body: '浏览器通知已开启，比赛结果推送时会在这里提醒。', url: '/' }, endpoint);
+    return { ok: true };
   });
   api.get('/api/startgg/board', async () => {
     const rows = listStartggWatchEvents();

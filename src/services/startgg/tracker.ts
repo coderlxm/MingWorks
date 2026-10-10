@@ -1,4 +1,7 @@
 import type { Telegraf } from 'telegraf';
+import sanitizeHtml from 'sanitize-html';
+import { decodeHTML } from 'entities';
+import { sendStartggWebPush, type StartggPushPayload } from './webPush.js';
 import { StartggNotificationError, clearDashboardNotificationError, dashboardPlayers, dashboardSeeds, markDashboardAttempt, markDashboardError, markDashboardSuccess, readDashboardSnapshot, saveDashboardSnapshot, type DashboardSet, type DashboardSnapshot } from './dashboardRepository.js';
 import {
   buildStartggEventSummaryMessages,
@@ -393,6 +396,7 @@ function selectSetsToPush(
 }
 
 interface EventProcessResult {
+  resolvedEventId: number;
   changed: number;
   activeSetCount: number;
   shouldFastPoll: boolean;
@@ -787,6 +791,7 @@ async function processEvent(
       : null;
 
   return {
+    resolvedEventId,
     changed,
     activeSetCount,
     // Keep watching between matches while a followed entrant still has a non-final standing.
@@ -807,8 +812,8 @@ async function sendStartggEventSummary(
   bot: Telegraf | undefined,
   eventRowId: number,
   result: EventProcessResult,
-): Promise<void> {
-  if (!result.summary) return;
+): Promise<StartggPushPayload | null> {
+  if (!result.summary) return null;
   const messages = buildStartggEventSummaryMessages(result.summary);
   for (const message of messages) {
     const messageId = await sendTelegramMessageWithId(message, bot);
@@ -826,6 +831,12 @@ async function sendStartggEventSummary(
   if (result.finalPhaseTrackingPending) {
     markStartggFinalPhaseTrackingCompleted(eventRowId);
   }
+  if (messages.length === 0) return null;
+  return {
+    title: `${result.summary.tournamentName} · ${result.summary.eventName}`,
+    body: decodeHTML(sanitizeHtml(messages.join('\n\n'), { allowedTags: [], allowedAttributes: {} })).slice(0, 600),
+    url: `/events/${result.resolvedEventId}`,
+  };
 }
 
 export async function runStartggWatchOnce(bot?: Telegraf, options?: RunStartggWatchOptions): Promise<StartggWatchSummary> {
@@ -855,6 +866,7 @@ export async function runStartggWatchOnce(bot?: Telegraf, options?: RunStartggWa
   let changed = 0;
   let activeSetCount = 0;
   const activeEventSlugs: string[] = [];
+  const pushPayloads: StartggPushPayload[] = [];
   for (const [index, result] of results.entries()) {
     changed += result.changed;
     activeSetCount += result.activeSetCount;
@@ -863,7 +875,8 @@ export async function runStartggWatchOnce(bot?: Telegraf, options?: RunStartggWa
     }
     if (result.summary) {
       try {
-        await sendStartggEventSummary(bot, targetEvents[index]!.id, result);
+        const payload = await sendStartggEventSummary(bot, targetEvents[index]!.id, result);
+        if (payload) pushPayloads.push(payload);
         clearDashboardNotificationError(String(targetEvents[index]!.id));
       } catch (error) {
         markDashboardError(String(targetEvents[index]!.id), error, true);
@@ -874,6 +887,14 @@ export async function runStartggWatchOnce(bot?: Telegraf, options?: RunStartggWa
   }
 
   clearDashboardNotificationError('global');
+  for (const payload of pushPayloads) {
+    try {
+      await sendStartggWebPush(payload);
+    } catch (error) {
+      markDashboardError('global', error, true);
+      console.error('start.gg Web Push notification failed', error);
+    }
+  }
   return {
     checkedPlayers: players.length,
     checkedEvents: targetEvents.length,
