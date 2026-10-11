@@ -201,7 +201,7 @@ function replaceStartggWatchEventEntrants(
   }
 }
 
-export function replaceActiveStartggWatchEvent(
+export function addActiveStartggWatchEvent(
   eventSlug: string,
   eventName: string,
   tournamentName: string,
@@ -212,12 +212,14 @@ export function replaceActiveStartggWatchEvent(
 ): void {
   const db = getDb();
   const now = new Date().toISOString();
-  const replace = db.transaction(() => {
-    db.prepare(`
-      UPDATE startgg_watch_events
-      SET active = 0, updated_at = ?
-      WHERE active = 1
-    `).run(now);
+  // Manual subscriptions join the active set; other monitored events keep running.
+  const add = db.transaction(() => {
+    const wasActive = db.prepare(`
+      SELECT 1
+      FROM startgg_watch_events
+      WHERE event_slug = ? AND active = 1
+      LIMIT 1
+    `).get(eventSlug);
     db.prepare(`
       INSERT INTO startgg_watch_events (
         event_slug,
@@ -260,12 +262,12 @@ export function replaceActiveStartggWatchEvent(
       WHERE event_slug = ?
       LIMIT 1
     `).get(eventSlug) as { id: number };
-    clearStartggWatchEventState(db, event.id);
+    if (!wasActive) clearStartggWatchEventState(db, event.id);
   });
-  replace();
+  add();
 }
 
-export function replaceActiveStartggWatchEvents(
+export function addActiveStartggWatchEvents(
   events: StartggWatchEventInput[],
   source: StartggWatchEventSource = 'manual',
 ): void {
@@ -282,13 +284,7 @@ export function replaceActiveStartggWatchEvents(
       WHERE active = 1
     `).all() as Array<{ event_slug: string }>).map((event) => event.event_slug),
   );
-  const replace = db.transaction(() => {
-    db.prepare(`
-      UPDATE startgg_watch_events
-      SET active = 0, updated_at = ?
-      WHERE active = 1
-    `).run(now);
-
+  const add = db.transaction(() => {
     const upsert = db.prepare(`
       INSERT INTO startgg_watch_events (
         event_slug,
@@ -346,23 +342,15 @@ export function replaceActiveStartggWatchEvents(
       }
     }
   });
-  replace();
+  add();
 }
 
 export function syncAutoDiscoveredStartggWatchEvents(events: StartggWatchEventInput[]): void {
   const db = getDb();
   const now = new Date().toISOString();
   const sync = db.transaction(() => {
-    const manualEvent = db.prepare(`
-      SELECT 1
-      FROM startgg_watch_events
-      WHERE active = 1 AND subscription_source = 'manual'
-      LIMIT 1
-    `).get();
-    if (manualEvent) return;
-
     const findExisting = db.prepare(`
-      SELECT id, active, subscription_source
+      SELECT id, active, subscription_source, event_state
       FROM startgg_watch_events
       WHERE event_slug = ?
       LIMIT 1
@@ -371,12 +359,14 @@ export function syncAutoDiscoveredStartggWatchEvents(events: StartggWatchEventIn
       id: number;
       active: number;
       subscription_source: StartggWatchEventSource;
+      event_state: string | null;
     }>();
     for (const event of events) {
       const existing = findExisting.get(event.event_slug) as {
         id: number;
         active: number;
         subscription_source: StartggWatchEventSource;
+        event_state: string | null;
       } | undefined;
       if (existing) {
         existingEvents.set(event.event_slug, existing);
@@ -387,7 +377,6 @@ export function syncAutoDiscoveredStartggWatchEvents(events: StartggWatchEventIn
       UPDATE startgg_watch_events
       SET active = 0, updated_at = ?
       WHERE active = 1
-        AND subscription_source = 'auto'
         AND event_state = 'COMPLETED'
     `).run(now);
 
@@ -422,6 +411,8 @@ export function syncAutoDiscoveredStartggWatchEvents(events: StartggWatchEventIn
 
     for (const event of events) {
       const existing = existingEvents.get(event.event_slug);
+      // Completed events keep their final state and push history instead of being restarted by discovery.
+      if (existing?.event_state === 'COMPLETED') continue;
       const source = existing?.active === 1 && existing.subscription_source === 'manual'
         ? 'manual'
         : 'auto';

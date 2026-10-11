@@ -3,7 +3,7 @@ import { config } from '../../config/index.js';
 import { getDb } from '../../reminders/db.js';
 import { enableStartggPolling, disableStartggPolling, isStartggPollingEnabled, updateStartggFastWatch } from '../../scheduled/jobs.js';
 import { runStartggGo, runStartggWatchNow, syncStartggPresetPlayers, syncFeaturedEntrantsForActiveEvents, resyncFeaturedEntrantsForActiveEvents } from '../startggPresetSync.js';
-import { createStartggWatchPlayer, findStartggWatchPlayerByPlayerId, updateStartggWatchPlayerIdentity, setStartggWatchPlayerEnabled, listStartggWatchPlayers, listActiveStartggWatchEvents, listEnabledStartggWatchPlayers, replaceActiveStartggWatchEvent, setFeaturedSeedCount, type StartggFeaturedSeedCount } from '../startggRepository.js';
+import { createStartggWatchPlayer, findStartggWatchPlayerByPlayerId, updateStartggWatchPlayerIdentity, setStartggWatchPlayerEnabled, listStartggWatchPlayers, listActiveStartggWatchEvents, listEnabledStartggWatchPlayers, addActiveStartggWatchEvent, setFeaturedSeedCount, type StartggFeaturedSeedCount } from '../startggRepository.js';
 import { findStartggPendingEventById, isStartggVideogameFollowed, hasStartggEventInterestOverride, isStartggEventDismissed, followStartggVideogame, addStartggEventInterestOverride, dismissStartggEvent, deleteStartggPendingEvent, deleteStartggPendingEventsByVideogame, type StartggPendingEvent } from '../startggInterestRepository.js';
 import { discoverStartggActiveEventsForPlayers } from '../startggDiscovery.js';
 import { fetchEventMeta, listEventEntrantPlayers, resolveUserToPlayer, runStartggWatchOnce } from './tracker.js';
@@ -44,13 +44,13 @@ export async function startStartggDashboardEvent(bot: Telegraf, eventSlug: strin
     await syncStartggPresetPlayers();
     if (interest === 'follow') followStartggVideogame(event.videogameId, event.videogameName);
     else addStartggEventInterestOverride(event.slug, new Date(event.tournamentEndAt * 1000).toISOString());
-    replaceActiveStartggWatchEvent(event.slug, `${event.tournamentName} / ${event.name}`, event.tournamentName, event.name, new Date(event.tournamentEndAt * 1000).toISOString(), event.videogameId, event.videogameName);
+    addActiveStartggWatchEvent(event.slug, `${event.tournamentName} / ${event.name}`, event.tournamentName, event.name, new Date(event.tournamentEndAt * 1000).toISOString(), event.videogameId, event.videogameName);
     let summary;
     try {
       await syncFeaturedEntrantsForActiveEvents();
       summary = await runStartggWatchOnce(bot);
     } catch (error) {
-      const message = `已保存关注并切换项目，启动失败：${error instanceof Error ? error.message : String(error)}`;
+      const message = `已保存关注并加入监控，启动失败：${error instanceof Error ? error.message : String(error)}`;
       const failure = error instanceof StartggNotificationError
         ? new StartggNotificationError(message, { cause: error })
         : new Error(message, { cause: error });

@@ -3,7 +3,7 @@ import {
   findStartggWatchPlayerByPlayerId,
   listEnabledStartggWatchPlayers,
   listActiveStartggWatchEvents,
-  replaceActiveStartggWatchEvents,
+  addActiveStartggWatchEvents,
   syncAutoDiscoveredStartggWatchEvents,
   type StartggWatchEventInput,
   updateStartggWatchPlayerIdentity,
@@ -406,13 +406,10 @@ export async function runStartggGo(bot: Telegraf | undefined, keyword: string, r
         pendingProjects,
       };
     }
-    replaceActiveStartggWatchEvents(allowedEvents.map(toWatchEventInput), 'auto');
+    syncAutoDiscoveredStartggWatchEvents(allowedEvents.map(toWatchEventInput));
     await syncFeaturedEntrantsForActiveEvents();
-    const watchSummary = await runStartggWatchOnce(bot, {
-      eventSlugs: requiredEventSlug
-        ? [requiredEventSlug]
-        : allowedEvents.map((event) => event.eventSlug),
-    });
+    // Watch every active event so the returned fast-watch list covers events that were already monitored.
+    const watchSummary = await runStartggWatchOnce(bot);
     return {
       status: 'started',
       keyword: trimmedKeyword,
@@ -452,12 +449,11 @@ export async function runStartggGo(bot: Telegraf | undefined, keyword: string, r
   for (const event of matchedTournament.events) {
     followStartggVideogame(event.videogameId, event.videogameName);
   }
-  replaceActiveStartggWatchEvents(matchedTournament.events.map(toWatchEventInput), 'manual');
+  addActiveStartggWatchEvents(matchedTournament.events.map(toWatchEventInput), 'manual');
   await syncFeaturedEntrantsForActiveEvents();
 
-  const watchSummary = await runStartggWatchOnce(bot, {
-    eventSlugs: matchedTournament.events.map((event) => event.eventSlug),
-  });
+  // Watch every active event so the returned fast-watch list covers events that were already monitored.
+  const watchSummary = await runStartggWatchOnce(bot);
 
   return {
     status: 'started',

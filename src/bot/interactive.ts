@@ -810,14 +810,15 @@ export function registerInteractiveHandlers(bot: Telegraf): void {
 
     try {
       if (isStartggEventReference(raw)) {
-        await startStartggDashboardEvent(bot, raw);
-        const eventName = listActiveStartggWatchEvents()[0]!.event_name;
+        const started = await startStartggDashboardEvent(bot, raw);
+        const activeEvents = listActiveStartggWatchEvents();
+        const eventName = activeEvents.find((event) => event.event_slug === started.eventSlug)!.event_name;
         const enabledPlayers = listStartggWatchPlayers().filter((row) => row.enabled === 1).length;
         const nextStep = enabledPlayers === 0
           ? '下一步：发送 /watch <选手名> 或 /watch <user_url> 添加选手。'
           : '下一步：发送 /watchlist 查看当前监控状态。';
         await ctx.reply(
-          `已切换监控项目：${eventName}\n当前配置：${enabledPlayers} 位选手，1 个项目。\n${nextStep}`,
+          `已加入监控项目：${eventName}\n当前配置：${enabledPlayers} 位选手，${activeEvents.length} 个项目。\n${nextStep}`,
           { parse_mode: 'HTML' },
         );
         return;
