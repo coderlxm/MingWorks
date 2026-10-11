@@ -1,4 +1,5 @@
 import type { Telegraf } from 'telegraf';
+import dayjs from 'dayjs';
 import sanitizeHtml from 'sanitize-html';
 import { decodeHTML } from 'entities';
 import { sendStartggWebPush, type StartggPushPayload } from './webPush.js';
@@ -628,7 +629,6 @@ async function processEvent(
     throw new Error(`start.gg event phase metadata missing: ${normalizedSlug}`);
   }
   let eventState = phaseMeta.state;
-  let finalPhaseStartedFlag = false;
   let finalEntrantsFetched = false;
   let dashboardFinalEntrants = previousDashboard?.snapshot.finalPhase?.entrants ?? [];
   let dashboardFinalStandings = previousDashboard?.snapshot.finalPhase?.standings ?? [];
@@ -688,7 +688,6 @@ async function processEvent(
     eventState = phaseTracking.eventState;
     const phaseSets = phaseTracking.sets;
     const activePhaseSetCount = phaseSets.filter((set) => set.startedAt !== null && set.completedAt === null).length;
-    finalPhaseStartedFlag = phaseSets.some((set) => set.startedAt !== null);
     if (eventState !== 'COMPLETED') {
       activeSetCount += activePhaseSetCount;
     }
@@ -794,11 +793,10 @@ async function processEvent(
     resolvedEventId,
     changed,
     activeSetCount,
-    // Keep watching between matches while a followed entrant still has a non-final standing.
+    // Keep watching through the gap between rounds; once tracked sets go quiet (e.g. overnight), fall back to the regular poll.
     shouldFastPoll: eventState !== 'COMPLETED' && (
       activeSetCount > 0
-      || (eventState === 'ACTIVE' && eventStandings.some(standing => standing.isFinal === false))
-      || finalPhaseStartedFlag
+      || [...dashboardSets.values()].some(set => set.completedAt !== null && dayjs.unix(set.completedAt).isAfter(dayjs().subtract(30, 'minute')))
     ),
     summary,
     pendingInitialMessagePlayerIds,
