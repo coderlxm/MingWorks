@@ -16,7 +16,7 @@
 - 需要操作 Cloudflare 的部分 → 交给 Codex（实现参数同后端），它有用户的 Cloudflare 插件授权；不受需求大小和 bug 修复例外的限制。
 - 后端需求 → Codex（模型 `gpt-6.1-sol`，推理强度 high，fast 模式）实现。
 - 前端需求 → Claude 的 Haiku 5.5 子 agent（推理强度 high）实现。
-- UI 审阅、文案、从用户角度改进使用体验的咨询 → Gemini（agy），只产出意见和文案，不直接改代码；采纳后交给对应实现者落地。
+- UI 审阅、文案、从用户角度改进使用体验的咨询 → Gemini（agy，模型 `gemini-3.8-flash-medium`），只产出意见和文案，不直接改代码；采纳后交给对应实现者落地。
 - 实现者与审查者必须不同（Claude 亲自完成的 bug 修复除外）。
 
 ### 调用方式
@@ -24,7 +24,8 @@
 - Codex 后端方案二审：`codex exec -m gpt-6-astra -c model_reasoning_effort="xhigh" -c service_tier="fast" --cd <dir> --sandbox read-only -o <scratch>/<task>-review.md "<方案与审查要求>"`
 - 调用 Codex 时必须显式带上模型、推理强度和 `-c service_tier="fast"`，不依赖本机默认配置。
 - Haiku：通过 Agent 工具启动子 agent，`model: "haiku"`、`effort: "high"`，任务说明写入 prompt。
-- Gemini：`agy -p "<任务说明>" --mode plan --dangerously-skip-permissions --output-format json`
+- Codex 后端代码审查：`codex exec -m gpt-6-astra -c model_reasoning_effort="low" -c service_tier="fast" --cd <dir> --sandbox read-only -o <scratch>/<task>-code-review.md "<改动范围与审查要求>"`
+- Gemini：`agy -p "<任务说明>" --model gemini-3.8-flash-medium --mode plan --dangerously-skip-permissions --output-format json`
 - 为快速交付，允许使用跳过权限确认的参数。
 - 并行写代码时，每个执行者使用独立 git worktree；只读任务可直接并行。
 
@@ -39,6 +40,8 @@
 - 以快速交付为目标：除非用户明确指定某处需要测试，否则 Claude 和执行者都不运行测试、类型检查、构建或启动应用验证。
 - 用户明确要求测试时，只测试用户指定的部分。
 - Claude 只通过阅读 diff 验收：确认改动符合目标、没有越出允许范围；不达标时附上具体问题退回，同一任务最多退回 2 次，之后自己接手或上报用户。
+- 实施完成后，Claude 先读 diff，再分别送审：后端交 Codex `gpt-6-astra`（low，fast）审代码，前端交 Gemini `gemini-3.8-flash-medium` 审代码与 UI；审查者只出意见，不改代码。
+- 审查意见由 Claude 逐条决定是否采纳：常见场景会出现的问题必须采纳并交回对应实现者修复；极端场景、纯风格偏好或超出需求范围的建议不采纳。
 - AGENTS.md 中的交付质量要求仍然有效，由 Claude 在审查时负责，执行者不承担。
 - commit、push、部署只由 Claude 执行。
 
