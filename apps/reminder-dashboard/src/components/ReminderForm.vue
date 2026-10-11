@@ -28,6 +28,7 @@ const previewKey = shallowRef('')
 const error = shallowRef('')
 const previewController = new AbortController()
 const weekdays = [{ value: 'MO', label: '一' }, { value: 'TU', label: '二' }, { value: 'WE', label: '三' }, { value: 'TH', label: '四' }, { value: 'FR', label: '五' }, { value: 'SA', label: '六' }, { value: 'SU', label: '日' }]
+const frequencies = [{ value: 'DAILY', label: '每天' }, { value: 'WEEKLY', label: '每周' }, { value: 'MONTHLY', label: '每月' }, { value: 'workdays', label: '工作日' }] as const
 const title = computed(() => props.mode === 'snooze' ? '稍后提醒我' : props.mode === 'edit' ? draft.kind === 'rule' ? '编辑循环规则' : '编辑提醒' : props.mode === 'copy' ? '复制为新提醒' : '新建一条提醒')
 function ruleInput(): ReminderRuleInput {
   const frequency = draft.frequency === 'workdays' ? 'DAILY' : draft.frequency as ReminderRecurrenceInput['freq']
@@ -84,9 +85,104 @@ onMounted(() => window.addEventListener('beforeunload', beforeUnload))
 onBeforeUnmount(() => { previewController.abort(); window.removeEventListener('beforeunload', beforeUnload) })
 defineExpose({ mayLeave })
 </script>
+
 <template>
-  <ModalShell :title="title" subtitle="选一个时间，记下一件小事。" :busy="submitting" @close="close"><form class="reminder-form" @submit.prevent="submit"><label class="field">提醒内容<textarea v-model="draft.text" required maxlength="1000" rows="3" placeholder="比如：出门前带上雨伞" autofocus :disabled="submitting || mode === 'snooze'"></textarea></label><fieldset v-if="mode === 'new' || mode === 'copy'" class="choice-field"><legend>提醒类型</legend><div class="segmented"><button type="button" :class="{ active: draft.kind === 'once' }" :disabled="submitting" @click="draft.kind = 'once'">一次性</button><button type="button" :class="{ active: draft.kind === 'rule' }" :disabled="submitting" @click="draft.kind = 'rule'">循环提醒</button></div></fieldset>
-      <template v-if="draft.kind === 'once'"><div class="quick-times"><button v-for="minutes in [5, 15, 30, 60]" :key="minutes" class="outline-button" type="button" :disabled="submitting" @click="afterMinutes(minutes)">{{ minutes }} 分钟后</button></div><div class="field-grid"><label class="field">提醒日期<input v-model="draft.date" type="date" :min="localDate(now().toISOString(), zone)" required :disabled="submitting"></label><label class="field">提醒时间<input v-model="draft.time" type="time" required :disabled="submitting"></label></div><div class="rule-preview"><p class="eyebrow">这次安排</p><p>{{ oncePreview }}</p><p v-if="mode === 'snooze'" class="muted">修改后等待新时间触发，不沿用上一次发送状态。</p></div></template>
-      <template v-else><label class="field">重复方式<select v-model="draft.frequency" :disabled="submitting"><option value="DAILY">每天</option><option value="WEEKLY">每周指定星期</option><option value="MONTHLY">每月指定日期</option><option value="workdays">中国工作日</option></select></label><fieldset v-if="draft.frequency === 'WEEKLY'" class="choice-field"><legend>星期</legend><div class="choice-grid"><label v-for="day in weekdays" :key="day.value"><input v-model="draft.weekdays" type="checkbox" :value="day.value" :disabled="submitting"><span>周{{ day.label }}</span></label></div></fieldset><fieldset v-if="draft.frequency === 'MONTHLY'" class="choice-field"><legend>每月日期</legend><div class="choice-grid monthdays"><label v-for="date in 31" :key="date"><input v-model="draft.monthdays" type="checkbox" :value="date" :disabled="submitting"><span>{{ date }}</span></label></div><p class="muted">选择 29、30、31 日时，没有这个日期的月份不会触发。</p></fieldset><label class="field">提醒时间<input v-model="draft.time" type="time" required :disabled="submitting"></label><p v-if="zone !== TIMEZONE" class="notice">这条既有规则使用 {{ zone }}，本次编辑保留原时区。</p><button class="outline-button full-width" type="button" :disabled="previewing || submitting || !draft.text.trim()" @click="readPreview">{{ previewing ? '正在计算下一次…' : '查看下一次提醒时间' }}</button><div v-if="previewCurrent && preview" class="rule-preview"><p class="eyebrow">规则预览</p><p>{{ preview.summary }}</p><p>下一次 {{ dateTime(preview.nextTriggerAt, preview.timezone) }}</p><p class="muted">时区 {{ preview.timezone }}</p></div><p v-else class="field-note">先查看下一次提醒时间，再确认保存；预览由 Bot 按真实日历计算。</p><p v-if="mode === 'edit'" class="field-note">修改只影响后续安排。已发出的当次提醒保留原内容与时间。</p></template>
-      <p v-if="error" class="error" role="alert">{{ error }}</p><p v-if="feedback?.error" class="error" role="alert">{{ feedback.text }}</p><div class="drawer-bottom"><button class="primary full-width" :disabled="submitting || previewing">{{ submitting ? '正在保存…' : draft.kind === 'rule' && !previewCurrent ? '预览下一次时间' : mode === 'snooze' ? '确认改期' : '保存提醒' }}</button><p class="muted">{{ zone === TIMEZONE ? '北京时间 · UTC+8' : zone }} · 通知发往已配置的 Telegram 会话</p></div></form></ModalShell>
+  <ModalShell :title="title" subtitle="选一个时间，记下一件小事。" :busy="submitting" @close="close">
+    <form class="reminder-form" @submit.prevent="submit">
+      <label class="field">
+        提醒内容
+        <textarea v-model="draft.text" required maxlength="1000" rows="3" placeholder="比如：出门前带上雨伞" autofocus :disabled="submitting || mode === 'snooze'"></textarea>
+      </label>
+
+      <fieldset v-if="mode === 'new' || mode === 'copy'" class="choice-field">
+        <legend>提醒类型</legend>
+        <div class="segmented">
+          <button type="button" :class="{ active: draft.kind === 'once' }" :disabled="submitting" @click="draft.kind = 'once'">一次性</button>
+          <button type="button" :class="{ active: draft.kind === 'rule' }" :disabled="submitting" @click="draft.kind = 'rule'">循环提醒</button>
+        </div>
+      </fieldset>
+
+      <template v-if="draft.kind === 'once'">
+        <div class="quick-times">
+          <button v-for="minutes in [5, 15, 30, 60]" :key="minutes" class="outline-button" type="button" :disabled="submitting" @click="afterMinutes(minutes)">{{ minutes }} 分钟后</button>
+        </div>
+        <div class="field-grid">
+          <label class="field">
+            提醒日期
+            <input v-model="draft.date" type="date" :min="localDate(now().toISOString(), zone)" required :disabled="submitting">
+          </label>
+          <label class="field">
+            提醒时间
+            <input v-model="draft.time" type="time" required :disabled="submitting">
+          </label>
+        </div>
+        <div class="rule-preview">
+          <p class="eyebrow">这次安排</p>
+          <p>{{ oncePreview }}</p>
+          <p v-if="mode === 'snooze'" class="muted">修改后等待新时间触发，不沿用上一次发送状态。</p>
+        </div>
+      </template>
+
+      <template v-else>
+        <fieldset class="choice-field">
+          <legend>重复方式</legend>
+          <div class="segmented">
+            <button
+              v-for="option in frequencies"
+              :key="option.value"
+              type="button"
+              :class="{ active: draft.frequency === option.value }"
+              :disabled="submitting"
+              @click="draft.frequency = option.value"
+            >{{ option.label }}</button>
+          </div>
+        </fieldset>
+
+        <fieldset v-if="draft.frequency === 'WEEKLY'" class="choice-field">
+          <legend>星期</legend>
+          <div class="choice-grid">
+            <label v-for="day in weekdays" :key="day.value">
+              <input v-model="draft.weekdays" type="checkbox" :value="day.value" :disabled="submitting">
+              <span>周{{ day.label }}</span>
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset v-if="draft.frequency === 'MONTHLY'" class="choice-field">
+          <legend>每月日期</legend>
+          <div class="choice-grid monthdays">
+            <label v-for="date in 31" :key="date">
+              <input v-model="draft.monthdays" type="checkbox" :value="date" :disabled="submitting">
+              <span>{{ date }}</span>
+            </label>
+          </div>
+          <p class="field-note">选择 29、30、31 日时，没有这个日期的月份不会触发。</p>
+        </fieldset>
+
+        <label class="field">
+          提醒时间
+          <input v-model="draft.time" type="time" required :disabled="submitting">
+        </label>
+        <p v-if="zone !== TIMEZONE" class="notice">这条既有规则使用 {{ zone }}，本次编辑保留原时区。</p>
+        <button class="outline-button full-width" type="button" :disabled="previewing || submitting || !draft.text.trim()" @click="readPreview">{{ previewing ? '正在计算下一次…' : '查看下一次提醒时间' }}</button>
+        <div v-if="previewCurrent && preview" class="rule-preview">
+          <p class="eyebrow">规则预览</p>
+          <p>{{ preview.summary }}</p>
+          <p>下一次 {{ dateTime(preview.nextTriggerAt, preview.timezone) }}</p>
+          <p class="muted">时区 {{ preview.timezone }}</p>
+        </div>
+        <p v-else class="field-note">先查看下一次提醒时间，再确认保存；预览由 Bot 按真实日历计算。</p>
+        <p v-if="mode === 'edit'" class="field-note">修改只影响后续安排。已发出的当次提醒保留原内容与时间。</p>
+      </template>
+
+      <p v-if="error" class="error" role="alert">{{ error }}</p>
+      <p v-if="feedback?.error" class="error" role="alert">{{ feedback.text }}</p>
+
+      <div class="drawer-bottom">
+        <button class="primary full-width" :disabled="submitting || previewing">{{ submitting ? '正在保存…' : draft.kind === 'rule' && !previewCurrent ? '预览下一次时间' : mode === 'snooze' ? '确认改期' : '保存提醒' }}</button>
+        <p class="muted">{{ zone === TIMEZONE ? '北京时间 · UTC+8' : zone }} · 通知发往已配置的 Telegram 会话</p>
+      </div>
+    </form>
+  </ModalShell>
 </template>
+

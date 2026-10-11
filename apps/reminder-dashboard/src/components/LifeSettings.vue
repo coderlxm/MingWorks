@@ -2,7 +2,7 @@
 import { computed, onMounted, onBeforeUnmount, reactive, shallowRef } from 'vue'
 import type { Feedback, LifeAction, LifeItem, LifeSettings as Settings } from '../types'
 import { dateLabel, dateTime } from '../format'
-import { lifeConfirmText, lifeStatusText } from '../labels'
+import { lifeConfirmText, lifeStatusText, lifeStatusTone } from '../labels'
 import ModalShell from './ModalShell.vue'
 const props = defineProps<{ item: LifeItem; current?: LifeItem; execute: (path: string, body: unknown, key: string, method?: string, successText?: string) => Promise<boolean>; settingsFeedback?: Feedback; actionFeedback?: Feedback }>()
 const emit = defineEmits<{ close: []; saved: [] }>()
@@ -34,4 +34,93 @@ onMounted(() => window.addEventListener('beforeunload', beforeUnload))
 onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload))
 defineExpose({ mayLeave })
 </script>
-<template><ModalShell :title="item.title" subtitle="当天动作与长期安排分开管理。" :busy="busy" @close="close"><section class="detail-section"><h3>{{ dateLabel(item.date) }}</h3><div class="tag-row"><span class="tag">{{ lifeStatusText[current.status] }}</span><span v-if="!current.enabled" class="tag">长期已关闭</span></div><p v-if="current.nextTriggerAt">下次 {{ dateTime(current.nextTriggerAt) }}</p><p v-if="current.lastSentAt">最近发送 {{ dateTime(current.lastSentAt) }}</p><p v-if="current.finishedAt">结束于 {{ dateTime(current.finishedAt) }}</p><p v-if="current.reason" class="muted">{{ current.reason }}</p><p v-if="current.error" class="error">{{ current.error }}</p><div class="actions"><button v-if="current.actions.includes('confirm')" class="primary" :disabled="busy" @click="action('confirm')">{{ lifeConfirmText[item.kind] }}</button><button v-if="current.actions.includes('snooze')" class="outline-button" :disabled="busy" @click="action('snooze')">30 分钟后</button><button v-if="current.actions.includes('stop')" class="text-button danger" :disabled="busy" @click="action('stop')">今天不再提醒</button></div></section><form @submit.prevent="save"><section class="detail-section"><h3>长期提醒规则</h3><label class="switch-field"><span>启用{{ item.title }}</span><input v-model="draft.enabled" type="checkbox" role="switch" :disabled="busy"></label><p class="field-note">关闭会停止当前剩余和未来提醒；重新启用从下一个未来有效时间开始。</p><p class="field-note">修改时间时，今天尚未发送的新实例可重新安排；已发送或从旧记录迁入的实例保留当次剩余节奏，后续日期按新配置执行。</p><template v-if="draft.kind === 'vitamin'"><div class="field-grid"><label class="field">工作日随机窗口 · 从<input v-model="draft.workdayStart" type="time" required :disabled="busy"></label><label class="field">至<input v-model="draft.workdayEnd" type="time" required :disabled="busy"></label></div><label class="field">非工作日固定时间<input v-model="draft.restdayTime" type="time" required :disabled="busy"></label><p class="field-note">按中国工作日日历执行，继续提醒间隔为 30 分钟。未确定时刻前，只显示窗口。</p></template><template v-else-if="draft.kind === 'bus'"><label class="field">中国工作日首次提醒<input v-model="draft.time" type="time" required :disabled="busy"></label><p class="field-note">随后每 2 分钟提醒一次，最多 3 次。</p></template><p v-else class="field-note">随工作日新闻发出；09:59 补提醒，10:00 截止。此处保留现有时间关联。</p></section><p v-if="feedback" :class="feedback.error ? 'error' : 'success'" role="status">{{ feedback.text }}</p><div class="drawer-bottom"><button class="primary full-width" :disabled="busy || !dirty">{{ busy ? '正在保存…' : '保存长期规则' }}</button><p class="muted">北京时间 · UTC+8</p></div></form></ModalShell></template>
+
+<template>
+  <ModalShell :title="item.title" subtitle="当天动作与长期安排分开管理。" :busy="busy" @close="close">
+    <section class="detail-section">
+      <h3>{{ dateLabel(item.date) }}</h3>
+      <div class="tag-row">
+        <span class="tag" :class="`tag--${lifeStatusTone[current.status]}`">{{ lifeStatusText[current.status] }}</span>
+        <span v-if="!current.enabled" class="tag tag--gray">长期已关闭</span>
+      </div>
+      <dl v-if="current.nextTriggerAt || current.lastSentAt || current.finishedAt" class="detail-facts">
+        <template v-if="current.nextTriggerAt">
+          <dt>下次</dt>
+          <dd>{{ dateTime(current.nextTriggerAt) }}</dd>
+        </template>
+        <template v-if="current.lastSentAt">
+          <dt>最近发送</dt>
+          <dd>{{ dateTime(current.lastSentAt) }}</dd>
+        </template>
+        <template v-if="current.finishedAt">
+          <dt>结束于</dt>
+          <dd>{{ dateTime(current.finishedAt) }}</dd>
+        </template>
+      </dl>
+      <p v-if="current.reason" class="muted">{{ current.reason }}</p>
+      <p v-if="current.error" class="error">{{ current.error }}</p>
+      <div class="actions">
+        <button v-if="current.actions.includes('confirm')" class="primary" :disabled="busy" @click="action('confirm')">{{ lifeConfirmText[item.kind] }}</button>
+        <button v-if="current.actions.includes('snooze')" class="outline-button" :disabled="busy" @click="action('snooze')">30 分钟后</button>
+      </div>
+      <div v-if="current.actions.includes('stop')" class="danger-zone">
+        <button class="text-button danger" :disabled="busy" @click="action('stop')">今天不再提醒</button>
+      </div>
+    </section>
+
+    <form @submit.prevent="save">
+      <section class="detail-section">
+        <h3>长期提醒规则</h3>
+        <label class="switch-field">
+          <span>启用{{ item.title }}</span>
+          <input v-model="draft.enabled" type="checkbox" role="switch" :disabled="busy">
+        </label>
+        <p class="field-note">关闭会停止当前剩余和未来提醒；重新启用从下一个未来有效时间开始。</p>
+        <p class="field-note">修改时间时，今天尚未发送的新实例可重新安排；已发送或从旧记录迁入的实例保留当次剩余节奏，后续日期按新配置执行。</p>
+
+        <template v-if="draft.kind === 'vitamin'">
+          <div class="field-grid">
+            <label class="field">
+              工作日随机窗口 · 从
+              <input v-model="draft.workdayStart" type="time" required :disabled="busy">
+            </label>
+            <label class="field">
+              至
+              <input v-model="draft.workdayEnd" type="time" required :disabled="busy">
+            </label>
+          </div>
+          <label class="field">
+            非工作日固定时间
+            <input v-model="draft.restdayTime" type="time" required :disabled="busy">
+          </label>
+          <p class="field-note">按中国工作日日历执行，继续提醒间隔为 30 分钟。未确定时刻前，只显示窗口。</p>
+        </template>
+        <template v-else-if="draft.kind === 'bus'">
+          <label class="field">
+            中国工作日首次提醒
+            <input v-model="draft.time" type="time" required :disabled="busy">
+          </label>
+          <p class="field-note">随后每 2 分钟提醒一次，最多 3 次。</p>
+        </template>
+        <p v-else class="field-note">随工作日新闻发出；09:59 补提醒，10:00 截止。</p>
+      </section>
+
+      <p v-if="feedback" :class="feedback.error ? 'error' : 'success'" role="status">{{ feedback.text }}</p>
+
+      <div class="drawer-bottom">
+        <button class="primary full-width" :disabled="busy || !dirty">{{ busy ? '正在保存…' : '保存长期规则' }}</button>
+        <p class="muted">北京时间 · UTC+8</p>
+      </div>
+    </form>
+  </ModalShell>
+</template>
+
+<style scoped>
+.danger-zone {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+</style>

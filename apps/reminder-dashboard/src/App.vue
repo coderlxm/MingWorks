@@ -6,7 +6,6 @@ import { clock } from './format'
 import type { LifeAction, LifeItem, Preset, ReminderHistoryItem, ReminderItem, ReminderRuleView } from './types'
 import AppIcon from './components/AppIcon.vue'
 import LoginGate from './components/LoginGate.vue'
-import QuickPanel from './components/QuickPanel.vue'
 import ReminderForm from './components/ReminderForm.vue'
 import ReminderDetail from './components/ReminderDetail.vue'
 import LifeSettings from './components/LifeSettings.vue'
@@ -37,6 +36,8 @@ const pageTitle = computed(() => links.find(item => item.path === route.path)!.t
 const currentError = computed(() => data.readErrors[data.view.value])
 const currentLoading = computed(() => data.loading[data.view.value] === true)
 const updatedAt = computed(() => data.updated[data.view.value])
+const syncText = computed(() => updatedAt.value ? `${currentError.value ? '上次读取' : '数据更新于'} ${clock(updatedAt.value)}` : '正在读取日程')
+const pendingCount = computed(() => data.board.value ? data.board.value.pending.length + data.calendarLife.value.flatMap(day => day.items).filter(item => item.status === 'awaiting').length : 0)
 const itemKey = computed(() => {
   const panel = overlay.value
   if (!panel) return ''
@@ -93,6 +94,15 @@ async function lifeAction(item: LifeItem, action: LifeAction) {
   await data.execute(`/life/${item.kind}/actions`, { date: item.date, action }, `life:${item.kind}:${item.date}`, 'POST', action === 'confirm' ? '今天已确认' : action === 'snooze' ? '已安排 30 分钟后提醒' : '今天已停止，未来规则保留')
 }
 async function logout() { if (mayLeave() && await data.logout()) overlay.value = null }
+function onNoticeEnd(event: AnimationEvent) { if (['toast-life', 'toast-fade'].includes(event.animationName)) data.notice.value = null }
+function onKeydown(event: KeyboardEvent) {
+  if (event.key.toLowerCase() !== 'n' || event.metaKey || event.ctrlKey || event.altKey || event.repeat) return
+  if (data.authenticated.value !== true || overlay.value) return
+  const target = event.target
+  if (target instanceof HTMLElement && (target.isContentEditable || target.matches('input, textarea, select'))) return
+  event.preventDefault()
+  create()
+}
 const removeGuard = router.beforeEach((to, from) => {
   if (to.path === from.path) return true
   if (!mayLeave()) return false
@@ -100,22 +110,71 @@ const removeGuard = router.beforeEach((to, from) => {
   return true
 })
 const topbarObserver = new ResizeObserver(([entry]) => document.documentElement.style.setProperty('--topbar-height', `${entry!.borderBoxSize[0]!.blockSize}px`))
-onMounted(() => topbarObserver.observe(topbar.value!, { box: 'border-box' }))
-onUnmounted(() => { topbarObserver.disconnect(); removeGuard(); document.documentElement.style.removeProperty('--topbar-height') })
+onMounted(() => {
+  topbarObserver.observe(topbar.value!, { box: 'border-box' })
+  document.addEventListener('keydown', onKeydown)
+})
+onUnmounted(() => {
+  topbarObserver.disconnect()
+  removeGuard()
+  document.removeEventListener('keydown', onKeydown)
+  document.documentElement.style.removeProperty('--topbar-height')
+})
 </script>
 <template>
   <div class="private-frame" :class="{ locked: data.authenticated.value !== true }">
-    <div class="app-shell"><header ref="topbar" class="topbar"><div class="topbar-inner"><RouterLink to="/" class="brand"><span class="brand-symbol"><AppIcon name="leaf" /></span><span class="brand-name">拾时<span class="brand-en">Reminders</span></span></RouterLink><div class="header-context"><span>{{ pageTitle }}</span><span v-if="updatedAt" class="header-updated">{{ currentError ? '上次读取' : '数据更新于' }} {{ clock(updatedAt) }}</span><span v-else class="header-updated">正在读取日程</span></div><div class="topbar-actions"><details class="account-menu"><summary aria-label="我的账户">我的日程</summary><div><p>北京时间 · UTC+8</p><p>通知发往已配置的个人 Telegram 会话。关闭页面后，Bot 仍继续提醒。</p><button class="text-button" :disabled="data.sessionBusy.value" @click="logout">{{ data.sessionBusy.value ? '退出中…' : '退出登录' }}</button></div></details><button class="primary" @click="create()"><AppIcon name="plus" />新建提醒</button></div></div></header>
-      <div class="workspace"><aside class="sidebar"><p class="nav-label">MY LITTLE ROUTINE</p><nav class="nav" aria-label="主导航"><RouterLink v-for="link in links" :key="link.path" :to="link.path" :class="{ active: route.path === link.path }" :aria-current="route.path === link.path ? 'page' : undefined"><AppIcon :name="link.icon" />{{ link.title }}</RouterLink></nav><div class="sidebar-note"><AppIcon name="clock" />北京时间 · UTC+8<br>网页整理日程<br>Telegram 提醒你</div></aside>
-        <main ref="main" class="main-content" tabindex="-1"><div v-if="currentError" class="read-error" role="alert"><div><strong>数据尚未更新，自动读取已停止</strong><p>{{ currentError }}</p><p v-if="updatedAt">下方保留 {{ clock(updatedAt) }} 读取的内容。</p></div><button class="outline-button" :disabled="currentLoading" @click="data.refresh">{{ currentLoading ? '正在读取…' : '重新加载' }}</button></div><div v-if="data.notice.value" class="action-notice" :class="{ error: data.notice.value.error }" role="status"><p>{{ data.notice.value.text }}</p><button class="icon-button" aria-label="收起操作提示" @click="data.notice.value = null"><AppIcon name="close" /></button></div>
-          <TodayView v-show="data.view.value === 'today'" :board="data.board.value" :life-days="data.calendarLife.value" :days="data.days.value" :pending="data.pending" :feedback="data.feedback" :loading="data.loading.today === true" @days="data.setDays" @create="create()" @detail="detail" @edit="edit" @action="itemAction" @life-action="lifeAction" @settings="settings" />
-          <ReminderListView v-show="data.view.value === 'items'" :data="data.items.value" :filters="data.itemFilters" :pending="data.pending" :feedback="data.feedback" :loading="data.loading.items === true" @filter="data.applyFilters('items', $event)" @more="data.more" @create="create()" @detail="detail" @edit="edit" @action="itemAction" />
-          <RulesView v-show="data.view.value === 'rules'" :data="data.rules.value" :status="data.ruleFilters.status" :pending="data.pending" :feedback="data.feedback" :loading="data.loading.rules === true" @filter="data.applyFilters('rules', $event)" @create="newRule" @detail="open({ type: 'detail', ruleId: $event.id })" @action="ruleAction" />
-          <LifeView v-show="data.view.value === 'life'" :data="data.life.value" :pending="data.pending" :feedback="data.feedback" :loading="data.loading.life === true" @settings="settings" @action="lifeAction" />
-          <HistoryView v-show="data.view.value === 'history'" :data="data.history.value" :filters="data.historyFilters" :loading="data.loading.history === true" @filter="data.applyFilters('history', $event)" @more="data.more" @copy="copy" />
-          <footer class="page-footer"><span>把要记住的事，轻轻放在这里。</span><button class="text-button" :disabled="currentLoading" @click="data.refresh"><AppIcon name="refresh" />{{ currentLoading ? '正在更新…' : '刷新日程' }}</button></footer>
-        </main><QuickPanel :board="data.view.value === 'today' ? data.board.value : null" :life-days="data.view.value === 'today' ? data.calendarLife.value : []" @create="create" /></div>
-      <nav class="mobile-nav" aria-label="主导航"><RouterLink v-for="link in mobileLinks" :key="link.path" :to="link.path" :class="{ active: route.path === link.path || (link.path === '/reminders' && route.path === '/rules') }"><AppIcon :name="link.icon" />{{ link.title }}</RouterLink></nav>
+    <div class="app-shell">
+      <header ref="topbar" class="topbar">
+        <div class="topbar-start">
+          <RouterLink to="/" class="brand"><span class="brand-mark"><AppIcon name="leaf" /></span><span class="brand-name">拾时</span></RouterLink>
+          <span class="topbar-page">{{ pageTitle }}</span>
+        </div>
+        <div class="topbar-actions">
+          <button class="icon-button" :class="{ spinning: currentLoading }" :disabled="currentLoading" aria-label="刷新日程" @click="data.refresh"><AppIcon name="refresh" /></button>
+          <details class="account-menu">
+            <summary class="text-button">我的日程<AppIcon name="chevron-down" /></summary>
+            <div class="account-panel">
+              <p>{{ syncText }}</p>
+              <p>北京时间 · UTC+8 · 由 Telegram Bot 提醒</p>
+              <button class="text-button danger" :disabled="data.sessionBusy.value" @click="logout"><AppIcon name="logout" />{{ data.sessionBusy.value ? '退出中…' : '退出登录' }}</button>
+            </div>
+          </details>
+        </div>
+      </header>
+      <aside class="sidebar">
+        <RouterLink to="/" class="brand"><span class="brand-mark"><AppIcon name="leaf" /></span><span class="brand-name collapse-text">拾时</span></RouterLink>
+        <button class="primary full-width new-button" type="button" aria-label="新建提醒" @click="create()"><AppIcon name="plus" /><span class="collapse-text">新建提醒</span><kbd>N</kbd></button>
+        <nav class="nav" aria-label="主导航">
+          <RouterLink v-for="link in links" :key="link.path" :to="link.path" :title="link.title" :aria-current="route.path === link.path ? 'page' : undefined"><AppIcon :name="link.icon" /><span class="collapse-text">{{ link.title }}</span><span v-if="link.path === '/' && pendingCount > 0" class="nav-count">{{ pendingCount }}</span></RouterLink>
+        </nav>
+        <div class="sidebar-foot">
+          <div class="sync-row"><span class="sync-text collapse-text">{{ syncText }}</span><button class="icon-button" :class="{ spinning: currentLoading }" :disabled="currentLoading" aria-label="刷新日程" title="刷新日程" @click="data.refresh"><AppIcon name="refresh" /></button></div>
+          <p class="zone-note">北京时间 · UTC+8 · 由 Telegram Bot 提醒</p>
+          <button class="text-button" :disabled="data.sessionBusy.value" @click="logout"><AppIcon name="logout" /><span class="collapse-text">{{ data.sessionBusy.value ? '退出中…' : '退出登录' }}</span></button>
+        </div>
+      </aside>
+      <main ref="main" class="main-content" tabindex="-1">
+        <div v-if="currentError" class="read-error" role="alert">
+          <AppIcon name="alert" />
+          <div class="read-error-copy"><strong>数据尚未更新，自动读取已停止</strong><p>{{ currentError }}</p><p v-if="updatedAt">下方保留 {{ clock(updatedAt) }} 读取的内容。</p></div>
+          <button class="outline-button small" :disabled="currentLoading" @click="data.refresh">{{ currentLoading ? '正在读取…' : '重新加载' }}</button>
+        </div>
+        <TodayView v-show="data.view.value === 'today'" :board="data.board.value" :life-days="data.calendarLife.value" :days="data.days.value" :pending="data.pending" :feedback="data.feedback" :loading="data.loading.today === true" @days="data.setDays" @create="create" @detail="detail" @edit="edit" @action="itemAction" @life-action="lifeAction" @settings="settings" />
+        <ReminderListView v-show="data.view.value === 'items'" :data="data.items.value" :filters="data.itemFilters" :pending="data.pending" :feedback="data.feedback" :loading="data.loading.items === true" @filter="data.applyFilters('items', $event)" @more="data.more" @create="create()" @detail="detail" @edit="edit" @action="itemAction" />
+        <RulesView v-show="data.view.value === 'rules'" :data="data.rules.value" :status="data.ruleFilters.status" :pending="data.pending" :feedback="data.feedback" :loading="data.loading.rules === true" @filter="data.applyFilters('rules', $event)" @create="newRule" @detail="open({ type: 'detail', ruleId: $event.id })" @action="ruleAction" />
+        <LifeView v-show="data.view.value === 'life'" :data="data.life.value" :pending="data.pending" :feedback="data.feedback" :loading="data.loading.life === true" @settings="settings" @action="lifeAction" />
+        <HistoryView v-show="data.view.value === 'history'" :data="data.history.value" :filters="data.historyFilters" :loading="data.loading.history === true" @filter="data.applyFilters('history', $event)" @more="data.more" @copy="copy" />
+      </main>
+      <div v-if="data.notice.value" class="toast" :class="{ 'toast--auto': !data.notice.value.error, 'toast--error': data.notice.value.error }" :key="data.notice.value.text" role="status" @animationend="onNoticeEnd">
+        <AppIcon :name="data.notice.value.error ? 'alert' : 'check'" />
+        <p>{{ data.notice.value.text }}</p>
+        <button class="icon-button" aria-label="收起操作提示" @click="data.notice.value = null"><AppIcon name="close" /></button>
+      </div>
+      <nav class="mobile-nav" aria-label="主导航">
+        <RouterLink v-for="link in mobileLinks.slice(0, 2)" :key="link.path" :to="link.path" :aria-current="route.path === link.path || (link.path === '/reminders' && route.path === '/rules') ? 'page' : undefined"><AppIcon :name="link.icon" />{{ link.title }}</RouterLink>
+        <button class="mobile-create" type="button" aria-label="新建提醒" @click="create()"><AppIcon name="plus" /></button>
+        <RouterLink v-for="link in mobileLinks.slice(2)" :key="link.path" :to="link.path" :aria-current="route.path === link.path ? 'page' : undefined"><AppIcon :name="link.icon" />{{ link.title }}</RouterLink>
+      </nav>
     </div>
     <ReminderForm v-if="overlay?.type === 'form'" :key="overlaySerial" ref="reminderForm" :mode="overlay.mode" :kind="overlay.kind" :item="overlay.item" :rule="overlay.rule" :preset="overlay.preset" :copy-text="overlay.copyText" :execute="data.execute" :feedback="data.feedback[itemKey]" @close="close" @saved="close" @expired="data.expire" />
     <ReminderDetail v-else-if="overlay?.type === 'detail'" :key="overlaySerial" ref="reminderDetail" :item="overlay.item" :rule-id="overlay.ruleId" :busy="data.pending[itemKey] === true" :feedback="data.feedback[itemKey]" :pending="data.pending" :action-feedback="data.feedback" @close="close" @detail="detail" @edit="edit" @edit-rule="editRule" @copy="copy" @action="itemAction" @rule-action="ruleAction" @expired="data.expire" />

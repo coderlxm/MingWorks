@@ -16,6 +16,14 @@ const paths: Record<string, string> = {
   refresh: 'M20 9a8 8 0 1 0 0 6M20 4v5h-5',
   bus: 'M5 17V5h14v12H5Zm0-7h14M8 5v5m8-5v5M7 17v3m10-3v3M8 14h1m6 0h1',
   work: 'M8 6V3h8v3M3 7h18v13H3V7Zm0 5h18M10 11h4v3h-4',
+  search: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14Zm9 16-4.35-4.35',
+  sliders: 'M4 7h9m4 0h3M4 17h3m4 0h9M15 5v4M9 15v4',
+  logout: 'M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 8l-4 4 4 4M6 12h10',
+  chevron: 'm9 6 6 6-6 6',
+  'chevron-down': 'm6 9 6 6 6-6',
+  alert: 'M12 4 2.5 20h19L12 4Zm0 6v4m0 3v.5',
+  calendar: 'M4 6h16v14H4V6Zm0 4h16M8 3v4m8-4v4',
+  external: 'M14 4h6v6M20 4l-9 9M18 14v6H4V6h6',
 }
 </script>
 <template><svg viewBox="0 0 24 24" aria-hidden="true" class="app-icon"><circle v-if="name === 'clock'" cx="12" cy="12" r="9"/><circle v-if="name === 'sun'" cx="12" cy="12" r="4"/><path :d="paths[name]"/></svg></template>
