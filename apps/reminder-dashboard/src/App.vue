@@ -36,7 +36,7 @@ const pageTitle = computed(() => links.find(item => item.path === route.path)!.t
 const currentError = computed(() => data.readErrors[data.view.value])
 const currentLoading = computed(() => data.loading[data.view.value] === true)
 const updatedAt = computed(() => data.updated[data.view.value])
-const syncText = computed(() => updatedAt.value ? `${currentError.value ? '上次读取' : '数据更新于'} ${clock(updatedAt.value)}` : '正在读取日程')
+const syncText = computed(() => updatedAt.value ? currentError.value ? `上次读取 ${clock(updatedAt.value)}` : `${clock(updatedAt.value)} 已更新` : '正在读取…')
 const pendingCount = computed(() => data.board.value ? data.board.value.pending.length + data.calendarLife.value.flatMap(day => day.items).filter(item => item.status === 'awaiting').length : 0)
 const itemKey = computed(() => {
   const panel = overlay.value
@@ -135,7 +135,6 @@ onUnmounted(() => {
             <summary class="text-button">我的日程<AppIcon name="chevron-down" /></summary>
             <div class="account-panel">
               <p>{{ syncText }}</p>
-              <p>北京时间 · UTC+8 · 由 Telegram Bot 提醒</p>
               <button class="text-button danger" :disabled="data.sessionBusy.value" @click="logout"><AppIcon name="logout" />{{ data.sessionBusy.value ? '退出中…' : '退出登录' }}</button>
             </div>
           </details>
@@ -148,9 +147,9 @@ onUnmounted(() => {
           <RouterLink v-for="link in links" :key="link.path" :to="link.path" :title="link.title" :aria-current="route.path === link.path ? 'page' : undefined"><AppIcon :name="link.icon" /><span class="collapse-text">{{ link.title }}</span><span v-if="link.path === '/' && pendingCount > 0" class="nav-count">{{ pendingCount }}</span></RouterLink>
         </nav>
         <div class="sidebar-foot">
-          <div class="sync-row"><span class="sync-text collapse-text">{{ syncText }}</span><button class="icon-button" :class="{ spinning: currentLoading }" :disabled="currentLoading" aria-label="刷新日程" title="刷新日程" @click="data.refresh"><AppIcon name="refresh" /></button></div>
-          <p class="zone-note">北京时间 · UTC+8 · 由 Telegram Bot 提醒</p>
-          <button class="text-button" :disabled="data.sessionBusy.value" @click="logout"><AppIcon name="logout" /><span class="collapse-text">{{ data.sessionBusy.value ? '退出中…' : '退出登录' }}</span></button>
+          <span class="sync-text collapse-text">{{ syncText }}</span>
+          <button class="icon-button" :class="{ spinning: currentLoading }" :disabled="currentLoading" aria-label="刷新日程" title="刷新日程" @click="data.refresh"><AppIcon name="refresh" /></button>
+          <button class="icon-button" :disabled="data.sessionBusy.value" aria-label="退出登录" title="退出登录" @click="logout"><AppIcon name="logout" /></button>
         </div>
       </aside>
       <main ref="main" class="main-content" tabindex="-1">

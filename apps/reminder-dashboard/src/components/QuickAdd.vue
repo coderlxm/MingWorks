@@ -57,7 +57,7 @@ function submit() {
 .preset-row { display: flex; flex-wrap: wrap; gap: 8px; }
 .preset-chip {
   display: inline-flex;
-  align-items: baseline;
+  align-items: center;
   gap: 6px;
   flex: none;
   min-height: 32px;

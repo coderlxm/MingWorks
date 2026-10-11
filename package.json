@@ -16,6 +16,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev:lu": "vite apps/lu-dashboard/src/client --config apps/lu-dashboard/vite.config.ts",
     "dev:ftg": "vite apps/startgg-dashboard",
+    "dev:remind": "vite apps/reminder-dashboard",
     "dev:journal": "vite --config apps/journal-web/vite.config.ts",
     "build:journal": "vite build --config apps/journal-web/vite.config.ts",
     "notify:service-failure": "tsx src/serviceFailureNotifier.ts",
