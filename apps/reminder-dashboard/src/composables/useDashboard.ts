@@ -23,6 +23,7 @@ export function useDashboard(onExpired: () => void, onRead: (user: boolean) => v
   const ruleFilters = reactive({ status: 'active' })
   const historyFilters = reactive({ from: now().subtract(6, 'day').format('YYYY-MM-DD'), to: now().format('YYYY-MM-DD'), kind: 'all' })
   const loading = reactive<Record<string, boolean>>({})
+  const loadingMore = reactive<Record<string, boolean>>({})
   const readErrors = reactive<Record<string, string>>({})
   const updated = reactive<Record<string, string>>({})
   const pending = reactive<Record<string, boolean>>({})
@@ -36,7 +37,7 @@ export function useDashboard(onExpired: () => void, onRead: (user: boolean) => v
 
   function stopTimer() { clearTimeout(timer) }
   function cancelReads() {
-    for (const [name, controller] of controllers) { controller.abort(); loading[name] = false }
+    for (const [name, controller] of controllers) { controller.abort(); loading[name] = false; loadingMore[name] = false }
     controllers.clear()
     activeReads.clear()
     stopTimer()
@@ -90,6 +91,7 @@ export function useDashboard(onExpired: () => void, onRead: (user: boolean) => v
     controllers.set(name, controller)
     const version = sessionVersion
     loading[name] = true
+    loadingMore[name] = Boolean(options.more)
     if (options.user) delete readErrors[name]
     const today = now().format('YYYY-MM-DD')
     const count = days.value
@@ -134,7 +136,7 @@ export function useDashboard(onExpired: () => void, onRead: (user: boolean) => v
         else readErrors[name] = cause instanceof Error ? cause.message : String(cause)
       } finally {
         if (controllers.get(name) === controller) {
-          controllers.delete(name); activeReads.delete(name); loading[name] = false
+          controllers.delete(name); activeReads.delete(name); loading[name] = false; loadingMore[name] = false
           if (name === view.value) schedule()
         }
       }
@@ -239,6 +241,6 @@ export function useDashboard(onExpired: () => void, onRead: (user: boolean) => v
   const removeRouteHook = router.afterEach((to, from) => { if (to.path !== from.path) void readView(viewFromPath(to.path)) })
   onMounted(async () => { await router.isReady(); document.addEventListener('visibilitychange', visibility); await checkSession() })
   onUnmounted(() => { disposed = true; cancelReads(); removeRouteHook(); document.removeEventListener('visibilitychange', visibility) })
-  return { view, authenticated, booting, sessionBusy, sessionError, board, calendarLife, items, rules, life, history, days, itemFilters, ruleFilters, historyFilters, loading, readErrors, updated, pending, feedback, notice, execute, refresh, setDays, applyFilters, more, login, logout, checkSession, expire }
+  return { view, authenticated, booting, sessionBusy, sessionError, board, calendarLife, items, rules, life, history, days, itemFilters, ruleFilters, historyFilters, loading, readErrors, updated, pending, feedback, notice, execute, refresh, loadingMore, setDays, applyFilters, more, login, logout, checkSession, expire }
 }
 export type DashboardData = ReturnType<typeof useDashboard>

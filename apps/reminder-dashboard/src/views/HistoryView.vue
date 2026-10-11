@@ -4,7 +4,7 @@ import type { ReminderHistoryItem, ReminderHistoryResponse } from '../types'
 import { clock, dateLabel, dateTime, now } from '../format'
 import { deliveryText, historyActionText, historyKindText } from '../labels'
 import type { Tone } from '../labels'
-const props = defineProps<{ data: ReminderHistoryResponse | null; filters: { from: string; to: string; kind: string }; loading: boolean }>()
+const props = defineProps<{ data: ReminderHistoryResponse | null; filters: { from: string; to: string; kind: string }; loading: boolean; loadingMore: boolean }>()
 const emit = defineEmits<{ filter: [value: Record<string, string>]; more: []; copy: [item: ReminderHistoryItem] }>()
 const draft = reactive({ ...props.filters })
 function range(days: number) { draft.from = now().subtract(days - 1, 'day').format('YYYY-MM-DD'); draft.to = now().format('YYYY-MM-DD'); emit('filter', { ...draft }) }
@@ -26,7 +26,7 @@ function deliveryTone(status: string): Tone {
 </script>
 
 <template>
-  <div>
+  <div class="view">
     <header class="page-header">
       <div>
         <h1>提醒历史</h1>
@@ -59,10 +59,10 @@ function deliveryTone(status: string): Tone {
           <option value="bus">下车</option>
         </select>
       </label>
-      <button class="primary" :disabled="loading">筛选</button>
+      <button class="primary">筛选</button>
     </form>
 
-    <p v-if="data" class="results-summary">{{ data.total }} 条记录<span v-if="loading"> · 正在更新…</span></p>
+    <p v-if="data" class="results-summary">{{ data.total }} 条记录</p>
 
     <section v-for="group in groups" :key="group.date" class="history-group">
       <div class="section-heading">
@@ -95,7 +95,7 @@ function deliveryTone(status: string): Tone {
       <p>可以调整日期或提醒类型。</p>
     </div>
     <p v-if="!data" class="loading-placeholder">{{ loading ? '正在读取历史…' : '历史记录尚未读取。' }}</p>
-    <button v-if="data && data.nextOffset !== null" class="load-more outline-button" :disabled="loading" @click="emit('more')">{{ loading ? '正在读取…' : '继续查看' }}</button>
+    <button v-if="data && data.nextOffset !== null" class="load-more outline-button" :disabled="loadingMore" @click="emit('more')">{{ loadingMore ? '正在读取…' : '继续查看' }}</button>
   </div>
 </template>
 

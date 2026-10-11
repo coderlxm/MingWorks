@@ -8,7 +8,7 @@ const emit = defineEmits<{ action: [item: LifeItem, action: LifeAction]; setting
 </script>
 
 <template>
-  <div>
+  <div class="view">
     <header class="page-header">
       <div>
         <h1>生活提醒</h1>
@@ -24,7 +24,6 @@ const emit = defineEmits<{ action: [item: LifeItem, action: LifeAction]; setting
 
     <p v-if="data" class="life-date"><AppIcon name="calendar" />{{ dateLabel(data.date) }}</p>
     <p v-if="data" class="field-note">今天不再提醒只影响当天，明天照常；长期关闭会停止后续安排。</p>
-    <p v-if="loading" class="muted" role="status">正在更新生活提醒…</p>
 
     <div class="life-grid">
       <LifeCard

@@ -3,14 +3,14 @@ import { reactive } from 'vue'
 import type { Feedback, ReminderItem, ReminderListResponse } from '../types'
 import AppIcon from '../components/AppIcon.vue'
 import ReminderCard from '../components/ReminderCard.vue'
-const props = defineProps<{ data: ReminderListResponse | null; filters: { q: string; status: string; from: string; to: string }; loading: boolean; pending: Record<string, boolean>; feedback: Record<string, Feedback> }>()
+const props = defineProps<{ data: ReminderListResponse | null; filters: { q: string; status: string; from: string; to: string }; loading: boolean; loadingMore: boolean; pending: Record<string, boolean>; feedback: Record<string, Feedback> }>()
 const emit = defineEmits<{ filter: [value: Record<string, string>]; more: []; create: []; detail: [item: ReminderItem]; edit: [item: ReminderItem]; action: [item: ReminderItem, action: 'done' | 'skip' | 'snooze'] }>()
 const draft = reactive({ ...props.filters })
 function clear() { Object.assign(draft, { q: '', status: 'active', from: '', to: '' }); emit('filter', { ...draft }) }
 </script>
 
 <template>
-  <div>
+  <div class="view">
     <header class="page-header">
       <div>
         <h1>全部提醒</h1>
@@ -55,11 +55,11 @@ function clear() { Object.assign(draft, { q: '', status: 'active', from: '', to:
         至
         <input v-model="draft.to" type="date" :min="draft.from || undefined">
       </label>
-      <button class="primary" :disabled="loading">筛选</button>
+      <button class="primary">筛选</button>
       <button class="text-button" type="button" @click="clear">清除</button>
     </form>
 
-    <p v-if="data" class="results-summary">{{ data.total }} 条提醒<span v-if="loading"> · 正在更新…</span></p>
+    <p v-if="data" class="results-summary">{{ data.total }} 条提醒</p>
 
     <div class="card-stack">
       <ReminderCard
@@ -86,7 +86,7 @@ function clear() { Object.assign(draft, { q: '', status: 'active', from: '', to:
 
     <p v-if="!data" class="loading-placeholder">{{ loading ? '正在读取提醒…' : '提醒列表尚未读取。' }}</p>
 
-    <button v-if="data?.nextOffset !== null && data" class="load-more outline-button" :disabled="loading" @click="emit('more')">{{ loading ? '正在读取…' : '继续查看' }}</button>
+    <button v-if="data?.nextOffset !== null && data" class="load-more outline-button" :disabled="loadingMore" @click="emit('more')">{{ loadingMore ? '正在读取…' : '继续查看' }}</button>
   </div>
 </template>
 

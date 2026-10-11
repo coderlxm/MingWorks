@@ -43,7 +43,7 @@ function showHandled() {
 }
 </script>
 <template>
-  <div>
+  <div class="view">
     <p v-if="board" class="eyebrow">{{ dateLabel(board.date) }}</p>
     <div class="page-header">
       <div>
@@ -93,7 +93,6 @@ function showHandled() {
             <button :class="{ active: days === 7 }" @click="emit('days', 7)">未来七天</button>
           </div>
         </div>
-        <p v-if="loading" class="muted" role="status">正在更新安排…</p>
         <div v-for="group in timeline" :key="group.date" class="day-group">
           <h3 v-if="days === 7" class="day-heading">{{ dateLabel(group.date) }}</h3>
           <div class="timeline">

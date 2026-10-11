@@ -14,7 +14,7 @@ const statusOptions = [
 </script>
 
 <template>
-  <div>
+  <div class="view">
     <header class="page-header">
       <div>
         <h1>循环规则</h1>
@@ -40,7 +40,6 @@ const statusOptions = [
       >{{ option.label }}</button>
     </div>
 
-    <p v-if="loading" class="muted" role="status">正在更新规则…</p>
 
     <div class="card-stack">
       <article v-for="rule in data?.rules" :key="rule.id" class="card rule-card" :class="{ 'is-inactive': rule.status !== 'active' }">
