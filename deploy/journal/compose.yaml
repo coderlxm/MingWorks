@@ -2,6 +2,7 @@ services:
   journal:
     image: "notinews-journal:${JOURNAL_IMAGE_TAG:?JOURNAL_IMAGE_TAG must be a 40-character commit SHA}"
     container_name: notinews-journal
+    restart: always
     init: true
     env_file:
       - /opt/journal/.env
