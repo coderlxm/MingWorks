@@ -691,6 +691,50 @@ async function generateTopic(): Promise<void> {
 }
 
 @media (max-width: 999px) {
+  .publisher-view__form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .publisher-view__manuscript {
+    padding: 1.25rem;
+  }
+}
+
+@media (min-width: 600px) and (max-width: 999px) {
+  .publisher-view__form {
+    grid-template-rows: minmax(0, 1fr) auto;
+    gap: 1rem;
+  }
+
+  .publisher-view__sidebar {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 2rem;
+    row-gap: 1rem;
+    align-items: start;
+    padding: 1rem 0 0;
+    border-top: 1px solid var(--border-subtle);
+    border-left: 0;
+    overflow: visible;
+  }
+
+  .publisher-view__settings {
+    display: contents;
+  }
+
+  .publisher-view__actions {
+    align-self: end;
+    margin-top: 0;
+    padding-top: 0;
+    justify-content: flex-end;
+  }
+
+  .publisher-view__actions .button {
+    flex: 0 1 8rem;
+  }
+}
+
+@media (max-width: 599px) {
   .publisher-view {
     display: block;
     flex: none;
@@ -700,13 +744,8 @@ async function generateTopic(): Promise<void> {
   }
 
   .publisher-view__form {
-    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto;
     gap: 1.5rem;
-  }
-
-  .publisher-view__manuscript {
-    padding: 1.25rem;
   }
 
   .publisher-view__copy,
@@ -716,11 +755,11 @@ async function generateTopic(): Promise<void> {
 
   .publisher-view__form textarea {
     flex: none;
-    min-height: 14rem;
+    min-height: 12rem;
   }
 
   .publisher-view__sidebar {
-    padding: 0;
+    padding: 0 0.5rem;
     border-left: 0;
     overflow: visible;
   }
@@ -733,9 +772,7 @@ async function generateTopic(): Promise<void> {
   .publisher-view__actions .button {
     flex: 0 1 10rem;
   }
-}
 
-@media (max-width: 599px) {
   .publisher-view__heading {
     padding-inline: 0.5rem;
   }
@@ -747,14 +784,6 @@ async function generateTopic(): Promise<void> {
 
   .publisher-view__copy :deep(.topic-field input) {
     font-size: 1.05rem;
-  }
-
-  .publisher-view__form textarea {
-    min-height: 12rem;
-  }
-
-  .publisher-view__sidebar {
-    padding-inline: 0.5rem;
   }
 }
 </style>
