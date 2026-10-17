@@ -16,12 +16,10 @@ defineProps<{
       v-for="option in plainJournalChannels"
       :key="option.value"
       class="channel-field__option"
+      :title="option.description"
     >
       <input v-model="channel" type="radio" :value="option.value">
-      <span>
-        <strong>{{ option.label }}</strong>
-        <small>{{ option.description }}</small>
-      </span>
+      <span>{{ option.label }}</span>
     </label>
   </fieldset>
 </template>
@@ -29,7 +27,8 @@ defineProps<{
 <style scoped>
 .channel-field {
   display: grid;
-  gap: 0.55rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
   min-width: 0;
   margin: 0;
   padding: 0;
@@ -37,56 +36,43 @@ defineProps<{
 }
 
 .channel-field__label {
-  margin-bottom: 0.1rem;
+  grid-column: 1 / -1;
   color: var(--text-muted);
   font-size: 0.72rem;
   font-weight: 650;
 }
 
 .channel-field__option {
+  position: relative;
   display: flex;
-  align-items: flex-start;
-  gap: 0.65rem;
-  padding: 0.75rem;
+  align-items: center;
+  justify-content: center;
+  height: 2.25rem;
   border: 1px solid var(--border-subtle);
-  border-radius: 0.65rem;
+  border-radius: 0.5rem;
   background: var(--surface-card);
+  color: var(--text-primary);
+  font-size: 0.86rem;
   cursor: pointer;
 }
 
 .channel-field__option:has(input:checked) {
   border-color: var(--accent);
   background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.channel-field__option:has(input:focus-visible) {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
 }
 
 .channel-field__option input {
-  flex: none;
-  margin: 0.18rem 0 0;
-  accent-color: var(--accent);
-}
-
-.channel-field__option span {
-  display: grid;
-  gap: 0.18rem;
-}
-
-.channel-field__option strong {
-  font-size: 0.86rem;
-}
-
-.channel-field__option small {
-  color: var(--text-muted);
-  font-size: 0.74rem;
-  line-height: 1.45;
-}
-
-@media (min-width: 1181px) {
-  .channel-field {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .channel-field__label {
-    grid-column: 1 / -1;
-  }
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
 }
 </style>

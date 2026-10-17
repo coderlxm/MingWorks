@@ -78,10 +78,7 @@ function updateValue(): void {
     <legend class="published-time-field__label">发布时间</legend>
     <label class="published-time-field__option">
       <input :checked="enabled" type="checkbox" @change="updateEnabled">
-      <span>
-        <strong>指定发布时间</strong>
-        <small>勾选后自定义归档时间，不勾选则按当前时间</small>
-      </span>
+      <span>指定发布时间</span>
     </label>
     <div v-if="enabled" class="published-time-field__inputs">
       <label class="published-time-field__input">
@@ -99,9 +96,8 @@ function updateValue(): void {
 <style scoped>
 .published-time-field {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
   align-content: start;
-  gap: 0.55rem;
+  gap: 0.45rem;
   min-width: 0;
   margin: 0;
   padding: 0;
@@ -109,7 +105,6 @@ function updateValue(): void {
 }
 
 .published-time-field__label {
-  margin-bottom: 0.1rem;
   color: var(--text-muted);
   font-size: 0.72rem;
   font-weight: 650;
@@ -117,59 +112,31 @@ function updateValue(): void {
 
 .published-time-field__option {
   display: flex;
-  align-items: flex-start;
-  gap: 0.65rem;
-  padding: 0.75rem;
-  border: 1px solid var(--border-subtle);
-  border-radius: 0.65rem;
-  background: var(--surface-card);
+  align-items: center;
+  gap: 0.5rem;
+  width: fit-content;
+  font-size: 0.86rem;
   cursor: pointer;
 }
 
-.published-time-field__option:has(input:checked) {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-
 .published-time-field__option input {
-  flex: none;
-  margin: 0.18rem 0 0;
+  margin: 0;
   accent-color: var(--accent);
-}
-
-.published-time-field__option span {
-  display: grid;
-  gap: 0.18rem;
-}
-
-.published-time-field__option strong {
-  font-size: 0.86rem;
-}
-
-.published-time-field__option small {
-  color: var(--text-muted);
-  font-size: 0.74rem;
-  line-height: 1.45;
 }
 
 .published-time-field__inputs {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 7rem), 1fr));
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 0.5rem;
   min-width: 0;
-  gap: 0.75rem;
-  padding: 0.75rem;
-  border: 1px solid var(--border-subtle);
-  border-radius: 0.65rem;
-  background: var(--surface-card);
 }
 
 .published-time-field__input {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  gap: 0.3rem;
   min-width: 0;
-  gap: 0.4rem;
   color: var(--text-muted);
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   font-weight: 650;
 }
 
@@ -177,16 +144,17 @@ function updateValue(): void {
   display: block;
   width: 100%;
   min-width: 0;
-  max-width: 100%;
-  min-height: 2.75rem;
+  min-height: 2.25rem;
   -webkit-appearance: none;
   appearance: none;
-  padding: 0.55rem 0.7rem;
+  padding: 0.4rem 0.55rem;
   border: 1px solid var(--border-strong);
-  border-radius: 0.65rem;
+  border-radius: 0.5rem;
   background: var(--surface-card);
   color: var(--text-primary);
-  font: inherit;
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 400;
 }
 
 .published-time-field__input input:focus-visible {
@@ -197,11 +165,5 @@ function updateValue(): void {
 .published-time-field__input input::-webkit-date-and-time-value {
   min-height: 1.5em;
   text-align: left;
-}
-
-@media (max-width: 520px) {
-  .published-time-field__inputs {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }
 </style>

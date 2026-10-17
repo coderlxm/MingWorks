@@ -43,6 +43,13 @@ const { isOverDropZone } = useDropZone(dropZone, {
 });
 
 const dropZoneActive = computed(() => isOverDropZone.value && !pickerDisabled.value);
+const compact = computed(() => imageCount.value > 0);
+const compactLabel = computed(() => {
+  if (imageLimitReached.value) return '已满 10 项';
+  if (props.disabled) return '暂不可用';
+  if (dropZoneActive.value) return '松开添加';
+  return '添加';
+});
 
 function showSelectionError(message: string): void {
   showMessage({ message, type: 'error' });
@@ -132,36 +139,46 @@ function selectImages(): void {
         </ElTooltip>
       </div>
 
-    <button
-      ref="dropZone"
-      class="image-picker__drop-zone"
-      :class="{
-        'image-picker__drop-zone--over': dropZoneActive,
-        'image-picker__drop-zone--limit': imageLimitReached,
-        'image-picker__drop-zone--disabled': disabled,
-      }"
-      type="button"
-      :disabled="pickerDisabled"
-      aria-describedby="entry-images-hint"
-      @click="selectImages"
-    >
-      <strong v-if="imageLimitReached" class="image-picker__drop-title">已达到 10 项上限</strong>
-      <strong v-else-if="disabled" class="image-picker__drop-title">图片选择暂不可用</strong>
-      <strong v-else-if="dropZoneActive" class="image-picker__drop-title">松开以添加媒体</strong>
-      <template v-else>
-        <strong class="image-picker__drop-title image-picker__drop-title--desktop">拖拽媒体到这里，点击选择，或直接粘贴图片</strong>
-        <strong class="image-picker__drop-title image-picker__drop-title--mobile">点击选择媒体</strong>
-      </template>
-      <span class="image-picker__drop-hint">图片将在保存草稿或发布时上传</span>
-    </button>
-
+    <div class="image-picker__strip">
+      <button
+        ref="dropZone"
+        class="image-picker__drop-zone"
+        :class="{
+          'image-picker__drop-zone--compact': compact,
+          'image-picker__drop-zone--over': dropZoneActive,
+          'image-picker__drop-zone--limit': imageLimitReached,
+          'image-picker__drop-zone--disabled': disabled,
+        }"
+        type="button"
+        :disabled="pickerDisabled"
+        aria-describedby="entry-images-hint"
+        @click="selectImages"
+      >
+        <template v-if="compact">
+          <span v-if="!pickerDisabled" class="image-picker__plus" aria-hidden="true">+</span>
+          <strong class="image-picker__drop-title">{{ compactLabel }}</strong>
+        </template>
+        <template v-else>
+          <strong v-if="imageLimitReached" class="image-picker__drop-title">已达到 10 项上限</strong>
+          <strong v-else-if="disabled" class="image-picker__drop-title">图片选择暂不可用</strong>
+          <strong v-else-if="dropZoneActive" class="image-picker__drop-title">松开以添加媒体</strong>
+          <template v-else>
+            <strong class="image-picker__drop-title image-picker__drop-title--desktop">拖拽媒体到这里，点击选择，或直接粘贴图片</strong>
+            <strong class="image-picker__drop-title image-picker__drop-title--mobile">点击选择媒体</strong>
+          </template>
+        </template>
+        <span v-if="!compact" class="image-picker__drop-hint">图片将在保存草稿或发布时上传</span>
+      </button>
+      <slot />
+    </div>
   </section>
 </template>
 
 <style scoped>
 .image-picker {
   display: grid;
-  gap: 0.75rem;
+  gap: 0.5rem;
+  min-width: 0;
 }
 
 .image-picker__heading {
@@ -211,14 +228,23 @@ function selectImages(): void {
   stroke-width: 1.35;
 }
 
+.image-picker__strip {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+
 .image-picker__drop-zone {
   display: grid;
-  width: 100%;
-  min-height: 8rem;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 5.5rem;
   align-content: center;
   justify-items: center;
-  gap: 0.35rem;
-  padding: 1.25rem;
+  gap: 0.25rem;
+  padding: 0.75rem 1rem;
   border: 1px dashed var(--border-strong);
   border-radius: var(--radius-card);
   background: var(--surface-card);
@@ -233,6 +259,27 @@ function selectImages(): void {
 .image-picker__drop-zone--over {
   border-color: var(--accent);
   background: var(--accent-soft);
+}
+
+.image-picker__drop-zone:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: -2px;
+}
+
+.image-picker__drop-zone--compact {
+  flex: none;
+  width: 5.5rem;
+  padding: 0.5rem;
+}
+
+.image-picker__plus {
+  color: var(--accent-strong);
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+.image-picker__drop-zone--compact .image-picker__drop-title {
+  font-size: 0.78rem;
 }
 
 .image-picker__drop-zone--limit,
@@ -264,11 +311,6 @@ function selectImages(): void {
 }
 
 @media (max-width: 599px) {
-  .image-picker__drop-zone {
-    min-height: 6.5rem;
-    padding: 1rem;
-  }
-
   .image-picker__drop-title--desktop {
     display: none;
   }

@@ -60,7 +60,7 @@ onBeforeUnmount(() => {
         :aria-label="`移除 ${asset.originalName ?? '图片'}`"
         @click="emit('removeExisting', asset.id)"
       >
-        移除
+        ×
       </button>
     </figure>
 
@@ -74,7 +74,7 @@ onBeforeUnmount(() => {
         :aria-label="`移除 ${file.name}`"
         @click="removeLocal(file)"
       >
-        移除
+        ×
       </button>
     </figure>
   </div>
@@ -82,15 +82,16 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .media-preview-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr));
-  gap: 0.7rem;
+  display: flex;
+  flex: none;
+  gap: 0.5rem;
 }
 
 .media-preview-grid__item {
-  display: grid;
-  gap: 0.35rem;
-  min-width: 0;
+  position: relative;
+  flex: none;
+  width: 5.5rem;
+  height: 5.5rem;
   margin: 0;
 }
 
@@ -98,32 +99,33 @@ onBeforeUnmount(() => {
 .media-preview-grid__item video {
   display: block;
   width: 100%;
-  aspect-ratio: 1;
-  max-height: 12rem;
+  height: 100%;
   border-radius: var(--radius-media);
   background: var(--surface-muted);
   object-fit: cover;
 }
 
 .media-preview-grid__remove {
-  min-height: 2.25rem;
-  padding: 0.35rem;
+  position: absolute;
+  top: 0.3rem;
+  right: 0.3rem;
+  display: grid;
+  width: 1.35rem;
+  height: 1.35rem;
+  padding: 0;
+  place-items: center;
   border: 0;
-  background: transparent;
-  color: var(--danger);
+  border-radius: 50%;
+  background: rgb(0 0 0 / 0.6);
+  color: #fff;
   cursor: pointer;
   font: inherit;
-  font-size: 0.76rem;
+  font-size: 0.95rem;
+  line-height: 1;
 }
 
 .media-preview-grid__remove:disabled {
   cursor: wait;
   opacity: 0.55;
-}
-
-@media (max-width: 599px) {
-  .media-preview-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 </style>
