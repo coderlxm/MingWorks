@@ -13,6 +13,7 @@ import type { ReminderHistoryItem } from './dashboardTypes.js';
 
 const jobs = new Map<LifeKind, schedule.Job>();
 const repeatMinutes = { vitamin: 30, bus: 2 } as const;
+const vitaminMaxSends = 2;
 
 function cancelJob(kind: LifeKind): void {
   jobs.get(kind)?.cancel();
@@ -52,7 +53,7 @@ function windowFor(settings: LifeSettings, date: string): { start: Date; end: Da
 }
 
 function ruleText(settings: LifeSettings): string {
-  if (settings.kind === 'vitamin') return `中国工作日 ${settings.workdayStart}–${settings.workdayEnd} 随机开始；非工作日 ${settings.restdayTime}；每 30 分钟提醒至当天结束`;
+  if (settings.kind === 'vitamin') return `中国工作日 ${settings.workdayStart}–${settings.workdayEnd} 随机开始；非工作日 ${settings.restdayTime}；未确认时 30 分钟后再提醒 1 次，每天最多 ${vitaminMaxSends} 次`;
   if (settings.kind === 'bus') return `中国工作日 ${settings.time} 开始，每 2 分钟一次，最多 3 次`;
   return '中国工作日随 09:55 新闻发出，09:59 补提醒，10:00 自动结束';
 }
@@ -113,7 +114,7 @@ async function sendTracked(bot: Telegraf | undefined, kind: LifeKind, date: stri
   if (date !== bjDate() || !getLifeSettings(kind).enabled || !day || lifeDayIsClosed(day)) return false;
   cancelJob(kind);
   patchLifeDay(kind, date, { next_trigger_at: null, error: null });
-  const keyboard = kind === 'vitamin' ? buildVitaminButtons(date) : kind === 'bus' ? buildBusReminderButtons(date) : buildWorkCheckinButtons(date);
+  const keyboard = kind === 'vitamin' ? buildVitaminButtons(date, (day.sent_count ?? 0) + 1 < vitaminMaxSends) : kind === 'bus' ? buildBusReminderButtons(date) : buildWorkCheckinButtons(date);
   let messageId: number;
   try {
     messageId = await sendTelegramMessageWithId(message, bot, keyboard.reply_markup);
@@ -139,6 +140,10 @@ async function sendSpecial(bot: Telegraf, kind: 'vitamin' | 'bus', date: string)
   if (!sent) return;
   const current = getLifeDay(kind, date)!;
   if (lifeDayIsClosed(current) || current.next_trigger_at !== null) return;
+  if (kind === 'vitamin' && current.sent_count !== null && current.sent_count >= vitaminMaxSends) {
+    patchLifeDay(kind, date, { reason: `今天已提醒 ${vitaminMaxSends} 次，不再推送；仍可确认已吃。` });
+    return;
+  }
   const next = bj().add(repeatMinutes[kind], 'minute');
   if (next.format('YYYY-MM-DD') !== date) return;
   patchLifeDay(kind, date, { next_trigger_at: next.toISOString(), ...(kind === 'bus' && current.sent_count !== null && current.sent_count >= 3 ? { reason: '已提醒 3 次，2 分钟后自动结束；期间仍可确认。' } : {}) });
@@ -194,7 +199,7 @@ export async function triggerVitaminReminder(bot: Telegraf): Promise<void> {
   if (!getLifeSettings('vitamin').enabled) return;
   const date = bjDate();
   const day = getLifeDay('vitamin', date) ?? createLifeDay('vitamin', date, new Date().toISOString());
-  if (lifeDayIsClosed(day)) return;
+  if (lifeDayIsClosed(day) || (day.sent_count !== null && day.sent_count >= vitaminMaxSends)) return;
   await sendSpecial(bot, 'vitamin', date);
 }
 
@@ -272,6 +277,7 @@ export async function actLife(bot: Telegraf, rawKind: unknown, date: string, raw
   if (day && lifeDayIsClosed(day)) throw Object.assign(new Error('今天的这项提醒已经结束。'), { statusCode: 409 });
   if (action === 'snooze') {
     if (kind !== 'vitamin') throw Object.assign(new Error('只有维生素支持 30 分钟后提醒。'), { statusCode: 400 });
+    if (day && day.sent_count !== null && day.sent_count >= vitaminMaxSends) throw Object.assign(new Error(`今天已提醒 ${vitaminMaxSends} 次，不再延后提醒。`), { statusCode: 409 });
     const next = bj().add(30, 'minute');
     if (next.format('YYYY-MM-DD') !== date) throw Object.assign(new Error('30 分钟后已是次日，无法延后今天的提醒。'), { statusCode: 400 });
     createLifeDay(kind, date, next.toISOString());
@@ -337,7 +343,7 @@ export function readLifeDashboard(date = bjDate()): LifeDashboard {
     const today = date === bjDate();
     const future = date >= bjDate();
     const actionable = today && settings.enabled && currentWindow !== null && (!day || !lifeDayIsClosed(day));
-    const actions: LifeAction[] = actionable ? ['confirm', ...(kind === 'vitamin' && settings.enabled ? ['snooze' as const] : []), 'stop'] : [];
+    const actions: LifeAction[] = actionable ? ['confirm', ...(kind === 'vitamin' && settings.enabled && (day?.sent_count ?? 0) < vitaminMaxSends ? ['snooze' as const] : []), 'stop'] : [];
     const plan = settings.enabled && window !== null && future;
     const busMaxReached = kind === 'bus' && (day?.sent_count ?? 0) >= 3;
     return {

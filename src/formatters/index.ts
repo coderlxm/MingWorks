@@ -200,15 +200,14 @@ export function buildBusReminderButtons(dateKey: string): { reply_markup: Inline
   };
 }
 
-export function buildVitaminButtons(dateKey: string): { reply_markup: InlineKeyboardMarkup } {
+export function buildVitaminButtons(dateKey: string, canSnooze: boolean): { reply_markup: InlineKeyboardMarkup } {
+  const eaten = { text: '💊 已吃', callback_data: `vitamin:eaten:${dateKey}` };
+  const stop = { text: '今天不再提醒', callback_data: `vitamin:stop:${dateKey}` };
   return {
     reply_markup: {
-      inline_keyboard: [[
-        { text: '💊 已吃', callback_data: `vitamin:eaten:${dateKey}` },
-        { text: '⏰ 未吃，30分钟后再提醒', callback_data: `vitamin:snooze:${dateKey}` },
-      ], [
-        { text: '今天不再提醒', callback_data: `vitamin:stop:${dateKey}` },
-      ]]
+      inline_keyboard: canSnooze
+        ? [[eaten, { text: '⏰ 未吃，30分钟后再提醒', callback_data: `vitamin:snooze:${dateKey}` }], [stop]]
+        : [[eaten, stop]]
     }
   };
 }

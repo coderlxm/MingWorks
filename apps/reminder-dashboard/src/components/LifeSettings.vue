@@ -93,7 +93,7 @@ defineExpose({ mayLeave })
             非工作日固定时间
             <input v-model="draft.restdayTime" type="time" required :disabled="busy">
           </label>
-          <p class="field-note">按中国工作日日历执行，继续提醒间隔为 30 分钟。未确定时刻前，只显示窗口。</p>
+          <p class="field-note">按中国工作日日历执行，未确认时 30 分钟后再提醒 1 次，每天最多 2 次。未确定时刻前，只显示窗口。</p>
         </template>
         <template v-else-if="draft.kind === 'bus'">
           <label class="field">
