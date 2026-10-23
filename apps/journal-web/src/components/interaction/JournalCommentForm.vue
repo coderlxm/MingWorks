@@ -142,7 +142,7 @@ defineExpose({ clearContent, markFailed });
         :disabled="!canSubmit"
         :aria-busy="busy"
       >
-        {{ mode === 'owner' ? '发送回复' : isGuestbook ? '发送留言' : '发送评论' }}
+        {{ mode === 'owner' ? (isGuestbook ? '寄出' : '发送回复') : isGuestbook ? '发送留言' : '发送评论' }}
       </button>
     </div>
     <ul v-if="expanded && markdownHintOpen" class="comment-form__hint">

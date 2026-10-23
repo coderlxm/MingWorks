@@ -14,7 +14,6 @@ import {
 } from '../../utils/journalVisitorIdentity';
 import { showMessage } from '../../utils/message';
 import JournalCommentForm from '../interaction/JournalCommentForm.vue';
-import GuestbookHeader from './GuestbookHeader.vue';
 import GuestbookList from './GuestbookList.vue';
 
 interface JournalCommentFormInstance {
@@ -59,19 +58,6 @@ const renderedLoading = computed(() =>
   renderedLoadError.value === null
   && (scope.value === null || loadedScope.value !== scope.value || loading.value),
 );
-const total = computed(() =>
-  renderedMessages.value === null ? null : renderedMessages.value.length,
-);
-const repliedTotal = computed(() => {
-  if (renderedMessages.value === null) return 0;
-  return renderedMessages.value.filter(m => m.replies && m.replies.length > 0).length;
-});
-const hiddenTotal = computed(() => {
-  if (!ownerMode.value || renderedMessages.value === null) return null;
-  return renderedMessages.value.filter(
-    message => 'status' in message && message.status === 'hidden',
-  ).length;
-});
 const visitorFormDisabled = computed(() =>
   renderedLoading.value || renderedLoadError.value !== null);
 
@@ -165,29 +151,7 @@ async function handleRemove(id: number): Promise<void> {
 
 <template>
   <main class="guestbook-view">
-    <!-- 顶部看板 -->
-    <GuestbookHeader
-      :total="total"
-      :replied-total="repliedTotal"
-      :hidden-total="hiddenTotal"
-      :owner-mode="ownerMode"
-    />
-
-    <!-- 访客留言输入框 -->
-    <section v-if="!ownerMode" class="guestbook-view__composer" aria-label="写留言">
-      <JournalCommentForm
-        v-if="authenticationChecked"
-        ref="visitorForm"
-        mode="visitor"
-        context="guestbook"
-        :busy="submittingVisitor"
-        :disabled="visitorFormDisabled"
-        :initial-author-name="rememberedVisitorName"
-        @submit="handleVisitorSubmit"
-      />
-    </section>
-
-    <!-- 下方多列自适应留言列表 -->
+    <!-- 留言板：铺满整个内容区 -->
     <section class="guestbook-view__list" aria-label="留言列表">
       <GuestbookList
         :messages="renderedMessages"
@@ -205,31 +169,50 @@ async function handleRemove(id: number): Promise<void> {
         @remove="handleRemove"
       />
     </section>
+
+    <!-- 访客留言输入框：浮在留言板底部 -->
+    <section v-if="!ownerMode" class="guestbook-view__composer" aria-label="写留言">
+      <JournalCommentForm
+        v-if="authenticationChecked"
+        ref="visitorForm"
+        mode="visitor"
+        context="guestbook"
+        :busy="submittingVisitor"
+        :disabled="visitorFormDisabled"
+        :initial-author-name="rememberedVisitorName"
+        @submit="handleVisitorSubmit"
+      />
+    </section>
   </main>
 </template>
 
 <style scoped>
 .guestbook-view {
-  display: grid;
-  width: min(calc(100% - (var(--page-gutter) * 2)), 1360px);
-  margin: 0 auto;
-  padding: clamp(2.2rem, 4.5vw, 3.8rem) 0 5.5rem;
-  gap: clamp(1.4rem, 2.5vw, 2rem);
-  align-content: start;
-}
-
-.guestbook-view__composer {
-  width: 100%;
+  position: relative;
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
+  min-height: 30rem;
+  overflow-x: clip;
 }
 
 .guestbook-view__list {
-  width: 100%;
+  display: flex;
+  flex: 1 1 auto;
 }
 
-@media (max-width: 599px) {
-  .guestbook-view {
-    padding: 1.6rem 0 calc(2.4rem + env(safe-area-inset-bottom));
-    gap: 1.2rem;
-  }
+.guestbook-view__composer {
+  position: absolute;
+  bottom: calc(1.25rem + env(safe-area-inset-bottom));
+  left: 50%;
+  z-index: 1;
+  width: min(560px, calc(100% - 2rem));
+  transform: translateX(-50%);
+}
+
+.guestbook-view__composer :deep(.comment-form) {
+  box-shadow:
+    0 2px 6px rgb(0 0 0 / 6%),
+    0 18px 40px -16px rgb(0 0 0 / 30%);
 }
 </style>

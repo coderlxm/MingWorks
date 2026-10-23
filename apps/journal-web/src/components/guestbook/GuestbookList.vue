@@ -25,9 +25,34 @@ const emit = defineEmits<{
   remove: [id: number];
 }>();
 
+const skeletonNotes = [
+  { x: 6, y: 8, width: 260, rotate: -5, lines: [100, 92, 64] },
+  { x: 38, y: 4, width: 230, rotate: 4, lines: [100, 78] },
+  { x: 68, y: 12, width: 290, rotate: -2, lines: [100, 96, 88, 40] },
+  { x: 18, y: 42, width: 240, rotate: 6, lines: [100, 84, 52] },
+  { x: 52, y: 38, width: 270, rotate: -6, lines: [100, 90] },
+  { x: 74, y: 56, width: 250, rotate: 3, lines: [100, 88, 70, 46] },
+] as const;
+
 const showSkeleton = computed(() =>
   props.loading || (props.messages === null && props.loadError === null),
 );
+
+// 位置和层级由 CSS 决定，DOM 按 id 固定排序，增删改和置顶都不会移动已有便签
+const boardMessages = computed(() =>
+  props.messages === null ? [] : [...props.messages].sort((a, b) => a.id - b.id),
+);
+
+// 首次铺开时旧留言先钉、新留言后钉；之后新增的留言立即入场
+let introDelays: ReadonlyMap<number, number> | null = null;
+
+function enterDelay(id: number): number {
+  if (introDelays === null) {
+    const step = Math.min(90, 1800 / boardMessages.value.length);
+    introDelays = new Map(boardMessages.value.map((message, index) => [message.id, Math.round(index * step)]));
+  }
+  return introDelays.get(id) ?? 0;
+}
 
 function isMessageBusy(message: GuestbookMessage): boolean {
   if (props.mutatingId === null) return false;
@@ -37,41 +62,53 @@ function isMessageBusy(message: GuestbookMessage): boolean {
 </script>
 
 <template>
-  <div class="guestbook-list-container" aria-live="polite">
-    <!-- 纸质书信多列骨架屏 -->
-    <div v-if="showSkeleton" class="guestbook-list__grid" aria-hidden="true">
-      <div v-for="index in 6" :key="index" class="guestbook-list__skeleton-card">
-        <div class="guestbook-list__skeleton-head">
-          <span class="guestbook-list__skeleton-avatar" />
-          <span class="guestbook-list__skeleton-line guestbook-list__skeleton-line--name" />
+  <div class="guestbook-board" aria-live="polite">
+    <!-- 骨架屏 -->
+    <template v-if="showSkeleton">
+      <div
+        v-for="(note, noteIndex) in skeletonNotes"
+        :key="noteIndex"
+        class="guestbook-board__skeleton-note"
+        aria-hidden="true"
+        :style="{
+          left: `calc(${note.x / 100} * (100% - min(${note.width}px, 86%)))`,
+          top: `${note.y}%`,
+          width: `min(${note.width}px, 86%)`,
+          transform: `rotate(${note.rotate}deg)`,
+        }"
+      >
+        <div class="guestbook-board__skeleton-head">
+          <span class="guestbook-board__skeleton-avatar" />
+          <span class="guestbook-board__skeleton-line guestbook-board__skeleton-line--name" />
         </div>
-        <div class="guestbook-list__skeleton-lines">
-          <span class="guestbook-list__skeleton-line" />
-          <span class="guestbook-list__skeleton-line guestbook-list__skeleton-line--long" />
-          <span class="guestbook-list__skeleton-line guestbook-list__skeleton-line--short" />
-        </div>
+        <span
+          v-for="(width, lineIndex) in note.lines"
+          :key="lineIndex"
+          class="guestbook-board__skeleton-line"
+          :style="{ width: `${width}%` }"
+        />
       </div>
-    </div>
+    </template>
 
     <!-- 错误状态 -->
-    <div v-else-if="loadError !== null" class="guestbook-list__state guestbook-list__state--error" role="alert">
-      <h2>信箱加载异常</h2>
+    <div v-else-if="loadError !== null" class="guestbook-board__state guestbook-board__state--error" role="alert">
+      <h2>留言板没有加载完成</h2>
       <p>{{ loadError }}</p>
     </div>
 
-    <!-- 空状态：书卷信箱插画 -->
-    <div v-else-if="messages !== null && messages.length === 0" class="guestbook-list__empty">
-      <div class="guestbook-list__empty-stamp" aria-hidden="true">✉</div>
-      <h3 class="guestbook-list__empty-title">暂无来信 · 墨香尚温</h3>
-      <p class="guestbook-list__empty-desc">信箱刚刚开启，期待你成为第一位在此留下墨迹的来访者。</p>
+    <!-- 空状态 -->
+    <div v-else-if="messages !== null && messages.length === 0" class="guestbook-board__state">
+      <h2>还没有留言</h2>
+      <p>写下第一句话，打个招呼吧。</p>
     </div>
 
-    <!-- 正常信笺多列自适应画廊 -->
-    <div v-else-if="messages !== null" class="guestbook-list__grid">
+    <!-- 便签散落铺满整个留言板，留言多时自然叠成一堆 -->
+    <template v-else>
       <GuestbookItem
-        v-for="message in messages"
+        v-for="message in boardMessages"
         :key="message.id"
         :message="message"
+        :enter-delay="enterDelay(message.id)"
         :owner-mode="ownerMode"
         :busy="isMessageBusy(message)"
         :actions-disabled="mutatingId !== null || submittingReply"
@@ -84,138 +121,98 @@ function isMessageBusy(message: GuestbookMessage): boolean {
         @set-pinned="(id, pinned) => emit('setPinned', id, pinned)"
         @remove="id => emit('remove', id)"
       />
-    </div>
+    </template>
   </div>
 </template>
 
 <style scoped>
-.guestbook-list-container {
-  width: 100%;
+/* 独立层叠上下文：便签的大 z-index 只在留言板内部比较 */
+.guestbook-board {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 30rem;
+  isolation: isolate;
 }
 
-/* 多列自适应网格画廊 */
-.guestbook-list__grid {
+.guestbook-board__skeleton-note {
+  position: absolute;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-  gap: clamp(1rem, 2vw, 1.4rem);
-  align-items: start;
+  align-content: start;
+  gap: 0.6rem;
+  padding: 1.3rem 1.1rem 1.1rem;
+  background: #f4ecd8;
+  box-shadow:
+    0 1px 1px rgb(40 25 10 / 10%),
+    0 8px 18px -10px rgb(40 25 10 / 24%);
+  opacity: 0.7;
 }
 
-/* 骨架屏 */
-.guestbook-list__skeleton-card {
-  display: grid;
-  gap: 0.9rem;
-  padding: 1.25rem 1.4rem;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-card);
-  background: var(--surface-card);
-}
-
-.guestbook-list__skeleton-head {
+.guestbook-board__skeleton-head {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.65rem;
+  margin-bottom: 0.25rem;
 }
 
-.guestbook-list__skeleton-avatar {
-  width: 36px;
-  height: 36px;
+.guestbook-board__skeleton-avatar {
+  width: 28px;
+  height: 28px;
   flex: none;
   border-radius: 50%;
-  background: var(--surface-muted);
+  background: rgb(110 75 35 / 14%);
   animation: guestbook-skeleton-pulse 1.4s ease-in-out infinite;
 }
 
-.guestbook-list__skeleton-lines {
-  display: grid;
-  gap: 0.55rem;
-}
-
-.guestbook-list__skeleton-line {
-  height: 0.75rem;
+.guestbook-board__skeleton-line {
+  height: 0.7rem;
   border-radius: 999px;
-  background: var(--surface-muted);
+  background: rgb(110 75 35 / 14%);
   animation: guestbook-skeleton-pulse 1.4s ease-in-out infinite;
 }
 
-.guestbook-list__skeleton-line--name {
-  width: 35%;
+.guestbook-board__skeleton-line--name {
+  flex: 1 1 auto;
+  height: 0.8rem;
+  width: 40%;
 }
 
-.guestbook-list__skeleton-line--short {
-  width: 45%;
-}
-
-.guestbook-list__skeleton-line--long {
-  width: 85%;
-}
-
-.guestbook-list__state {
+/* 状态卡片居中放在留言板上 */
+.guestbook-board__state {
+  position: absolute;
+  top: 38%;
+  left: 50%;
   display: grid;
+  width: min(360px, calc(100% - 2rem));
   gap: 0.65rem;
-  padding: clamp(1.4rem, 4vw, 2.2rem);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-card);
-  background: var(--surface-card);
+  padding: 1.6rem 1.5rem;
+  background: #f4ecd8;
+  box-shadow:
+    0 1px 1px rgb(40 25 10 / 12%),
+    0 12px 28px -14px rgb(40 25 10 / 30%);
+  color: #2f251c;
+  text-align: center;
+  transform: translate(-50%, -50%) rotate(-2deg);
 }
 
-.guestbook-list__state h2,
-.guestbook-list__state p {
+.guestbook-board__state h2,
+.guestbook-board__state p {
   margin: 0;
 }
 
-.guestbook-list__state h2 {
+.guestbook-board__state h2 {
   font-family: var(--font-serif);
-  font-size: 1.1rem;
+  font-size: 1.15rem;
 }
 
-.guestbook-list__state p {
-  color: var(--text-muted);
-  font-size: 0.86rem;
+.guestbook-board__state p {
+  color: #7a6a58;
+  font-size: 0.84rem;
   line-height: 1.7;
 }
 
-.guestbook-list__state--error {
-  border-color: color-mix(in srgb, var(--danger) 32%, var(--border-subtle));
-}
-
-.guestbook-list__state--error h2,
-.guestbook-list__state--error p {
-  color: var(--danger);
-}
-
-/* 空状态卡片 */
-.guestbook-list__empty {
-  display: grid;
-  justify-items: center;
-  gap: 0.45rem;
-  padding: clamp(2.6rem, 6vw, 4rem) 1.5rem;
-  border: 1px dashed var(--border-strong);
-  border-radius: var(--radius-card);
-  background: color-mix(in srgb, var(--surface-card) 50%, transparent);
-  text-align: center;
-}
-
-.guestbook-list__empty-stamp {
-  font-size: 2rem;
-  line-height: 1;
-  color: var(--accent);
-  margin-bottom: 0.2rem;
-}
-
-.guestbook-list__empty-title {
-  margin: 0;
-  font-family: var(--font-serif);
-  font-size: 1.1rem;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.guestbook-list__empty-desc {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: 0.84rem;
-  line-height: 1.6;
+.guestbook-board__state--error h2,
+.guestbook-board__state--error p {
+  color: #9c2f2a;
 }
 
 @keyframes guestbook-skeleton-pulse {
@@ -229,15 +226,9 @@ function isMessageBusy(message: GuestbookMessage): boolean {
   }
 }
 
-@media (max-width: 599px) {
-  .guestbook-list__grid {
-    grid-template-columns: 1fr;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .guestbook-list__skeleton-avatar,
-  .guestbook-list__skeleton-line {
+  .guestbook-board__skeleton-avatar,
+  .guestbook-board__skeleton-line {
     animation: none;
   }
 }
