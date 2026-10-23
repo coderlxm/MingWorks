@@ -38,20 +38,38 @@ const showSkeleton = computed(() =>
   props.loading || (props.messages === null && props.loadError === null),
 );
 
-// 位置和层级由 CSS 决定，DOM 按 id 固定排序，增删改和置顶都不会移动已有便签
-const boardMessages = computed(() =>
-  props.messages === null ? [] : [...props.messages].sort((a, b) => a.id - b.id),
-);
+// rank 决定便签从上到下的位置：置顶在最前，其余从新到旧；sequence 是从留言板底部往上数的序号，决定左右位置，
+// 新留言插在置顶下面时，它下面的便签 sequence 不变，不会左右挪动。
+// DOM 按 id 固定排序，增删改和置顶只改位置，不会重建已有便签
+const boardNotes = computed(() => {
+  if (props.messages === null) return [];
+  const count = props.messages.length;
+  const rankById = new Map([...props.messages]
+    .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.id - a.id)
+    .map((message, rank) => [message.id, rank]));
+  return [...props.messages]
+    .sort((a, b) => a.id - b.id)
+    .map((message) => {
+      const rank = rankById.get(message.id)!;
+      return { message, rank, sequence: count - 1 - rank };
+    });
+});
 
-// 首次铺开时旧留言先钉、新留言后钉；之后新增的留言立即入场
-let introDelays: ReadonlyMap<number, number> | null = null;
+// 首次铺开时最上面的一批便签从上往下逐条钉上来，下面的直接就位，避免上百张便签同时做动画；
+// 之后新增的留言立即入场
+const introNoteCount = 24;
+let introDelays: ReadonlyMap<number, number | null> | null = null;
 
-function enterDelay(id: number): number {
+function enterDelay(id: number): number | null {
   if (introDelays === null) {
-    const step = Math.min(90, 1800 / boardMessages.value.length);
-    introDelays = new Map(boardMessages.value.map((message, index) => [message.id, Math.round(index * step)]));
+    const step = Math.min(90, 1800 / Math.min(introNoteCount, boardNotes.value.length));
+    introDelays = new Map(boardNotes.value.map(({ message, rank }) => [
+      message.id,
+      rank < introNoteCount ? Math.round(rank * step) : null,
+    ]));
   }
-  return introDelays.get(id) ?? 0;
+  const delay = introDelays.get(id);
+  return delay === undefined ? 0 : delay;
 }
 
 function isMessageBusy(message: GuestbookMessage): boolean {
@@ -62,7 +80,7 @@ function isMessageBusy(message: GuestbookMessage): boolean {
 </script>
 
 <template>
-  <div class="guestbook-board" aria-live="polite">
+  <div class="guestbook-board" :style="{ '--count': boardNotes.length }" aria-live="polite">
     <!-- 骨架屏 -->
     <template v-if="showSkeleton">
       <div
@@ -102,12 +120,14 @@ function isMessageBusy(message: GuestbookMessage): boolean {
       <p>写下第一句话，打个招呼吧。</p>
     </div>
 
-    <!-- 便签散落铺满整个留言板，留言多时自然叠成一堆 -->
+    <!-- 便签从上到下散落，留言多时留言板跟着变高 -->
     <template v-else>
       <GuestbookItem
-        v-for="message in boardMessages"
+        v-for="{ message, sequence, rank } in boardNotes"
         :key="message.id"
         :message="message"
+        :sequence="sequence"
+        :rank="rank"
         :enter-delay="enterDelay(message.id)"
         :owner-mode="ownerMode"
         :busy="isMessageBusy(message)"
@@ -126,12 +146,43 @@ function isMessageBusy(message: GuestbookMessage): boolean {
 </template>
 
 <style scoped>
-/* 独立层叠上下文：便签的大 z-index 只在留言板内部比较 */
+/* 留言多时留言板跟着变高：每排约 --cols 张便签、排高 --band，叠放密度不随留言数量增加。
+   断点按留言板实际宽度约 290px 一列折算（宽屏左侧有 180px 侧栏）。
+   独立层叠上下文：便签的大 z-index 只在留言板内部比较 */
 .guestbook-board {
+  --cols: 1;
+  --band: 210px;
+  /* 每张便签在自己那一排里上下随机错开的幅度 */
+  --drift-span: calc(0.3 * var(--band));
   position: relative;
   flex: 1 1 auto;
-  min-height: 30rem;
+  min-height: max(30rem, calc(var(--count) / var(--cols) * var(--band) + var(--drift-span) + 16rem));
   isolation: isolate;
+}
+
+@media (min-width: 600px) {
+  .guestbook-board {
+    --cols: 2;
+    --band: 170px;
+  }
+}
+
+@media (min-width: 1050px) {
+  .guestbook-board {
+    --cols: 3;
+  }
+}
+
+@media (min-width: 1340px) {
+  .guestbook-board {
+    --cols: 4;
+  }
+}
+
+@media (min-width: 1630px) {
+  .guestbook-board {
+    --cols: 5;
+  }
 }
 
 .guestbook-board__skeleton-note {
@@ -185,7 +236,7 @@ function isMessageBusy(message: GuestbookMessage): boolean {
   width: min(360px, calc(100% - 2rem));
   gap: 0.65rem;
   padding: 1.6rem 1.5rem;
-  background: #f4ecd8;
+  background: #f7f2e4;
   box-shadow:
     0 1px 1px rgb(40 25 10 / 12%),
     0 12px 28px -14px rgb(40 25 10 / 30%);

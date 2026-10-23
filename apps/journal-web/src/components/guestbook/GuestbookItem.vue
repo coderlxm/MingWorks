@@ -12,7 +12,12 @@ import type {
 
 const props = withDefaults(defineProps<{
   message: GuestbookMessage;
-  enterDelay: number;
+  // 从留言板底部往上数的序号，决定左右位置
+  sequence: number;
+  // 在留言板上从上到下的次序：置顶在前，其余从新到旧
+  rank: number;
+  // null：首屏靠下的便签，直接就位，不做入场动画
+  enterDelay: number | null;
   ownerMode: boolean;
   busy: boolean;
   actionsDisabled?: boolean;
@@ -52,25 +57,26 @@ function scatter(seed: number): number {
   return value - Math.floor(value);
 }
 
-// 位置取 R2 低差异序列：连续的 id 在留言板上分布均匀，不会扎堆在同一处
-function spread(step: number): number {
-  const value = 0.5 + props.message.id * step;
+// 横向位置取黄金分割序列：配合按 rank 均匀下移的纵向位置，铺出接近斐波那契点阵的均匀分布
+function spread(): number {
+  const value = 0.5 + props.sequence * 0.6180339887;
   return value - Math.floor(value);
 }
 
 const dragOffset = shallowRef({ x: 0, y: 0 });
 
 const noteStyle = computed(() => ({
-  '--x': spread(0.7548776662).toFixed(4),
-  '--y': spread(0.5698402910).toFixed(4),
+  '--x': spread().toFixed(4),
+  '--rank': props.rank,
+  '--drift': scatter(2).toFixed(4),
   '--rotate': `${(scatter(1) * 14 - 7).toFixed(2)}deg`,
   '--width': `${Math.round(220 + scatter(4) * 80)}px`,
   '--pin-x': `${Math.round(30 + scatter(5) * 40)}%`,
   '--stain-x': `${Math.round(15 + scatter(9) * 70)}%`,
   '--stain-y': `${Math.round(30 + scatter(10) * 60)}%`,
   '--stain-alpha': scatter(11) > 0.55 ? 0.16 : 0,
-  '--layer': props.message.id,
-  '--enter-delay': `${props.enterDelay}ms`,
+  '--layer': props.rank,
+  '--enter-delay': `${props.enterDelay ?? 0}ms`,
   '--drag-x': `${dragOffset.value.x}px`,
   '--drag-y': `${dragOffset.value.y}px`,
   '--drag-tilt': `${Math.max(-12, Math.min(12, dragOffset.value.x / 18)).toFixed(2)}deg`,
@@ -139,6 +145,7 @@ function confirmDeletion(): void {
       'guestbook-note--busy': busy,
       'guestbook-note--replying': replyOpen,
       'guestbook-note--dragging': dragging,
+      'guestbook-note--settled': enterDelay === null,
     }]"
     :style="noteStyle"
     :aria-busy="busy"
@@ -327,10 +334,11 @@ function confirmDeletion(): void {
 </template>
 
 <style scoped>
-/* 便签散落在整个留言板上，新留言压在旧留言上面；悬停、聚焦或回复时摆正并浮到最上层 */
+/* 便签按 rank 从上到下散落，上下再随机错开一点；靠下的压住上面那张的底边，图钉和作者都露在外面。
+   悬停、聚焦或回复时摆正并浮到最上层 */
 .guestbook-note {
   /* 旧纸在亮暗主题下都保持纸色，内部改用一套固定的墨色变量，回复框等子组件随之一致 */
-  --paper: #f4ecd8;
+  --paper: #f7f2e4;
   --ink: #2b2118;
   --text-primary: #2f251c;
   --text-muted: #7a6a58;
@@ -345,11 +353,10 @@ function confirmDeletion(): void {
   --danger-soft: rgb(156 47 42 / 10%);
   --focus: #8a3029;
   --tooth: 10px;
-  --note-shadow: drop-shadow(0 1px 1px rgb(40 25 10 / 16%)) drop-shadow(0 7px 9px rgb(40 25 10 / 16%));
-  --note-dim: brightness(1);
+  --paper-dim: transparent;
   --note-width: min(var(--width), 86%);
   position: absolute;
-  top: calc(1.5rem + var(--y) * max(0px, 100% - 18rem));
+  top: calc(1.5rem + var(--rank) / var(--count) * (100% - 16rem - var(--drift-span)) + var(--drift) * var(--drift-span));
   left: calc(1rem + var(--x) * (100% - var(--note-width) - 2rem));
   z-index: var(--layer);
   display: flex;
@@ -359,7 +366,6 @@ function confirmDeletion(): void {
   padding: 1.4rem 1.2rem 1.1rem;
   color: var(--text-primary);
   color-scheme: light;
-  filter: var(--note-shadow) var(--note-dim);
   overflow-wrap: anywhere;
   cursor: grab;
   touch-action: none;
@@ -368,9 +374,19 @@ function confirmDeletion(): void {
   /* 各状态用同一组 translate/rotate/scale；离开拖拽或悬停后延迟降回原层级，弹回途中仍压在最上面 */
   transition:
     transform 640ms cubic-bezier(0.34, 1.45, 0.64, 1),
-    filter 320ms ease,
     z-index 0s 640ms;
   animation: guestbook-note-rise 820ms cubic-bezier(0.2, 0.9, 0.25, 1) var(--enter-delay) backwards;
+}
+
+/* 投影单独一层，用 box-shadow 而不是 drop-shadow 滤镜：上百张便签叠在一起时，滤镜的离屏绘制会拖慢每次重绘。
+   投影框缩进半个齿深，落在锯齿根部，看起来仍是贴着锯齿的投影 */
+.guestbook-note::after {
+  position: absolute;
+  inset: calc(var(--tooth) / 2);
+  z-index: -2;
+  box-shadow: 0 1px 1px rgb(40 25 10 / 16%), 0 7px 9px rgb(40 25 10 / 16%);
+  content: '';
+  transition: box-shadow 320ms ease;
 }
 
 /* 纸张层：花边剪刀式的锯齿四边，叠加纸纹颗粒、泛黄边缘和偶尔一圈咖啡渍 */
@@ -379,9 +395,10 @@ function confirmDeletion(): void {
   inset: 0;
   z-index: -1;
   background:
+    linear-gradient(var(--paper-dim) 0 0),
     radial-gradient(circle 46px at var(--stain-x) var(--stain-y), rgb(150 105 45 / calc(var(--stain-alpha) * 0.35)) 0 38px, rgb(130 85 35 / var(--stain-alpha)) 40px 42px, transparent 45px),
-    radial-gradient(ellipse 120% 110% at 50% 45%, transparent 55%, rgb(120 78 28 / 16%) 100%),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.36 0 0 0 0 0.26 0 0 0 0 0.14 0 0 0 0.28 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E"),
+    radial-gradient(ellipse 120% 110% at 50% 45%, transparent 55%, rgb(120 78 28 / 10%) 100%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.36 0 0 0 0 0.26 0 0 0 0 0.14 0 0 0 0.2 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E"),
     var(--paper);
   content: '';
   mask:
@@ -393,27 +410,30 @@ function confirmDeletion(): void {
 }
 
 .guestbook-note--tone-1 {
-  --paper: #efe0b9;
+  --paper: #f4e9ce;
 }
 
 .guestbook-note--tone-2 {
-  --paper: #f0e5cb;
+  --paper: #f5eddb;
 }
 
 .guestbook-note--tone-3 {
-  --paper: #e2e2cc;
+  --paper: #ebebdb;
 }
 
 .guestbook-note--tone-4 {
-  --paper: #efdcd0;
+  --paper: #f4e7de;
 }
 
+/* 暗色主题下纸面压暗一点，不刺眼 */
 :global(html[data-theme='dark'] .guestbook-note) {
-  --note-dim: brightness(0.86);
+  --paper-dim: rgb(0 0 0 / 14%);
 }
 
-.guestbook-note--pinned {
-  z-index: calc(var(--layer) + 100000);
+.guestbook-note--settled,
+.guestbook-note--settled .guestbook-note__pin,
+.guestbook-note--settled .guestbook-note__pin::after {
+  animation: none;
 }
 
 .guestbook-note--busy {
@@ -423,24 +443,31 @@ function confirmDeletion(): void {
 .guestbook-note:hover,
 .guestbook-note:focus-within,
 .guestbook-note--replying {
-  --note-shadow: drop-shadow(0 3px 3px rgb(40 25 10 / 16%)) drop-shadow(0 18px 18px rgb(40 25 10 / 22%));
   z-index: 1000000;
   transform: translate(0, -8px) rotate(0deg) scale(1.04);
   transition:
     transform 640ms cubic-bezier(0.34, 1.45, 0.64, 1),
-    filter 320ms ease,
     z-index 0s;
 }
 
-/* 拖拽中：跟手移动，不做 transform 过渡；向拖动方向轻微摆动 */
+.guestbook-note:hover::after,
+.guestbook-note:focus-within::after,
+.guestbook-note--replying::after {
+  box-shadow: 0 3px 3px rgb(40 25 10 / 16%), 0 18px 18px rgb(40 25 10 / 22%);
+}
+
+/* 拖拽中：跟手移动，不做 transform 过渡；向拖动方向轻微摆动。单独成层，移动时不重绘压在下面的便签 */
 .guestbook-note.guestbook-note--dragging {
-  --note-shadow: drop-shadow(0 6px 6px rgb(40 25 10 / 18%)) drop-shadow(0 28px 26px rgb(40 25 10 / 26%));
   z-index: 2000000;
   cursor: grabbing;
   transform: translate(var(--drag-x), var(--drag-y)) rotate(var(--drag-tilt)) scale(1.07);
-  transition:
-    filter 200ms ease,
-    z-index 0s;
+  transition: z-index 0s;
+  will-change: transform;
+}
+
+.guestbook-note.guestbook-note--dragging::after {
+  box-shadow: 0 6px 6px rgb(40 25 10 / 18%), 0 28px 26px rgb(40 25 10 / 26%);
+  transition-duration: 200ms;
 }
 
 .guestbook-note:focus {
@@ -454,7 +481,7 @@ function confirmDeletion(): void {
 
 /* 隐藏状态：纸张褪成灰白，图钉变灰，正文保持清晰可读 */
 .guestbook-note--hidden {
-  --paper: #efece5;
+  --paper: #f4f2ed;
 }
 
 .guestbook-note--hidden .guestbook-note__avatar {
@@ -988,6 +1015,7 @@ function confirmDeletion(): void {
   }
 
   .guestbook-note,
+  .guestbook-note::after,
   .guestbook-note__actions,
   .guestbook-reply__actions {
     transition: none;

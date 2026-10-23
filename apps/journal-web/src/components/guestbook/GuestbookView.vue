@@ -170,7 +170,7 @@ async function handleRemove(id: number): Promise<void> {
       />
     </section>
 
-    <!-- 访客留言输入框：浮在留言板底部 -->
+    <!-- 访客留言输入框：吸附在屏幕底部，留言板再长也随时能写 -->
     <section v-if="!ownerMode" class="guestbook-view__composer" aria-label="写留言">
       <JournalCommentForm
         v-if="authenticationChecked"
@@ -202,12 +202,12 @@ async function handleRemove(id: number): Promise<void> {
 }
 
 .guestbook-view__composer {
-  position: absolute;
+  position: sticky;
   bottom: calc(1.25rem + env(safe-area-inset-bottom));
-  left: 50%;
   z-index: 1;
+  align-self: center;
   width: min(560px, calc(100% - 2rem));
-  transform: translateX(-50%);
+  margin-bottom: calc(1.25rem + env(safe-area-inset-bottom));
 }
 
 .guestbook-view__composer :deep(.comment-form) {
