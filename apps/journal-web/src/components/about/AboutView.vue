@@ -21,7 +21,6 @@ const visibleContacts = computed(() =>
       <section class="about-view__identity" aria-labelledby="about-title">
         <img class="about-view__avatar" :src="profile.avatarUrl" alt="小明同学">
         <div class="about-view__identity-copy">
-          <p class="about-view__eyebrow">关于我</p>
           <h1 id="about-title" class="about-view__title">小明同学</h1>
           <p v-if="profile.bio" class="about-view__bio">{{ profile.bio }}</p>
         </div>
@@ -91,14 +90,6 @@ const visibleContacts = computed(() =>
 
 .about-view__identity-copy {
   min-width: 0;
-}
-
-.about-view__eyebrow {
-  margin: 0 0 0.25rem;
-  color: var(--accent-strong);
-  font-size: 0.7rem;
-  font-weight: 760;
-  letter-spacing: 0.18em;
 }
 
 .about-view__title,
