@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onClickOutside, useMediaQuery } from '@vueuse/core';
+import { onClickOutside } from '@vueuse/core';
 import { computed, shallowRef, useTemplateRef } from 'vue';
 import { useNavIconStyle } from '../../composables/useNavIconStyle';
 import type { JournalChannel } from '../../types';
@@ -24,6 +24,7 @@ const props = withDefaults(
     gamesActive?: boolean;
     guestbookActive?: boolean;
     immersive: boolean;
+    mobile: boolean;
     aiActive?: boolean;
   }>(),
   {
@@ -44,8 +45,7 @@ const emit = defineEmits<{
 
 const sidebar = useTemplateRef<HTMLElement>('sidebar');
 const edgeTrigger = useTemplateRef<HTMLButtonElement>('edgeTrigger');
-const desktopNavigation = useMediaQuery('(min-width: 800px)');
-const immersiveDrawer = computed(() => props.immersive && desktopNavigation.value);
+const immersiveDrawer = computed(() => props.immersive && !props.mobile);
 const drawerOpen = shallowRef(false);
 const moreOpen = shallowRef(false);
 
@@ -142,6 +142,8 @@ onClickOutside(sidebar, () => {
     class="channel-sidebar"
     :class="{
       'channel-sidebar--immersive': immersive,
+      'channel-sidebar--mobile': mobile,
+      'channel-sidebar--drawer': immersiveDrawer,
       'channel-sidebar--open': immersive && drawerOpen,
     }"
     @pointerleave="handlePointerLeave"
@@ -623,186 +625,182 @@ onClickOutside(sidebar, () => {
 }
 
 /* 桌面端沉浸式抽屉交互 */
-@media (min-width: 800px) {
-  .channel-sidebar--immersive {
-    position: fixed;
-    z-index: 100;
-    top: 0;
-    bottom: 0;
-    left: 0;
-    width: 0;
-    padding: 0;
-  }
+.channel-sidebar--drawer {
+  position: fixed;
+  z-index: 100;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 0;
+  padding: 0;
+}
 
-  .channel-sidebar--immersive .channel-sidebar__edge-trigger {
-    position: absolute;
-    top: 50%;
-    left: 0;
-    z-index: 2;
-    display: flex;
-    width: 2.75rem;
-    height: 3.5rem;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid var(--photo-border);
-    border-left: 0;
-    border-radius: 0 0.85rem 0.85rem 0;
-    background: var(--photo-glass-bg);
-    color: var(--photo-text-muted);
-    cursor: pointer;
-    transform: translateY(-50%);
-    transition:
-      transform 200ms var(--ease-card),
-      background-color 150ms ease,
-      color 150ms ease;
-    -webkit-backdrop-filter: blur(12px);
-    backdrop-filter: blur(12px);
-  }
+.channel-sidebar--drawer .channel-sidebar__edge-trigger {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  z-index: 2;
+  display: flex;
+  width: 2.75rem;
+  height: 3.5rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--photo-border);
+  border-left: 0;
+  border-radius: 0 0.85rem 0.85rem 0;
+  background: var(--photo-glass-bg);
+  color: var(--photo-text-muted);
+  cursor: pointer;
+  transform: translateY(-50%);
+  transition:
+    transform 200ms var(--ease-card),
+    background-color 150ms ease,
+    color 150ms ease;
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
 
-  .channel-sidebar--immersive .channel-sidebar__edge-trigger:hover,
-  .channel-sidebar--immersive .channel-sidebar__edge-trigger:focus-visible {
-    background: rgb(31 31 31 / 88%);
-    color: var(--photo-text-primary);
-  }
+.channel-sidebar--drawer .channel-sidebar__edge-trigger:hover,
+.channel-sidebar--drawer .channel-sidebar__edge-trigger:focus-visible {
+  background: rgb(31 31 31 / 88%);
+  color: var(--photo-text-primary);
+}
 
-  .channel-sidebar--immersive .channel-sidebar__edge-trigger svg {
-    width: 1.35rem;
-    stroke: currentColor;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-    stroke-width: 1.5;
-  }
+.channel-sidebar--drawer .channel-sidebar__edge-trigger svg {
+  width: 1.35rem;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
+}
 
-  .channel-sidebar--immersive.channel-sidebar--open .channel-sidebar__edge-trigger {
-    transform: translate(210px, -50%);
-  }
+.channel-sidebar--drawer.channel-sidebar--open .channel-sidebar__edge-trigger {
+  transform: translate(210px, -50%);
+}
 
-  .channel-sidebar--immersive .channel-sidebar__panel {
-    width: 220px;
-    padding: 1.5rem 1rem 2rem;
-    border-right: 1px solid var(--photo-border);
-    background: var(--photo-glass-bg);
-    box-shadow: 1.5rem 0 3.5rem rgb(0 0 0 / 42%);
-    -webkit-backdrop-filter: blur(16px);
-    backdrop-filter: blur(16px);
-    opacity: 0;
-    pointer-events: none;
-    transform: translateX(-100%);
-    visibility: hidden;
-    transition:
-      transform 200ms var(--ease-card),
-      opacity 160ms ease,
-      visibility 0s linear 200ms;
-  }
+.channel-sidebar--drawer .channel-sidebar__panel {
+  width: 220px;
+  padding: 1.5rem 1rem 2rem;
+  border-right: 1px solid var(--photo-border);
+  background: var(--photo-glass-bg);
+  box-shadow: 1.5rem 0 3.5rem rgb(0 0 0 / 42%);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-100%);
+  visibility: hidden;
+  transition:
+    transform 200ms var(--ease-card),
+    opacity 160ms ease,
+    visibility 0s linear 200ms;
+}
 
-  .channel-sidebar--immersive.channel-sidebar--open .channel-sidebar__panel {
-    opacity: 1;
-    pointer-events: auto;
-    transform: translateX(0);
-    visibility: visible;
-    transition-delay: 0s;
-  }
+.channel-sidebar--drawer.channel-sidebar--open .channel-sidebar__panel {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0);
+  visibility: visible;
+  transition-delay: 0s;
+}
 
-  .channel-sidebar--immersive .channel-sidebar__item {
-    color: var(--photo-text-secondary);
-  }
+.channel-sidebar--drawer .channel-sidebar__item {
+  color: var(--photo-text-secondary);
+}
 
-  .channel-sidebar--immersive .channel-sidebar__item:hover {
-    background: var(--photo-surface-hover);
-    color: var(--photo-text-primary);
-  }
+.channel-sidebar--drawer .channel-sidebar__item:hover {
+  background: var(--photo-surface-hover);
+  color: var(--photo-text-primary);
+}
 
-  .channel-sidebar--immersive .channel-sidebar__item--active {
-    background: var(--photo-surface-hover);
-    color: var(--photo-text-primary);
-  }
+.channel-sidebar--drawer .channel-sidebar__item--active {
+  background: var(--photo-surface-hover);
+  color: var(--photo-text-primary);
 }
 
 /* 移动端底部 Tab 栏 */
-@media (max-width: 799px) {
-  .channel-sidebar {
-    z-index: 10;
-    grid-row: 2;
-    padding:
-      0.3rem
-      max(0.75rem, env(safe-area-inset-right))
-      max(0.35rem, env(safe-area-inset-bottom))
-      max(0.75rem, env(safe-area-inset-left));
-    border-top: 1px solid var(--border-subtle);
-    background: var(--surface-page);
-    box-shadow: 0 -0.6rem 1.6rem rgb(24 22 20 / 5%);
-  }
+.channel-sidebar--mobile {
+  z-index: 10;
+  grid-row: 2;
+  padding:
+    0.3rem
+    max(0.75rem, env(safe-area-inset-right))
+    max(0.35rem, env(safe-area-inset-bottom))
+    max(0.75rem, env(safe-area-inset-left));
+  border-top: 1px solid var(--border-subtle);
+  background: var(--surface-page);
+  box-shadow: 0 -0.6rem 1.6rem rgb(24 22 20 / 5%);
+}
 
-  .channel-sidebar--immersive {
-    border-top-color: var(--photo-border);
-    background: var(--photo-canvas);
-    box-shadow: 0 -0.6rem 1.6rem rgb(0 0 0 / 24%);
-  }
+.channel-sidebar--mobile.channel-sidebar--immersive {
+  border-top-color: var(--photo-border);
+  background: var(--photo-canvas);
+  box-shadow: 0 -0.6rem 1.6rem rgb(0 0 0 / 24%);
+}
 
-  .channel-sidebar__panel {
-    height: auto;
-  }
+.channel-sidebar--mobile .channel-sidebar__panel {
+  height: auto;
+}
 
-  .channel-sidebar__navigation {
-    display: grid;
-    width: 100%;
-    height: auto;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 0.35rem;
-  }
+.channel-sidebar--mobile .channel-sidebar__navigation {
+  display: grid;
+  width: 100%;
+  height: auto;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.35rem;
+}
 
-  .channel-sidebar__channels {
-    display: contents;
-  }
+.channel-sidebar--mobile .channel-sidebar__channels {
+  display: contents;
+}
 
-  /* 隐藏在桌面端单独展示的子项 */
-  .channel-sidebar__item--desktop,
-  .channel-sidebar__footer--desktop {
-    display: none !important;
-  }
+/* 隐藏在桌面端单独展示的子项 */
+.channel-sidebar--mobile .channel-sidebar__item--desktop,
+.channel-sidebar--mobile .channel-sidebar__footer--desktop {
+  display: none !important;
+}
 
-  .channel-sidebar__item {
-    width: 100%;
-    min-width: 0;
-    min-height: 2.75rem;
-    justify-content: center;
-    gap: 0.3rem;
-    padding: 0.35rem 0.5rem;
-    font-size: 0.82rem;
-    font-weight: 650;
-    border-radius: 8px;
-  }
+.channel-sidebar--mobile .channel-sidebar__item {
+  width: 100%;
+  min-width: 0;
+  min-height: 2.75rem;
+  justify-content: center;
+  gap: 0.3rem;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.82rem;
+  font-weight: 650;
+  border-radius: 8px;
+}
 
-  .channel-sidebar__life-icon,
-  .channel-sidebar__article-icon,
-  .channel-sidebar__interest-icon,
-  .channel-sidebar__about-icon,
-  .channel-sidebar__ai-icon,
-  .channel-sidebar__photo-icon,
-  .channel-sidebar__game-icon,
-  .channel-sidebar__guestbook-icon {
-    display: none;
-  }
+.channel-sidebar--mobile .channel-sidebar__life-icon,
+.channel-sidebar--mobile .channel-sidebar__article-icon,
+.channel-sidebar--mobile .channel-sidebar__interest-icon,
+.channel-sidebar--mobile .channel-sidebar__about-icon,
+.channel-sidebar--mobile .channel-sidebar__ai-icon,
+.channel-sidebar--mobile .channel-sidebar__photo-icon,
+.channel-sidebar--mobile .channel-sidebar__game-icon,
+.channel-sidebar--mobile .channel-sidebar__guestbook-icon {
+  display: none;
+}
 
-  /* 移动端“更多”按钮 */
-  .channel-sidebar__item--mobile-more {
-    display: flex;
-  }
+/* 移动端“更多”按钮 */
+.channel-sidebar--mobile .channel-sidebar__item--mobile-more {
+  display: flex;
+}
 
-  .channel-sidebar__item.channel-sidebar__item--active,
-  .channel-sidebar__item.channel-sidebar__item--active:hover {
-    background: var(--accent-soft);
-    color: var(--accent-strong);
-  }
+.channel-sidebar--mobile .channel-sidebar__item.channel-sidebar__item--active,
+.channel-sidebar--mobile .channel-sidebar__item.channel-sidebar__item--active:hover {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
 
-  .channel-sidebar--immersive .channel-sidebar__item {
-    color: var(--photo-text-secondary);
-  }
+.channel-sidebar--mobile.channel-sidebar--immersive .channel-sidebar__item {
+  color: var(--photo-text-secondary);
+}
 
-  .channel-sidebar--immersive .channel-sidebar__item.channel-sidebar__item--active {
-    background: var(--photo-surface-hover);
-    color: #ffffff;
-  }
+.channel-sidebar--mobile.channel-sidebar--immersive .channel-sidebar__item.channel-sidebar__item--active {
+  background: var(--photo-surface-hover);
+  color: #ffffff;
 }
 
 /* 移动端 “更多” 底部弹出 Action Sheet */

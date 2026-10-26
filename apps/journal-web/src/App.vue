@@ -19,6 +19,7 @@ import { useAppScrollRestoration } from './composables/useAppScrollRestoration';
 import { useDiscoveryEntryOverlay } from './composables/useDiscoveryEntryOverlay';
 import { useFeedEntryOverlay } from './composables/useFeedEntryOverlay';
 import { useFrontendUpdate } from './composables/useFrontendUpdate';
+import { useHandheldLayout } from './composables/useHandheldLayout';
 import { useSessionStore } from './stores/session';
 import { useSiteProfileStore } from './stores/siteProfile';
 import type {
@@ -38,10 +39,12 @@ const session = useSessionStore();
 const siteProfile = useSiteProfileStore();
 const { updateVisible, refresh: refreshFrontend, defer: deferFrontendUpdate } = useFrontendUpdate();
 const isMobile = useMediaQuery('(max-width: 599px)');
+const { wideHandheld, mobileNavigation } = useHandheldLayout();
 const { ownerAuthenticated, authenticationChecked } = storeToRefs(session);
 const { profile, loadError: profileLoadError } = storeToRefs(siteProfile);
 
-const defaultAssetView = computed<AssetView>(() => isMobile.value ? 'waterfall' : 'table');
+const defaultAssetView = computed<AssetView>(() =>
+  isMobile.value || wideHandheld.value ? 'waterfall' : 'table');
 const { route, publicShellActive, isPrivateRoute, isAssetRoute, isAiRoute } = useAppRoute(
   currentRoute,
   defaultAssetView,
@@ -189,6 +192,7 @@ onUnmounted(() => {
   <div
     class="app-shell"
     :class="{
+      'app-shell--wide-handheld': wideHandheld,
       'app-shell--photo-immersive': photoImmersiveActive,
       'app-shell--game-immersive': gameImmersiveActive,
       'app-shell--resume-immersive': resumeImmersiveActive,
@@ -217,6 +221,7 @@ onUnmounted(() => {
       class="app-main"
       :class="{
         'app-main--public': publicShellActive && !resumeImmersiveActive,
+        'app-main--mobile-navigation': mobileNavigation,
         'app-main--photo-immersive': photoImmersiveActive,
         'app-main--game-immersive': gameImmersiveActive,
         'app-main--resume-immersive': resumeImmersiveActive,
@@ -232,6 +237,7 @@ onUnmounted(() => {
         :games-active="gamesActive"
         :guestbook-active="guestbookActive"
         :immersive="immersiveActive"
+        :mobile="mobileNavigation"
         :ai-active="isAiRoute"
         @select="changePublicChannel"
         @select-about="openAbout"
@@ -410,18 +416,16 @@ onUnmounted(() => {
   grid-column: 1;
 }
 
-@media (max-width: 799px) {
-  .app-main--public {
-    width: 100%;
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) auto;
-    gap: 0;
-  }
+.app-main--public.app-main--mobile-navigation {
+  width: 100%;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 0;
+}
 
-  .app-compose {
-    width: 3.25rem;
-    height: 3.25rem;
-    margin: 0 1rem 1rem 0;
-  }
+.app-main--mobile-navigation .app-compose {
+  width: 3.25rem;
+  height: 3.25rem;
+  margin: 0 1rem 1rem 0;
 }
 </style>

@@ -1,0 +1,197 @@
+/* Portrait handheld screens around 1320:2232; enabled by useHandheldLayout. */
+.app-shell--wide-handheld {
+  --workspace-gutter: max(10px, env(safe-area-inset-left), env(safe-area-inset-right));
+  --waterfall-gap: 8px;
+}
+
+.app-shell.app-shell--wide-handheld .feed--public {
+  width: calc(100% - (var(--workspace-gutter) * 2));
+  gap: 0.55rem;
+  padding-top: 0.65rem;
+}
+
+.app-shell--wide-handheld .waterfall .waterfall__item {
+  width: calc(100% / 3);
+}
+
+.app-shell--wide-handheld .waterfall-stage .waterfall-placeholder {
+  columns: 3;
+}
+
+.app-shell--wide-handheld .waterfall__card {
+  container: waterfall-card / inline-size;
+}
+
+.app-shell--wide-handheld .profile.profile--public {
+  grid-template-areas:
+    "identity actions"
+    "search search";
+  grid-template-columns: minmax(0, 1fr) auto;
+  row-gap: 0.55rem;
+}
+
+.app-shell--wide-handheld .profile .profile__search {
+  width: 100%;
+}
+
+.app-shell--wide-handheld .waterfall .entry:not(.entry--detail) {
+  --entry-visual-radius: 0.75rem;
+
+  border-radius: 0.75rem;
+}
+
+.app-shell--wide-handheld .waterfall .entry--public-feed.entry--visual,
+.app-shell--wide-handheld .waterfall .entry--public-feed.entry--poster {
+  border-radius: 0;
+}
+
+.app-shell--wide-handheld .waterfall .entry:not(.entry--detail) .entry__body {
+  min-width: 0;
+  gap: 0.35rem;
+  padding: 0.45rem;
+}
+
+.app-shell--wide-handheld .waterfall .entry__meta {
+  flex-wrap: wrap;
+  gap: 0.2rem;
+}
+
+.app-shell--wide-handheld .waterfall .entry__meta-copy {
+  flex-wrap: wrap;
+  gap: 0.2rem;
+}
+
+.app-shell--wide-handheld .waterfall .entry__meta-time {
+  display: none;
+}
+
+.app-shell--wide-handheld .waterfall .entry__content {
+  font-size: 0.84rem;
+}
+
+.app-shell--wide-handheld .waterfall .entry__structured {
+  gap: 0.3rem;
+  padding: 0.4rem;
+}
+
+.app-shell--wide-handheld .waterfall .entry__structured-row {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.12rem;
+}
+
+.app-shell--wide-handheld .waterfall .entry__editor-actions,
+.app-shell--wide-handheld .waterfall .entry__delete-actions,
+.app-shell--wide-handheld .waterfall .article-card__delete-actions {
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.app-shell--wide-handheld .waterfall .button {
+  min-width: 0;
+  padding-inline: 0.45rem;
+}
+
+.app-shell--wide-handheld .waterfall .protected-card {
+  border-radius: 0.75rem;
+}
+
+.app-shell--wide-handheld .waterfall .protected-card__body {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.25rem;
+  padding: 0.5rem;
+}
+
+.app-shell--wide-handheld .waterfall .protected-card__action {
+  justify-self: start;
+}
+
+.app-shell--wide-handheld .waterfall .article-card {
+  min-width: 0;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  border-radius: 0.75rem;
+}
+
+.app-shell--wide-handheld .waterfall .article-card__header,
+.app-shell--wide-handheld .waterfall .article-card__footer {
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.app-shell--wide-handheld .waterfall .article-card--status-fold .article-card__header {
+  padding: 1.5rem 0 0;
+}
+
+.app-shell--wide-handheld .waterfall .article-card .article-card__title {
+  font-size: 1rem;
+}
+
+.app-shell--wide-handheld .waterfall .article-card__summary,
+.app-shell--wide-handheld .waterfall .article-card__summary-button {
+  font-size: 0.84rem;
+}
+
+.app-shell--wide-handheld .waterfall .article-card__tag {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
+@container waterfall-card (max-width: 220px) {
+  .app-shell--wide-handheld .waterfall .entry__meta-copy {
+    font-size: 0.62rem;
+    letter-spacing: 0;
+  }
+
+  .app-shell--wide-handheld .waterfall .entry-interactions {
+    display: none;
+  }
+
+  .app-shell--wide-handheld .waterfall .protected-card__title {
+    font-size: 0.85rem;
+  }
+
+  .app-shell--wide-handheld .waterfall .protected-card__eyebrow {
+    top: 0.65rem;
+    left: 0.65rem;
+    font-size: 0.5rem;
+    letter-spacing: 0.08em;
+  }
+
+  .app-shell--wide-handheld .waterfall .protected-card--template-3 .protected-card__eyebrow {
+    left: 26%;
+  }
+
+  .app-shell--wide-handheld .waterfall .text-poster--card .text-poster__sheet {
+    min-height: 128px;
+    row-gap: 0.75rem;
+    padding: 0.7rem;
+  }
+
+  .app-shell--wide-handheld .waterfall .text-poster--card .text-poster__header {
+    gap: 0.35rem;
+  }
+
+  .app-shell--wide-handheld .waterfall .text-poster--card .text-poster__rule {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .app-shell--wide-handheld .waterfall .text-poster--card .text-poster__eyebrow,
+  .app-shell--wide-handheld .waterfall .text-poster--card .text-poster__footer {
+    font-size: 0.5rem;
+    letter-spacing: 0;
+  }
+
+  .app-shell--wide-handheld .waterfall .text-poster--card .text-poster__text--short {
+    font-size: clamp(1.1rem, 8.5cqw, 1.8rem);
+  }
+
+  .app-shell--wide-handheld .waterfall .text-poster--card .text-poster__text--medium {
+    font-size: clamp(0.95rem, 7cqw, 1.5rem);
+  }
+
+  .app-shell--wide-handheld .waterfall .text-poster--card .text-poster__text--long {
+    font-size: clamp(0.85rem, 5.8cqw, 1.25rem);
+  }
+}
