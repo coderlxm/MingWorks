@@ -1,9 +1,11 @@
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc.js';
 import timezone from 'dayjs/plugin/timezone.js';
+import duration from 'dayjs/plugin/duration.js';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
+dayjs.extend(duration);
 
 const TZ = 'Asia/Shanghai';
 
@@ -53,4 +55,11 @@ export function formatShortDisplay(iso: string): string {
     return t.format('HH:mm');
   }
   return t.format('MM-DD HH:mm');
+}
+
+export function formatDuration(seconds: number): string {
+  const uptime = dayjs.duration(seconds, 'seconds');
+  const days = Math.floor(uptime.asDays());
+  const remaining = uptime.subtract(days, 'days');
+  return `${days} 天 ${remaining.hours()} 小时 ${remaining.minutes()} 分钟`;
 }

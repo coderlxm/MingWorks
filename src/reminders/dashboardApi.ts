@@ -8,6 +8,7 @@ import * as repo from './repository.js';
 import { actOnceReminder, actRuleReminder, actReminderRun, createOnceReminder, createRuleReminder, previewReminderRule, reminderError, requireOnce, requireRule, updateOnceReminder, updateRuleReminder } from './actions.js';
 import { onceItem, runItem, ruleView, readReminderBoard, readReminderList, readReminderHistory } from './dashboard.js';
 import { actLife, readLifeDashboard, updateLifeSettings } from './lifeDashboard.js';
+import { readServerHealthOverview, runServerHealthCheck } from '../services/serverHealthRepository.js';
 
 const dateSchema = z.iso.date();
 const instantSchema = z.iso.datetime({ offset: true });
@@ -49,6 +50,11 @@ export async function startReminderDashboardApi(bot: Telegraf): Promise<void> {
       error: error instanceof z.ZodError ? error.issues.map(issue => issue.message).join('；') : error instanceof Error ? error.message : String(error),
       ...(detail.applied ? { applied: true } : {}),
     });
+  });
+  api.get('/api/servers/overview', async () => readServerHealthOverview());
+  api.post('/api/servers/checks', async () => {
+    await runServerHealthCheck('manual');
+    return readServerHealthOverview();
   });
   api.get('/api/reminders/board', async request => {
     const query = z.object({ date: dateSchema.default(bjDate()), days: z.coerce.number().refine(value => value === 1 || value === 7).default(1) }).parse(request.query);

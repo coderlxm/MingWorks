@@ -2,6 +2,7 @@ import { execFile, type ExecException } from 'node:child_process';
 import { promisify } from 'node:util';
 import { existsSync, readFileSync } from 'fs';
 import { resolve } from 'path';
+import { z } from 'zod';
 
 export interface ServerHealthTarget {
   alias: string;
@@ -12,18 +13,51 @@ export interface ServerHealthTarget {
   note?: string;
 }
 
-export interface ServerHealthResult {
+export type ServerHealthResult = {
   target: ServerHealthTarget;
-  online: boolean;
-  hostname?: string;
-  uptime?: string;
-  error?: string;
-}
+  online: true;
+  hostname: string;
+  uptimeSeconds: number;
+  load: [number, number, number];
+  cores: number;
+  memTotal: number;
+  memAvailable: number;
+  diskTotal: number;
+  diskUsed: number;
+} | {
+  target: ServerHealthTarget;
+  online: false;
+  error: string;
+};
 
 const TARGETS_PATH = resolve(process.cwd(), 'data/server-health-targets.json');
 const SSH_TIMEOUT_MS = 8_000;
 const SSH_KEY_PATH = '/root/.ssh/notinews_health_ed25519';
 const execFileAsync = promisify(execFile);
+const REMOTE_COMMAND = [
+  'set -euo pipefail',
+  'hostname=$(hostname)',
+  "uptime=$(cut -d' ' -f1 /proc/uptime)",
+  "load=$(cut -d' ' -f1-3 /proc/loadavg)",
+  'cores=$(nproc)',
+  `mem=$(free -b | awk '/^Mem:/{print $2" "$7}')`,
+  `disk=$(df -B1 --output=size,used / | awk 'NR==2{print $1" "$2}')`,
+  'printf \'%s\\n\' "hostname=$hostname" "uptime_seconds=$uptime" "load=$load" "cores=$cores" "mem=$mem" "disk=$disk"',
+].join('\n');
+
+const numericField = z.string().trim().regex(/^\d+(?:\.\d+)?$/).transform(Number).pipe(z.number().nonnegative());
+const integerField = numericField.pipe(z.number().int().nonnegative());
+const positiveIntegerField = integerField.pipe(z.number().positive());
+const remoteFieldsSchema = z.strictObject({
+  hostname: z.string().trim().min(1),
+  uptime_seconds: numericField,
+  load: z.string().trim().transform(value => value.split(/\s+/)).pipe(z.tuple([numericField, numericField, numericField])),
+  cores: positiveIntegerField,
+  mem: z.string().trim().transform(value => value.split(/\s+/)).pipe(z.tuple([positiveIntegerField, integerField])),
+  disk: z.string().trim().transform(value => value.split(/\s+/)).pipe(z.tuple([positiveIntegerField, integerField])),
+}).refine(value => value.mem[1] <= value.mem[0] && value.disk[1] <= value.disk[0], {
+  message: 'Server memory or disk usage exceeds its total.',
+});
 
 function loadServerHealthTargets(): ServerHealthTarget[] {
   if (!existsSync(TARGETS_PATH)) {
@@ -64,7 +98,7 @@ async function probeServer(target: ServerHealthTarget): Promise<ServerHealthResu
         '-o', 'LogLevel=ERROR',
         '-l', 'root',
         target.host,
-        'hostname && uptime -p'
+        REMOTE_COMMAND
       ],
       {
         encoding: 'utf-8',
@@ -73,6 +107,8 @@ async function probeServer(target: ServerHealthTarget): Promise<ServerHealthResu
       }
     ));
   } catch (error) {
+    const sshError = error as ExecException;
+    if (sshError.code !== 255 && sshError.code !== 'ETIMEDOUT' && sshError.signal !== 'SIGKILL') throw error;
     return {
       target,
       online: false,
@@ -80,16 +116,20 @@ async function probeServer(target: ServerHealthTarget): Promise<ServerHealthResu
     };
   }
 
-  const lines = stdout
-    .trim()
-    .split('\n')
-    .map(line => line.trim())
-    .filter(Boolean);
+  const fields = remoteFieldsSchema.parse(Object.fromEntries(stdout.trim().split('\n').map(line =>
+    z.tuple([z.string().min(1), z.string()]).parse(line.split('=')),
+  )));
   return {
     target,
     online: true,
-    hostname: lines[0] ?? target.alias,
-    uptime: lines[1] ?? '未知'
+    hostname: fields.hostname,
+    uptimeSeconds: fields.uptime_seconds,
+    load: fields.load,
+    cores: fields.cores,
+    memTotal: fields.mem[0],
+    memAvailable: fields.mem[1],
+    diskTotal: fields.disk[0],
+    diskUsed: fields.disk[1],
   };
 }
 

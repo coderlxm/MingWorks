@@ -500,6 +500,19 @@ const MIGRATIONS: DbMigration[] = [
       `);
     },
   },
+  {
+    version: 26,
+    up(db) {
+      db.exec(`
+        CREATE TABLE server_health_checks (
+          id INTEGER PRIMARY KEY,
+          checked_at TEXT NOT NULL,
+          trigger TEXT NOT NULL,
+          result_json TEXT NOT NULL
+        );
+      `);
+    },
+  },
 ];
 
 export function runDbMigrations(db: Database.Database): void {

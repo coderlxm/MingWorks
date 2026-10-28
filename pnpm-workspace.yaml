@@ -2,6 +2,7 @@ packages:
   - 'apps/lu-dashboard'
   - 'apps/startgg-dashboard'
   - 'apps/reminder-dashboard'
+  - 'apps/server-dashboard'
 
 engineStrict: true
 

@@ -28,7 +28,7 @@ import {
 } from '../formatters/index.js';
 import { sendTelegramMessage } from '../publishers/telegram.js';
 import { getFitnessContext, markFitnessWorkoutGenerated } from '../services/fitness.js';
-import { checkServerHealth } from '../services/serverHealth.js';
+import { runServerHealthCheck } from '../services/serverHealthRepository.js';
 import { runAvFetchOnce } from '../services/avTracker.js';
 import { bufferHolidayV2exTopics, pushBufferedV2exIfNeeded } from '../services/v2exBufferedPush.js';
 import { triggerVitaminReminder } from '../services/vitaminReminder.js';
@@ -112,8 +112,8 @@ export async function runMode(mode: PushMode, chinaDayOfWeek: number, bot?: Tele
 
   if (mode === 'server_health') {
     console.log('Mode: Server Health Check');
-    const results = await checkServerHealth();
-    const message = formatServerHealthMessage(results);
+    const snapshot = await runServerHealthCheck('daily');
+    const message = formatServerHealthMessage(snapshot.servers);
     await sendTelegramMessage(message, bot);
     return;
   }

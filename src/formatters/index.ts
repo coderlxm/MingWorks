@@ -6,6 +6,7 @@ import { isChinaWorkday } from '../calendar/chinaWorkday.js';
 import { getCountdownInfo } from '../calendar/countdown.js';
 import { escapeHtml, escapeHtmlAttr } from '../utils/html.js';
 import { renderMarkdownLikeAsHtml } from '../utils/telegramMarkdown.js';
+import { formatDuration } from '../utils/time.js';
 
 function chinaDateLabel(): string {
   return new Intl.DateTimeFormat('zh-CN', {
@@ -228,8 +229,11 @@ export function formatServerHealthMessage(results: ServerHealthResult[]): string
       if (target.provider) message += `服务商: ${escapeHtml(target.provider)}\n`;
       if (target.note) message += `备注: ${escapeHtml(target.note)}\n`;
       message += `状态: 在线\n`;
-      message += `主机名: ${escapeHtml(result.hostname ?? target.alias)}\n`;
-      message += `运行: ${escapeHtml(result.uptime ?? '未知')}\n\n`;
+      message += `主机名: ${escapeHtml(result.hostname)}\n`;
+      message += `运行: ${formatDuration(result.uptimeSeconds)}\n`;
+      const memoryPercent = ((result.memTotal - result.memAvailable) / result.memTotal * 100).toFixed(1);
+      const diskPercent = (result.diskUsed / result.diskTotal * 100).toFixed(1);
+      message += `负载 / 内存 / 磁盘: ${result.load.join(' / ')} (${result.cores} 核) / ${memoryPercent}% / ${diskPercent}%\n\n`;
       return;
     }
 
@@ -237,7 +241,7 @@ export function formatServerHealthMessage(results: ServerHealthResult[]): string
     message += `用途: ${escapeHtml(target.role)}\n`;
     if (target.provider) message += `服务商: ${escapeHtml(target.provider)}\n`;
     if (target.note) message += `备注: ${escapeHtml(target.note)}\n`;
-    message += `异常: ${escapeHtml(result.error ?? 'SSH 探测失败')}\n\n`;
+    message += `异常: ${escapeHtml(result.error)}\n\n`;
   });
 
   message += '#服务器巡检 #健康检查';

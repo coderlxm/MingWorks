@@ -2,6 +2,8 @@ import { execFile, type ExecException } from 'node:child_process';
 import { promisify } from 'node:util';
 import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { resolve } from 'path';
+import { z } from 'zod';
+import { bj } from '../utils/time.js';
 
 export interface BackupHealthTarget {
   alias: string;
@@ -51,7 +53,7 @@ function buildRemoteCheckCommand(target: BackupHealthTarget): string {
   const timerUnit = shellQuote(target.timerUnit);
 
   return [
-    'set -u',
+    'set -euo pipefail',
     'today=$(TZ=Asia/Shanghai date +%F)',
     `expected_epoch=$(TZ=Asia/Shanghai date -d "$today ${BACKUP_TIME}" +%s)`,
     `timer_state=$(systemctl show --value --property=ActiveState ${timerUnit})`,
@@ -87,33 +89,38 @@ function normalizeSshError(error: ExecException): string {
   return error.stderr?.toString().trim().split('\n').at(-1) || error.message;
 }
 
+export async function collectBackupSystemdStatus(target: BackupHealthTarget): Promise<Record<string, string>> {
+  const { stdout } = await execFileAsync(
+    'ssh',
+    [
+      '-i', SSH_KEY_PATH,
+      '-o', 'BatchMode=yes',
+      '-o', 'StrictHostKeyChecking=accept-new',
+      '-o', 'IdentitiesOnly=yes',
+      '-o', 'PreferredAuthentications=publickey',
+      '-o', 'GSSAPIAuthentication=no',
+      '-o', 'ConnectionAttempts=1',
+      '-o', `ConnectTimeout=${Math.floor(SSH_TIMEOUT_MS / 1000)}`,
+      '-o', 'ServerAliveInterval=3',
+      '-o', 'ServerAliveCountMax=1',
+      '-o', 'LogLevel=ERROR',
+      '-l', 'root',
+      target.host,
+      buildRemoteCheckCommand(target),
+    ],
+    {
+      encoding: 'utf-8',
+      timeout: SSH_TIMEOUT_MS,
+      killSignal: 'SIGKILL',
+    },
+  );
+  return parseRemoteFields(stdout);
+}
+
 async function checkTarget(target: BackupHealthTarget): Promise<BackupHealthResult> {
-  let stdout: string;
+  let fields: Record<string, string>;
   try {
-    ({ stdout } = await execFileAsync(
-      'ssh',
-      [
-        '-i', SSH_KEY_PATH,
-        '-o', 'BatchMode=yes',
-        '-o', 'StrictHostKeyChecking=accept-new',
-        '-o', 'IdentitiesOnly=yes',
-        '-o', 'PreferredAuthentications=publickey',
-        '-o', 'GSSAPIAuthentication=no',
-        '-o', 'ConnectionAttempts=1',
-        '-o', `ConnectTimeout=${Math.floor(SSH_TIMEOUT_MS / 1000)}`,
-        '-o', 'ServerAliveInterval=3',
-        '-o', 'ServerAliveCountMax=1',
-        '-o', 'LogLevel=ERROR',
-        '-l', 'root',
-        target.host,
-        buildRemoteCheckCommand(target),
-      ],
-      {
-        encoding: 'utf-8',
-        timeout: SSH_TIMEOUT_MS,
-        killSignal: 'SIGKILL',
-      },
-    ));
+    fields = await collectBackupSystemdStatus(target);
   } catch (error) {
     return {
       target,
@@ -122,7 +129,6 @@ async function checkTarget(target: BackupHealthTarget): Promise<BackupHealthResu
     };
   }
 
-  const fields = parseRemoteFields(stdout);
   const expectedEpoch = Number(fields.expected_epoch);
   const exitEpoch = Number(fields.exit_epoch);
   const issues: string[] = [];
@@ -159,6 +165,56 @@ async function checkTarget(target: BackupHealthTarget): Promise<BackupHealthResu
 
 export async function checkBackupHealth(): Promise<BackupHealthResult[]> {
   return Promise.all(loadBackupHealthTargets().map(checkTarget));
+}
+
+const dashboardBackupFieldsSchema = z.object({
+  timer_state: z.string().min(1),
+  timer_substate: z.string().min(1),
+  service_result: z.string().min(1),
+  exit_status: z.string().regex(/^\d+$/),
+  exit_at: z.string().min(1),
+  exit_epoch: z.string().regex(/^\d+$/).transform(Number).pipe(z.number().int().positive()),
+});
+
+export async function checkDashboardBackupHealth(): Promise<BackupHealthResult[]> {
+  const now = bj();
+  const todayDeadline = now.startOf('day').hour(4).minute(50);
+  const deadline = now.isBefore(todayDeadline) ? todayDeadline.subtract(1, 'day') : todayDeadline;
+  return Promise.all(loadBackupHealthTargets().map(async target => {
+    let rawFields: Record<string, string>;
+    try {
+      rawFields = await collectBackupSystemdStatus(target);
+    } catch (error) {
+      const sshError = error as ExecException;
+      if (sshError.code !== 255 && sshError.code !== 'ETIMEDOUT' && sshError.signal !== 'SIGKILL') throw error;
+      return {
+        target,
+        healthy: false,
+        error: normalizeSshError(sshError),
+      };
+    }
+    const fields = dashboardBackupFieldsSchema.parse(rawFields);
+    const issues: string[] = [];
+    if (fields.timer_state !== 'active' || fields.timer_substate !== 'waiting') {
+      issues.push(`定时器状态异常（${fields.timer_state}/${fields.timer_substate}）`);
+    }
+    if (fields.service_result !== 'success' || fields.exit_status !== '0') {
+      issues.push(`服务结果异常（${fields.service_result}，退出码 ${fields.exit_status}）`);
+    }
+    if (fields.exit_epoch < deadline.unix()) {
+      issues.push(`最近执行时间异常（${fields.exit_at}）`);
+    }
+    return {
+      target,
+      healthy: issues.length === 0,
+      timerState: fields.timer_state,
+      timerSubState: fields.timer_substate,
+      serviceResult: fields.service_result,
+      exitStatus: fields.exit_status,
+      exitAt: bj(new Date(fields.exit_epoch * 1000)).toISOString(),
+      ...(issues.length > 0 ? { error: issues.join('；') } : {}),
+    };
+  }));
 }
 
 type BackupAlertState = Record<string, 'healthy' | 'failed'>;

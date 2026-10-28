@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ $# != 1 || ! $1 =~ ^[0-9a-f]{40}$ ]]; then
+  echo 'usage: server-dashboard-deploy-release <commit-sha>' >&2
+  exit 64
+fi
+
+release_sha=$1
+project_dir=/opt/server-dashboard
+incoming_dir=/var/lib/server-dashboard-deploy/incoming
+release_dir=$project_dir/releases/$release_sha
+
+test -s "$project_dir/.env"
+test -s /home/web/certs/srv.xmcloud.buzz_cert.pem
+test -s /home/web/certs/srv.xmcloud.buzz_key.pem
+install -d -m 700 "$release_dir"
+tar -xf "$incoming_dir/server-dashboard-$release_sha.tar" -C "$release_dir"
+install -m 644 "$release_dir/deploy/server-dashboard.service" /etc/systemd/system/server-dashboard.service
+ln -sfn "$release_dir" "$project_dir/current"
+systemctl daemon-reload
+systemctl enable server-dashboard.service
+systemctl restart server-dashboard.service
+sleep 2
+systemctl is-active --quiet server-dashboard.service
+curl --fail --silent --show-error http://172.18.0.1:3430/api/session >/dev/null
+install -m 644 "$release_dir/deploy/srv.xmcloud.buzz.conf" /home/web/conf.d/srv.xmcloud.buzz.conf
+docker exec nginx nginx -t
+docker exec nginx nginx -s reload
+printf '%s\n' "$release_sha" > "$project_dir/.deploy-commit"
+rm "$incoming_dir/server-dashboard-$release_sha.tar"
