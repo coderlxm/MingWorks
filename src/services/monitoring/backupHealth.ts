@@ -3,7 +3,7 @@ import { promisify } from 'node:util';
 import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { resolve } from 'path';
 import { z } from 'zod';
-import { bj } from '../utils/time.js';
+import { bj } from '../../utils/time.js';
 
 export interface BackupHealthTarget {
   alias: string;

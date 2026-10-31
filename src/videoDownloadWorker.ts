@@ -1,8 +1,8 @@
-import { runLocalVideoDownload } from './services/videoDownloadRunner.js';
+import { runLocalVideoDownload } from './services/video-download/videoDownloadRunner.js';
 import {
   readVideoDownloadRequest,
   writeVideoDownloadEvent,
-} from './services/videoDownloadProtocol.js';
+} from './services/video-download/videoDownloadProtocol.js';
 
 const request = await readVideoDownloadRequest();
 const result = await runLocalVideoDownload({

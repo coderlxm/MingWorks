@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname, resolve } from 'path';
-import { bjDate } from '../utils/time.js';
+import { bjDate } from '../../utils/time.js';
 
 export interface FitnessStatus {
   user_profile: {

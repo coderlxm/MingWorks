@@ -1,7 +1,7 @@
 import type { WeatherData } from '../fetchers/weather.js';
 import type { GameNews } from '../fetchers/games.js';
-import type { ServerHealthResult } from '../services/serverHealth.js';
-import type { BackupHealthResult } from '../services/backupHealth.js';
+import type { ServerHealthResult } from '../services/monitoring/serverHealth.js';
+import type { BackupHealthResult } from '../services/monitoring/backupHealth.js';
 import { isChinaWorkday } from '../calendar/chinaWorkday.js';
 import { getCountdownInfo } from '../calendar/countdown.js';
 import { escapeHtml, escapeHtmlAttr } from '../utils/html.js';

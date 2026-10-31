@@ -4,10 +4,10 @@ import { config } from '../config/index.js';
 import { runMode } from './runMode.js';
 import { bjDate, getChinaDayOfWeek } from '../utils/time.js';
 import { isChinaWorkday, isChinaWorkdayStrict } from '../calendar/chinaWorkday.js';
-import { runStartggWatchNow } from '../services/startggPresetSync.js';
+import { runStartggWatchNow } from '../services/startgg/startggPresetSync.js';
 import { runStartggWatchOnce } from '../services/startgg/index.js';
-import { runSteamPriceWatchOnce } from '../services/steamPriceTracker.js';
-import { buildSummary } from '../services/masturbationTracker.js';
+import { runSteamPriceWatchOnce } from '../services/steam/steamPriceTracker.js';
+import { buildSummary } from '../services/life/masturbationTracker.js';
 import {
   buildMasturbationStatusButtons,
   formatMasturbationReminderCard,
@@ -17,13 +17,13 @@ import {
   listActiveStartggWatchEvents,
   resetActiveStartggWatchEventStates,
   setStartggPollingPersistedEnabled,
-} from '../services/startggRepository.js';
+} from '../services/startgg/startggRepository.js';
 import {
   closeExpiredWorkCheckin,
   sendWorkCheckinFollowUpIfPending,
-} from '../services/workCheckinReminder.js';
+} from '../services/life/workCheckinReminder.js';
 import { startLifeDay } from '../reminders/lifeDashboard.js';
-import { checkBackupHealth, getNewBackupFailures, saveBackupAlertState } from '../services/backupHealth.js';
+import { checkBackupHealth, getNewBackupFailures, saveBackupAlertState } from '../services/monitoring/backupHealth.js';
 import {
   formatBackupHealthAlert,
 } from '../formatters/index.js';

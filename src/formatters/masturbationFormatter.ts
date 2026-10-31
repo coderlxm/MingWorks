@@ -1,5 +1,5 @@
-import type { MasturbationRecord } from '../services/masturbationRepository.js';
-import { type MasturbationSummary, formatSinceLatest } from '../services/masturbationTracker.js';
+import type { MasturbationRecord } from '../services/life/masturbationRepository.js';
+import { type MasturbationSummary, formatSinceLatest } from '../services/life/masturbationTracker.js';
 import { bj, bjFormat } from '../utils/time.js';
 
 interface InlineKeyboardMarkup {

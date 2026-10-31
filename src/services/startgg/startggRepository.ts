@@ -1,4 +1,4 @@
-import { getDb } from '../reminders/db.js';
+import { getDb } from '../../reminders/db.js';
 
 export type StartggWatchStatus = 'not_entered' | 'in_winners' | 'in_losers' | 'eliminated' | 'completed';
 export type StartggWatchEventSource = 'manual' | 'auto';

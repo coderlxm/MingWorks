@@ -1,8 +1,8 @@
 import type { Telegraf } from 'telegraf';
-import { config } from '../config/index.js';
+import { config } from '../../config/index.js';
 import { fetchSteamPrice } from './steamPriceClient.js';
 import * as repo from './steamPriceRepository.js';
-import { formatSteamPriceAlert } from '../formatters/steamPriceFormatter.js';
+import { formatSteamPriceAlert } from '../../formatters/steamPriceFormatter.js';
 
 export function resolveSteamAppReference(raw: string): number | null {
   const trimmed = raw.trim();

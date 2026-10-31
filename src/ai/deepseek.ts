@@ -4,7 +4,7 @@ import { DEEPSEEK_TASK_MODELS } from './models.js';
 import type { GameNews } from '../fetchers/games.js';
 import type { EnglishContent } from '../fetchers/english.js';
 import type { V2exTopic } from '../fetchers/v2ex.js';
-import type { FitnessContext } from '../services/fitness.js';
+import type { FitnessContext } from '../services/life/fitness.js';
 
 export async function summarizeNewsWithAI(newsList: GameNews[]): Promise<GameNews[]> {
   if (!config.deepseekApiKey) {

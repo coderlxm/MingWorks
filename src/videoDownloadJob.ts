@@ -1,12 +1,12 @@
 import { spawn } from 'node:child_process';
 import { config } from './config/index.js';
-import { runLocalVideoDownload } from './services/videoDownloadRunner.js';
+import { runLocalVideoDownload } from './services/video-download/videoDownloadRunner.js';
 import {
   readVideoDownloadRequest,
   videoDownloadEventSchema,
   writeVideoDownloadEvent,
   type VideoDownloadResult,
-} from './services/videoDownloadProtocol.js';
+} from './services/video-download/videoDownloadProtocol.js';
 
 const jobTimeout = 6 * 60 * 60 * 1000;
 

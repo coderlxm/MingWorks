@@ -1,7 +1,7 @@
 import { getDb } from '../../reminders/db.js';
-import { listStartggWatchEvents, listEnabledStartggWatchPlayers, findStartggWatchSnapshot, listEventFeaturedEntrants, getFeaturedSeedCount, type StartggWatchEvent } from '../startggRepository.js';
-import { hasStartggEventInterestOverride, isStartggVideogameFollowed, type StartggPendingEvent } from '../startggInterestRepository.js';
-import { loadStartggPresetPlayersConfig } from '../startggPresetConfig.js';
+import { listStartggWatchEvents, listEnabledStartggWatchPlayers, findStartggWatchSnapshot, listEventFeaturedEntrants, getFeaturedSeedCount, type StartggWatchEvent } from './startggRepository.js';
+import { hasStartggEventInterestOverride, isStartggVideogameFollowed, type StartggPendingEvent } from './startggInterestRepository.js';
+import { loadStartggPresetPlayersConfig } from './startggPresetConfig.js';
 
 export class StartggNotificationError extends Error {}
 

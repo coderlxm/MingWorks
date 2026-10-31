@@ -43,11 +43,11 @@ import {
   parseStartggSeedsCallbackData,
   parseStartggInterestCallbackData,
 } from './callbacks.js';
-import * as avRepo from '../services/avRepository.js';
-import type { TrackedTarget } from '../services/avRepository.js';
-import { resolveAvSubscription } from '../services/avSubscriptionService.js';
-import { runAvFetchOnce } from '../services/avTracker.js';
-import { buildAvTargetUrl, getAvTargetTypeLabel } from '../services/avTargets.js';
+import * as avRepo from '../services/av/avRepository.js';
+import type { TrackedTarget } from '../services/av/avRepository.js';
+import { resolveAvSubscription } from '../services/av/avSubscriptionService.js';
+import { runAvFetchOnce } from '../services/av/avTracker.js';
+import { buildAvTargetUrl, getAvTargetTypeLabel } from '../services/av/avTargets.js';
 import { findPresetByText, STARTGG_GO_SHORTCUT } from '../reminders/presets.js';
 import {
   buildStartggWatchCandidateButtons,
@@ -83,19 +83,19 @@ import {
   listEventFeaturedEntrants,
   listActiveStartggWatchEvents,
   type StartggFeaturedSeedCount,
-} from '../services/startggRepository.js';
-import { runStartggGo, syncStartggPresetPlayers } from '../services/startggPresetSync.js';
+} from '../services/startgg/startggRepository.js';
+import { runStartggGo, syncStartggPresetPlayers } from '../services/startgg/startggPresetSync.js';
 import { runStartggTask } from '../services/startgg/taskQueue.js';
 import {
   findStartggPendingEventById,
-} from '../services/startggInterestRepository.js';
+} from '../services/startgg/startggInterestRepository.js';
 import { escapeHtml } from '../utils/html.js';
 import { bjFormat } from '../utils/time.js';
 import {
   formatXLikedVideoSyncResult,
   runXLikedVideoSync,
-} from '../services/xLikedVideoSync.js';
-import { runVideoDownload } from '../services/videoDownload.js';
+} from '../services/x-liked-video/xLikedVideoSync.js';
+import { runVideoDownload } from '../services/video-download/videoDownload.js';
 import {
   disableStartggPolling,
   enableStartggPolling,
@@ -107,8 +107,8 @@ import {
   parseTargetPrice,
   createSteamPriceWatch,
   runSteamPriceWatchOnce,
-} from '../services/steamPriceTracker.js';
-import * as steamRepo from '../services/steamPriceRepository.js';
+} from '../services/steam/steamPriceTracker.js';
+import * as steamRepo from '../services/steam/steamPriceRepository.js';
 import {
   formatSteamPriceAddSuccess,
   formatSteamPriceWatchList,
@@ -117,9 +117,9 @@ import {
   formatSteamPriceHelp,
   formatSteamPriceCheckSummary,
 } from '../formatters/steamPriceFormatter.js';
-import * as masturbationRepo from '../services/masturbationRepository.js';
-import { buildSummary } from '../services/masturbationTracker.js';
-import { parseMasturbationInput } from '../services/masturbationParser.js';
+import * as masturbationRepo from '../services/life/masturbationRepository.js';
+import { buildSummary } from '../services/life/masturbationTracker.js';
+import { parseMasturbationInput } from '../services/life/masturbationParser.js';
 import {
   formatMasturbationStatusCard,
   formatMasturbationConfirmCard,

@@ -1,6 +1,6 @@
 import { escapeHtml } from '../utils/html.js';
 import { bjFormat } from '../utils/time.js';
-import type { SteamPriceWatch } from '../services/steamPriceRepository.js';
+import type { SteamPriceWatch } from '../services/steam/steamPriceRepository.js';
 
 function formatPrice(minor: number): string {
   const yuan = Math.floor(minor / 100);

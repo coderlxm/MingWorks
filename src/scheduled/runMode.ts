@@ -27,18 +27,18 @@ import {
   formatCoffeeMessage,
 } from '../formatters/index.js';
 import { sendTelegramMessage } from '../publishers/telegram.js';
-import { getFitnessContext, markFitnessWorkoutGenerated } from '../services/fitness.js';
-import { runServerHealthCheck } from '../services/serverHealthRepository.js';
-import { runAvFetchOnce } from '../services/avTracker.js';
-import { bufferHolidayV2exTopics, pushBufferedV2exIfNeeded } from '../services/v2exBufferedPush.js';
-import { triggerVitaminReminder } from '../services/vitaminReminder.js';
-import { runStartggWatchNow } from '../services/startggPresetSync.js';
+import { getFitnessContext, markFitnessWorkoutGenerated } from '../services/life/fitness.js';
+import { runServerHealthCheck } from '../services/monitoring/serverHealthRepository.js';
+import { runAvFetchOnce } from '../services/av/avTracker.js';
+import { bufferHolidayV2exTopics, pushBufferedV2exIfNeeded } from '../services/v2ex/v2exBufferedPush.js';
+import { triggerVitaminReminder } from '../services/life/vitaminReminder.js';
+import { runStartggWatchNow } from '../services/startgg/startggPresetSync.js';
 import { runStartggTask } from '../services/startgg/taskQueue.js';
 import {
   formatXLikedVideoStatusMessage,
   readXLikedVideoStatus,
-} from '../services/xLikedVideoStatus.js';
-import { beginWorkCheckin, recordWorkCheckinError, sendMorningNewsWithWorkCheckin } from '../services/workCheckinReminder.js';
+} from '../services/x-liked-video/xLikedVideoStatus.js';
+import { beginWorkCheckin, recordWorkCheckinError, sendMorningNewsWithWorkCheckin } from '../services/life/workCheckinReminder.js';
 import { getLifeDay, getLifeSettings, lifeDayIsClosed } from '../reminders/lifeSettings.js';
 import { bjDate } from '../utils/time.js';
 

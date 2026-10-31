@@ -1,8 +1,8 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { z } from 'zod';
-import { escapeHtml } from '../utils/html.js';
-import { bj, bjDate, bjFormat } from '../utils/time.js';
+import { escapeHtml } from '../../utils/html.js';
+import { bj, bjDate, bjFormat } from '../../utils/time.js';
 
 const execFileAsync = promisify(execFile);
 const projectDirectory = '/opt/x-liked-video-downloader';

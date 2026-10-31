@@ -1,7 +1,7 @@
 import * as cheerio from 'cheerio';
 import OpenAI from 'openai';
-import { DEEPSEEK_TASK_MODELS } from '../ai/models.js';
-import { config } from '../config/index.js';
+import { DEEPSEEK_TASK_MODELS } from '../../ai/models.js';
+import { config } from '../../config/index.js';
 
 export interface Magnet {
   name: string;

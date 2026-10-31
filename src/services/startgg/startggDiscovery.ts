@@ -3,8 +3,8 @@ import {
   fetchPlayerRecentSets,
   fetchTournamentCandidateIdentities,
   fetchTournamentCandidates,
-} from './startgg/client.js';
-import { normalizeEventSlug } from './startgg/tracker.js';
+} from './client.js';
+import { normalizeEventSlug } from './tracker.js';
 import {
   resolveStartggEntrantIdentities,
   type StartggEntrantMatchKind,

@@ -3,7 +3,7 @@ import {
   findRecordsInRange,
   type MasturbationRecord,
 } from './masturbationRepository.js';
-import { bj } from '../utils/time.js';
+import { bj } from '../../utils/time.js';
 
 export interface MasturbationSummary {
   todayCount: number;

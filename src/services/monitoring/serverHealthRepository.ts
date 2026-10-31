@@ -1,5 +1,5 @@
-import { getDb } from '../reminders/db.js';
-import { bj, bjDate } from '../utils/time.js';
+import { getDb } from '../../reminders/db.js';
+import { bj, bjDate } from '../../utils/time.js';
 import { checkServerHealth, type ServerHealthResult } from './serverHealth.js';
 import { checkDashboardBackupHealth, type BackupHealthResult } from './backupHealth.js';
 

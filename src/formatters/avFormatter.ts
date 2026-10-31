@@ -1,5 +1,5 @@
 import { escapeHtml } from '../utils/html.js';
-import type { AvTargetType } from '../services/avTargets.js';
+import type { AvTargetType } from '../services/av/avTargets.js';
 
 function normalizeUrl(url: string | null): string {
   if (!url) return '#';

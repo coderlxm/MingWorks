@@ -7,7 +7,7 @@ import { registerJournalBotHandlers } from './journal-bot/index.js';
 import { getDb } from './reminders/db.js';
 import { schedulePendingReminders, schedulePendingRecurringRules } from './reminders/scheduler.js';
 import { registerFixedJobs, restoreStartggPolling } from './scheduled/jobs.js';
-import { closeExpiredWorkCheckin } from './services/workCheckinReminder.js';
+import { closeExpiredWorkCheckin } from './services/life/workCheckinReminder.js';
 
 async function main() {
   if (!config.journalApiBaseUrl || !config.journalIngestToken || !config.journalPublicBaseUrl) {

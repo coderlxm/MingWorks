@@ -31,13 +31,13 @@ import {
   fetchFeaturedSeedPhaseMeta,
   fetchPhaseSeeds,
   fetchEventSetsByEntrants,
-} from './startgg/index.js';
+} from './index.js';
 import type { Telegraf } from 'telegraf';
-import { config } from '../config/index.js';
+import { config } from '../../config/index.js';
 import {
   buildStartggInterestPromptButtons,
   formatStartggInterestPrompt,
-} from '../formatters/startggFormatter.js';
+} from '../../formatters/startggFormatter.js';
 import {
   deactivateStartggWatchEventBySlug,
   deleteExpiredStartggInterestState,

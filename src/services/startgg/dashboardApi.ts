@@ -2,7 +2,7 @@ import Fastify from 'fastify';
 import { timingSafeEqual, randomUUID } from 'node:crypto';
 import type { Telegraf } from 'telegraf';
 import { z } from 'zod';
-import { listStartggWatchEvents } from '../startggRepository.js';
+import { listStartggWatchEvents } from './startggRepository.js';
 import { getStartggPollingRuntimeStatus } from '../../scheduled/jobs.js';
 import { dashboardEvent, dashboardFollowing, dashboardEventPlayers, dashboardSeeds, findDashboardEvent, readDashboardSets, readRecentDashboardSets, readDashboardSnapshot, readDashboardSync, markDashboardError } from './dashboardRepository.js';
 import { dismissDiscoveredStartggEvent, addStartggDashboardPlayer, removeStartggDashboardPlayer, applyStartggInterest, discoverStartggDashboard, pauseStartggDashboard, resolveStartggDashboardPlayers, setStartggDashboardSeeds, startStartggDashboardEvent, syncStartggDashboard, type ResolvedDashboardPlayer } from './control.js';

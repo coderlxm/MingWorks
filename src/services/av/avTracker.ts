@@ -1,12 +1,12 @@
 import OpenAI from 'openai';
 import Parser from 'rss-parser';
 import type { Telegraf } from 'telegraf';
-import { DEEPSEEK_TASK_MODELS } from '../ai/models.js';
-import { createBot } from '../bot/createBot.js';
-import { config } from '../config/index.js';
-import { formatAvLabelSummaryMessage, formatAvUpdateMessage } from '../formatters/avFormatter.js';
-import { sendAvUpdate } from '../publishers/avTelegram.js';
-import { sendTelegramMessage } from '../publishers/telegram.js';
+import { DEEPSEEK_TASK_MODELS } from '../../ai/models.js';
+import { createBot } from '../../bot/createBot.js';
+import { config } from '../../config/index.js';
+import { formatAvLabelSummaryMessage, formatAvUpdateMessage } from '../../formatters/avFormatter.js';
+import { sendAvUpdate } from '../../publishers/avTelegram.js';
+import { sendTelegramMessage } from '../../publishers/telegram.js';
 import {
   buildAvTargetRoute,
   buildAvTargetUrl,

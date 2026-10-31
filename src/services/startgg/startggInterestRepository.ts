@@ -1,4 +1,4 @@
-import { getDb } from '../reminders/db.js';
+import { getDb } from '../../reminders/db.js';
 
 export interface StartggPendingEvent {
   id: number;

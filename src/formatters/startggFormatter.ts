@@ -1,7 +1,7 @@
 import type {
   StartggFeaturedSeedCount,
   StartggWatchStatus,
-} from '../services/startggRepository.js';
+} from '../services/startgg/startggRepository.js';
 import { escapeHtml } from '../utils/html.js';
 import { bjFormat } from '../utils/time.js';
 

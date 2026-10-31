@@ -1,4 +1,4 @@
-import { getDb } from '../reminders/db.js';
+import { getDb } from '../../reminders/db.js';
 import type { AvTargetType } from './avTargets.js';
 
 export interface TrackedTarget {

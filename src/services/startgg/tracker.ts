@@ -35,7 +35,7 @@ import {
   markStartggFinalPhaseTrackingCompleted,
   updateStartggWatchEventFinalPhase,
   listEventFeaturedEntrants,
-} from '../startggRepository.js';
+} from './startggRepository.js';
 import {
   fetchEventHeader,
   fetchEventSetsByEntrants,
@@ -52,7 +52,7 @@ import type { TrackedSetNode, TrackedStandingNode } from './queries.js';
 import {
   resolveStartggEntrantIdentities,
   type StartggEntrantIdentityCandidate,
-} from '../startggIdentity.js';
+} from './startggIdentity.js';
 
 export function normalizeEventSlug(raw: string): string {
   const trimmed = raw.trim();

@@ -8,7 +8,7 @@ import * as repo from './repository.js';
 import { actOnceReminder, actRuleReminder, actReminderRun, createOnceReminder, createRuleReminder, previewReminderRule, reminderError, requireOnce, requireRule, updateOnceReminder, updateRuleReminder } from './actions.js';
 import { onceItem, runItem, ruleView, readReminderBoard, readReminderList, readReminderHistory } from './dashboard.js';
 import { actLife, readLifeDashboard, updateLifeSettings } from './lifeDashboard.js';
-import { readServerHealthOverview, runServerHealthCheck } from '../services/serverHealthRepository.js';
+import { readServerHealthOverview, runServerHealthCheck } from '../services/monitoring/serverHealthRepository.js';
 
 const dateSchema = z.iso.date();
 const instantSchema = z.iso.datetime({ offset: true });

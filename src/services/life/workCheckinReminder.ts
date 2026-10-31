@@ -5,4 +5,4 @@ export {
   closeExpiredWorkCheckin,
   completeWorkCheckin,
   recordWorkCheckinError,
-} from '../reminders/lifeDashboard.js';
+} from '../../reminders/lifeDashboard.js';
