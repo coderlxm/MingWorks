@@ -9,7 +9,7 @@ export function TrafficChart({ report }: { report: AnalyticsOverview }) {
   const [metric, setMetric] = useState<'visitors' | 'pageviews'>('visitors');
   const label = metric === 'visitors' ? '独立访客 UV' : '页面浏览 PV';
   return <Panel title="来访趋势" subtitle={`${report.from} — ${report.to} · 按日统计`} className="min-w-0" action={<div className="segmented-control"><button type="button" aria-pressed={metric === 'visitors'} onClick={() => setMetric('visitors')}>访客 UV</button><button type="button" aria-pressed={metric === 'pageviews'} onClick={() => setMetric('pageviews')}>浏览 PV</button></div>}>
-    {report.current.pageviews === 0 ? <EmptyState title="这段时间，暂时还没有来访" description="你可以调整日期或筛选条件。开始采集后的真实访问会显示在这里。" /> : <div className="h-64 w-full min-w-0" aria-label={`${label}每日趋势，具体数值可展开下方每日数据`}>
+    {report.current.pageviews === 0 ? <EmptyState title="暂无访问数据" /> : <div className="h-64 w-full min-w-0" aria-label={`${label}每日趋势，具体数值可展开下方每日数据`}>
       <ResponsiveContainer width="100%" height="100%" minWidth={0}>
         <AreaChart data={report.daily} margin={{ top: 12, right: 8, bottom: 0, left: -25 }} accessibilityLayer>
           <defs><linearGradient id="traffic-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#be185d" stopOpacity={0.2} /><stop offset="100%" stopColor="#be185d" stopOpacity={0.01} /></linearGradient></defs>

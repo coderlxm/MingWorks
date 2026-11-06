@@ -1,10 +1,10 @@
 import { Activity, ArrowRight, AlertCircle } from 'lucide-react';
 import type { ReactNode } from 'react';
 
-export function Brand({ compact = false }: { compact?: boolean }) {
+export function Brand() {
   return <div className="flex items-center gap-3">
     <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-pink-900 text-white"><Activity size={23} strokeWidth={1.6} aria-hidden="true" /></span>
-    <div><p className="brand-wordmark">Journal<span className="text-pink-700">.</span></p>{!compact && <p className="mt-0.5 text-[10px] font-semibold tracking-[0.2em] text-stone-500">ANALYTICS</p>}</div>
+    <p className="brand-wordmark">Journal<span className="text-pink-700">.</span></p>
   </div>;
 }
 
@@ -15,8 +15,8 @@ export function Panel({ title, subtitle, children, action, id, className = '' }:
   </section>;
 }
 
-export function EmptyState({ title = '这里还没有数据', description = '有访客产生访问后，数据会显示在这里。' }: { title?: string; description?: string }) {
-  return <div className="flex min-h-40 flex-col items-center justify-center px-4 py-8 text-center"><span className="mb-3 flex size-10 items-center justify-center rounded-full bg-stone-100 text-stone-400"><Activity size={18} aria-hidden="true" /></span><p className="text-sm font-medium text-stone-600">{title}</p><p className="mt-2 max-w-80 text-xs leading-relaxed text-stone-500">{description}</p></div>;
+export function EmptyState({ title = '暂无数据', description }: { title?: string; description?: string }) {
+  return <div className="flex min-h-40 flex-col items-center justify-center px-4 py-8 text-center"><span className="mb-3 flex size-10 items-center justify-center rounded-full bg-stone-100 text-stone-400"><Activity size={18} aria-hidden="true" /></span><p className="text-sm font-medium text-stone-600">{title}</p>{description && <p className="mt-2 max-w-80 text-xs leading-relaxed text-stone-500">{description}</p>}</div>;
 }
 
 export function ErrorNotice({ message, onRetry }: { message: string; onRetry?: () => void }) {
