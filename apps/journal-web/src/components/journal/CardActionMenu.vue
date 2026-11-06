@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { MoreFilled } from '@element-plus/icons-vue';
 import { ElDropdown, ElDropdownItem, ElDropdownMenu } from 'element-plus';
 import { computed, shallowRef, watch } from 'vue';
 import JournalLoading from '../ui/JournalLoading.vue';
@@ -134,7 +135,7 @@ function handleCommand(command: string): void {
         aria-haspopup="menu"
         :aria-expanded="open"
       >
-        <span aria-hidden="true">•••</span>
+        <MoreFilled aria-hidden="true" />
       </button>
 
       <template #dropdown>
@@ -186,10 +187,12 @@ function handleCommand(command: string): void {
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
-  font: inherit;
-  font-weight: 800;
-  letter-spacing: 0.08em;
   place-items: center;
+}
+
+.action-menu__trigger svg {
+  width: 1.125rem;
+  height: 1.125rem;
 }
 
 .action-menu__trigger:hover,
