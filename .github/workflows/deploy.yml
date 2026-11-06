@@ -237,7 +237,7 @@ jobs:
         id: scope
         env:
           # A release can explicitly select Journal without changing the normal path rules.
-          JOURNAL_ONLY_PUSH: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, 'Deploy-Scope: journal-only') }}
+          JOURNAL_ONLY_PUSH: "${{ github.event_name == 'push' && contains(github.event.head_commit.message, 'Deploy-Scope: journal-only') }}"
           PUSH_JOURNAL_WEB: ${{ steps.paths.outputs.journal_web }}
           PUSH_JOURNAL_BACKEND: ${{ steps.paths.outputs.journal_backend }}
           PUSH_BOT: ${{ steps.paths.outputs.bot }}
