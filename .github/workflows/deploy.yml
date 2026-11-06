@@ -236,6 +236,8 @@ jobs:
       - name: Resolve deployment scope
         id: scope
         env:
+          # A release can explicitly select Journal without changing the normal path rules.
+          JOURNAL_ONLY_PUSH: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, 'Deploy-Scope: journal-only') }}
           PUSH_JOURNAL_WEB: ${{ steps.paths.outputs.journal_web }}
           PUSH_JOURNAL_BACKEND: ${{ steps.paths.outputs.journal_backend }}
           PUSH_BOT: ${{ steps.paths.outputs.bot }}
@@ -266,6 +268,14 @@ jobs:
             echo "startgg_dashboard=$MANUAL_STARTGG_DASHBOARD" >> "$GITHUB_OUTPUT"
             echo "reminder_dashboard=$MANUAL_REMINDER_DASHBOARD" >> "$GITHUB_OUTPUT"
             echo "server_dashboard=$MANUAL_SERVER_DASHBOARD" >> "$GITHUB_OUTPUT"
+          elif [ "$JOURNAL_ONLY_PUSH" = "true" ]; then
+            journal_web=true
+            journal_backend=true
+            echo "bot=false" >> "$GITHUB_OUTPUT"
+            echo "lu_dashboard=false" >> "$GITHUB_OUTPUT"
+            echo "startgg_dashboard=false" >> "$GITHUB_OUTPUT"
+            echo "reminder_dashboard=false" >> "$GITHUB_OUTPUT"
+            echo "server_dashboard=false" >> "$GITHUB_OUTPUT"
           else
             journal_web=false
             journal_backend=false
