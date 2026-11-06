@@ -7,8 +7,6 @@ import PublicSearchBar from '../discovery/PublicSearchBar.vue';
 import ProfileStoryViewer from '../story/ProfileStoryViewer.vue';
 import ThemeModeControl from '../ui/ThemeModeControl.vue';
 
-const analyticsUrl = import.meta.env.DEV ? '/analytics' : 'https://stats.xmcloud.buzz/';
-
 const props = defineProps<{
   profile: SiteProfile | null;
   profileLoadError: string | null;
@@ -171,7 +169,6 @@ onUnmounted(() => {
             我的资产
           </button>
         </nav>
-        <a v-if="ownerAuthenticated" class="profile__nav-link" :href="analyticsUrl">访问统计</a>
         <ThemeModeControl />
       </div>
     </header>
@@ -364,7 +361,6 @@ onUnmounted(() => {
   border-bottom: 2px solid transparent;
   color: var(--text-muted);
   font-size: 0.78rem;
-  text-decoration: none;
   transition: border-color 140ms ease, color 140ms ease;
 }
 

@@ -12,12 +12,12 @@ export function TrafficChart({ report }: { report: AnalyticsOverview }) {
     {report.current.pageviews === 0 ? <EmptyState title="这段时间，暂时还没有来访" description="你可以调整日期或筛选条件。开始采集后的真实访问会显示在这里。" /> : <div className="h-64 w-full min-w-0" aria-label={`${label}每日趋势，具体数值可展开下方每日数据`}>
       <ResponsiveContainer width="100%" height="100%" minWidth={0}>
         <AreaChart data={report.daily} margin={{ top: 12, right: 8, bottom: 0, left: -25 }} accessibilityLayer>
-          <defs><linearGradient id="traffic-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#1b8870" stopOpacity={0.2} /><stop offset="100%" stopColor="#1b8870" stopOpacity={0.01} /></linearGradient></defs>
-          <CartesianGrid strokeDasharray="3 5" vertical={false} stroke="#e9ede9" />
-          <XAxis dataKey="date" tickFormatter={value => String(value).slice(5).replace('-', '/')} axisLine={false} tickLine={false} tick={{ fill: '#858c83', fontSize: 11 }} minTickGap={32} tickMargin={12} />
-          <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fill: '#858c83', fontSize: 11 }} />
-          <Tooltip isAnimationActive={false} contentStyle={{ borderRadius: 12, border: '1px solid #e4e9e2', fontSize: 12, boxShadow: '0 8px 25px #183c2410' }} formatter={value => [numberFormat.format(Number(value)), label]} cursor={{ stroke: '#aac8bc', strokeDasharray: '4 4' }} />
-          <Area type="monotone" dataKey={metric} name={label} stroke="#168269" strokeWidth={2.5} fill="url(#traffic-fill)" isAnimationActive={false} dot={report.daily.length === 1 ? { r: 4 } : false} activeDot={{ r: 5, stroke: '#fff', strokeWidth: 2 }} />
+          <defs><linearGradient id="traffic-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#be185d" stopOpacity={0.2} /><stop offset="100%" stopColor="#be185d" stopOpacity={0.01} /></linearGradient></defs>
+          <CartesianGrid strokeDasharray="3 5" vertical={false} stroke="#f1e5ec" />
+          <XAxis dataKey="date" tickFormatter={value => String(value).slice(5).replace('-', '/')} axisLine={false} tickLine={false} tick={{ fill: '#95818d', fontSize: 11 }} minTickGap={32} tickMargin={12} />
+          <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fill: '#95818d', fontSize: 11 }} />
+          <Tooltip isAnimationActive={false} contentStyle={{ borderRadius: 12, border: '1px solid #ead5e1', fontSize: 12, boxShadow: '0 8px 25px #5b153e10' }} formatter={value => [numberFormat.format(Number(value)), label]} cursor={{ stroke: '#d9a6c0', strokeDasharray: '4 4' }} />
+          <Area type="monotone" dataKey={metric} name={label} stroke="#be185d" strokeWidth={2.5} fill="url(#traffic-fill)" isAnimationActive={false} dot={report.daily.length === 1 ? { r: 4 } : false} activeDot={{ r: 5, stroke: '#fff', strokeWidth: 2 }} />
         </AreaChart>
       </ResponsiveContainer>
     </div>}

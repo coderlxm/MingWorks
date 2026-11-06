@@ -3,8 +3,8 @@ import type { ReactNode } from 'react';
 
 export function Brand({ compact = false }: { compact?: boolean }) {
   return <div className="flex items-center gap-3">
-    <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-emerald-900 text-white"><Activity size={23} strokeWidth={1.6} aria-hidden="true" /></span>
-    <div><p className="brand-wordmark">Journal<span className="text-emerald-700">.</span></p>{!compact && <p className="mt-0.5 text-[10px] font-semibold tracking-[0.2em] text-stone-500">ANALYTICS</p>}</div>
+    <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-pink-900 text-white"><Activity size={23} strokeWidth={1.6} aria-hidden="true" /></span>
+    <div><p className="brand-wordmark">Journal<span className="text-pink-700">.</span></p>{!compact && <p className="mt-0.5 text-[10px] font-semibold tracking-[0.2em] text-stone-500">ANALYTICS</p>}</div>
   </div>;
 }
 

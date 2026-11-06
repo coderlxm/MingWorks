@@ -77,6 +77,7 @@ commit 自动完成。push 即触发部署，是否直接 push 取决于当前�
 
 ## 代码风格
 
+- 网站和看板严禁采用墨绿、祖母绿、薄荷绿、青绿等绿色主题；主题色必须遵循用户指定，不得自行套用这类绿色视觉方案。
 - Vue 组件需要显式命名时，使用 `<script setup lang="ts" name="组件名">`，不使用 `defineOptions({ name: '组件名' })`。该写法依赖 `vite-plugin-vue-setup-extend`，Journal 前端已在 `apps/journal-web/vite.config.ts` 中启用；其他 Vue 入口采用此写法前也必须接入插件。`defineOptions` 如有其他组件选项，应保留那些选项。
 - 单应用开发入口直接调用实际工具，避免无意义的包管理器嵌套将主动 Ctrl+C 误报为错误。
 - 不把一次排查中的临时方案沉淀为长期代码。
