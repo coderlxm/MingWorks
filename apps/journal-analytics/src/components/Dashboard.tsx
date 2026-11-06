@@ -109,7 +109,7 @@ export function Dashboard({ onSessionExpired, onLogout }: { onSessionExpired: ()
         </div>
         <EventPanel events={report.events} />
         <details className="rounded-xl border border-stone-200/70 bg-stone-100/50 p-5"><summary className="flex w-fit cursor-pointer list-none items-center gap-2 text-xs font-medium text-stone-600"><Info size={14} aria-hidden="true" />统计口径与采集范围</summary><div className="mt-4 grid gap-4 text-[11px] leading-6 text-stone-500 sm:grid-cols-2"><p>访客 UV 按匿名浏览器标识去重，清除浏览器数据或更换设备会计为新访客，并非实际人数。连续 30 分钟无活动后产生新会话。所有日期均按北京时间（Asia/Shanghai）统计。</p><p>跳出率为筛选范围内只有一次浏览的会话占比；平均停留为筛选页面累计可见时长除以会话数。跨日访客会在每天分别计入，所以每日 UV 之和可能高于周期 UV。</p><p>仅采集公开页面，排除管理员访问与已知爬虫。页面参数、私密内容及密码不进入统计；推广来源只记录 UTM 参数。首次采集之前的访问无法还原。</p><p>实时面板显示最近 5 分钟有活动的浏览器访客和页面记录，不等于最近新增 PV。排行榜按访客排序，条形和占比表示浏览量；页面、来源和受众最多展示前 20 项，事件展示前 30 项。</p></div></details>
-        <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-stone-200/70 pt-5 text-[10px] text-stone-400"><span>JOURNAL ANALYTICS <span className="mx-2">/</span> 每一份内容，都有回声。</span><span>{report.firstCollectedAt ? `开始采集于 ${formatTimestamp(report.firstCollectedAt, true)}` : '尚未收到首条访问数据'}<span className="mx-2">·</span>Asia/Shanghai</span></footer>
+        <footer className="flex flex-wrap items-center justify-end gap-3 border-t border-stone-200/70 pt-5 text-[10px] text-stone-400"><span>{report.firstCollectedAt ? `开始采集于 ${formatTimestamp(report.firstCollectedAt, true)}` : '尚未收到首条访问数据'}<span className="mx-2">·</span>Asia/Shanghai</span></footer>
       </div>}
     </main>
   </div>;
