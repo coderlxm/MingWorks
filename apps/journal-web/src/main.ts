@@ -2,6 +2,7 @@ import { createPinia } from 'pinia';
 import { createApp } from 'vue';
 import App from './App.vue';
 import { router } from './router';
+import { reportAnalyticsError, startJournalAnalytics } from './analytics/collector';
 import './assets/main.css';
 import './assets/journal-prose.css';
 import './assets/handheld.css';
@@ -16,4 +17,5 @@ app.use(router);
 
 void router.isReady().then(() => {
   app.mount('#app');
+  void startJournalAnalytics(router).catch(reportAnalyticsError);
 });

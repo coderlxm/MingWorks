@@ -1571,6 +1571,50 @@ const migrations: JournalMigration[] = [
       }
     },
   },
+  {
+    version: 25,
+    up(database) {
+      database.exec(`
+        CREATE TABLE journal_analytics_pageviews (
+          id TEXT PRIMARY KEY,
+          visitor_hash TEXT NOT NULL,
+          session_hash TEXT NOT NULL,
+          path TEXT NOT NULL,
+          referrer TEXT NOT NULL,
+          utm_source TEXT NOT NULL,
+          utm_medium TEXT NOT NULL,
+          utm_campaign TEXT NOT NULL,
+          browser TEXT NOT NULL,
+          system TEXT NOT NULL,
+          device TEXT NOT NULL CHECK (device IN ('desktop', 'mobile', 'tablet', 'unknown')),
+          created_at INTEGER NOT NULL,
+          last_seen_at INTEGER NOT NULL,
+          active_ms INTEGER NOT NULL DEFAULT 0 CHECK (active_ms >= 0)
+        );
+        CREATE INDEX idx_journal_analytics_pageviews_created
+          ON journal_analytics_pageviews(created_at);
+        CREATE INDEX idx_journal_analytics_pageviews_last_seen
+          ON journal_analytics_pageviews(last_seen_at);
+        CREATE INDEX idx_journal_analytics_pageviews_session
+          ON journal_analytics_pageviews(session_hash, created_at);
+
+        CREATE TABLE journal_analytics_events (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          pageview_id TEXT NOT NULL REFERENCES journal_analytics_pageviews(id),
+          name TEXT NOT NULL CHECK (name IN (
+            'outbound_click', 'search', 'reaction', 'comment',
+            'guestbook_message', 'resume_download_click'
+          )),
+          target TEXT NOT NULL,
+          created_at INTEGER NOT NULL
+        );
+        CREATE INDEX idx_journal_analytics_events_pageview
+          ON journal_analytics_events(pageview_id, created_at);
+        CREATE INDEX idx_journal_analytics_events_created
+          ON journal_analytics_events(created_at);
+      `);
+    },
+  },
 ];
 
 

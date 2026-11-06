@@ -1,6 +1,7 @@
 import type {
   JournalApiError,
 } from '../types';
+import { captureAnalyticsRequest } from '../analytics/collector';
 
 export class JournalRequestError extends Error {
   readonly status: number;
@@ -17,6 +18,7 @@ async function readError(response: Response): Promise<JournalApiError> {
 }
 
 export async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const recordSuccess = captureAnalyticsRequest(path, init);
   const response = await fetch(path, {
     credentials: 'same-origin',
     ...init,
@@ -27,10 +29,13 @@ export async function requestJson<T>(path: string, init?: RequestInit): Promise<
     throw new JournalRequestError(response.status, body.error);
   }
 
-  return await response.json() as T;
+  const body = await response.json() as T;
+  recordSuccess?.();
+  return body;
 }
 
 export async function requestWithoutResponse(path: string, init?: RequestInit): Promise<void> {
+  const recordSuccess = captureAnalyticsRequest(path, init);
   const response = await fetch(path, {
     credentials: 'same-origin',
     ...init,
@@ -40,6 +45,7 @@ export async function requestWithoutResponse(path: string, init?: RequestInit): 
     const body = await readError(response);
     throw new JournalRequestError(response.status, body.error);
   }
+  recordSuccess?.();
 }
 
 const mutationTimeoutMs = 15_000;

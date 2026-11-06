@@ -12,6 +12,7 @@ import { ZodError } from 'zod';
 import { JournalAiSuggestionService } from './aiSuggestionService.js';
 import { JournalArticleService } from './articles/articleService.js';
 import { JournalAuth } from './auth.js';
+import { AnalyticsRepository } from './analytics/analyticsRepository.js';
 import { JournalContributionError } from './contributions/contributionError.js';
 import { JournalContributionLinkService } from './contributions/contributionLinkService.js';
 import { JournalContributionMediaService } from './contributions/contributionMedia.js';
@@ -42,6 +43,7 @@ import {
 } from './resume/resumePreview.js';
 import { JournalResumeService } from './resume/resumeService.js';
 import { registerArticleRoutes } from './routes/articles.js';
+import { registerAnalyticsRoutes } from './routes/analytics.js';
 import { registerAutomationArticleRoutes } from './routes/automationArticles.js';
 import { registerContributionRoutes } from './routes/contributions.js';
 import { registerFeedRoutes } from './routes/feeds.js';
@@ -78,6 +80,7 @@ export async function createJournalServer(config: JournalServerConfig): Promise<
   const server = Fastify({ logger: true });
   const database = openJournalDatabase(config.dataDir);
   const repository = new JournalRepository(database);
+  const analyticsRepository = new AnalyticsRepository(database);
   const gameRepository = new GameRepository(database);
   const auth = new JournalAuth(config.ingestToken, config.articleToken, config.adminPassword);
   const resumePreviews = new JournalResumePreviewService();
@@ -206,6 +209,12 @@ export async function createJournalServer(config: JournalServerConfig): Promise<
   });
 
   await registerInternalRoutes(server, { auth, deletionService, ingestService, repository });
+  registerAnalyticsRoutes(server, {
+    auth,
+    repository: analyticsRepository,
+    visitorSecret: config.cookieSecret,
+    publicBaseUrl: config.publicBaseUrl,
+  });
   await registerInteractionRoutes(server, {
     auth,
     repository,
@@ -260,6 +269,15 @@ export async function createJournalServer(config: JournalServerConfig): Promise<
     return reply.sendFile('index.html');
   };
   server.get('/', sendApplication);
+
+  const sendAnalytics = async (_request: FastifyRequest, reply: FastifyReply) => {
+    reply.header('Cache-Control', 'private, no-store');
+    reply.header('X-Robots-Tag', 'noindex, nofollow');
+    return reply.sendFile('analytics.html');
+  };
+  server.get('/analytics', sendAnalytics);
+  server.get('/analytics/', sendAnalytics);
+  server.get('/analytics.html', sendAnalytics);
 
   server.get('/version.json', async (_request, reply) => {
     reply.header('Cache-Control', 'no-store');

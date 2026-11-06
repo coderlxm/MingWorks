@@ -80,6 +80,7 @@ jobs:
           filters: |
             journal_web:
               - 'apps/journal-web/**'
+              - 'apps/journal-analytics/**'
               - 'src/shared/**'
               - 'deploy/journal/deploy-release'
               - '.github/workflows/deploy.yml'
@@ -209,6 +210,7 @@ jobs:
               'apps/startgg-dashboard': ('startgg_dashboard',),
               'apps/reminder-dashboard': ('reminder_dashboard',),
               'apps/server-dashboard': ('server_dashboard',),
+              'apps/journal-analytics': ('journal_web',),
           }
           for importer, services in affected.items():
               if before_importers.get(importer) != after_importers.get(importer):
