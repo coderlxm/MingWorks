@@ -14,20 +14,24 @@ WEB_RELEASES_DIR=${WEB_DIR}/releases
 WEB_RETIRED_DIR=${WEB_DIR}/retired
 WEB_COMMIT_FILE=${PROJECT_DIR}/.web-deploy-commit
 EXPECTED_ARCHIVE_OWNER=journal-deploy
+OPENRESTY_APP_DIR=/opt/1panel/apps/openresty/openresty
+OPENRESTY_CONTAINER=1Panel-openresty-6g8y
 
 if [[ $# -lt 2 || $# -gt 3 || ! $1 =~ ^[0-9a-f]{40}$ ]]; then
-  echo 'usage: journal-deploy-release <40-character-lowercase-commit-sha> <web|backend|both> [--install-host-assets]' >&2
+  echo 'usage: journal-deploy-release <40-character-lowercase-commit-sha> <web|backend|both|analytics-domain> [--install-host-assets]' >&2
   exit 64
 fi
 
 RELEASE_SHA=$1
 DEPLOY_WEB=false
 DEPLOY_BACKEND=false
+DEPLOY_ANALYTICS_DOMAIN=false
 case $2 in
   web) DEPLOY_WEB=true ;;
   backend) DEPLOY_BACKEND=true ;;
   both) DEPLOY_WEB=true; DEPLOY_BACKEND=true ;;
-  *) echo 'release scope must be web, backend or both' >&2; exit 64 ;;
+  analytics-domain) DEPLOY_ANALYTICS_DOMAIN=true ;;
+  *) echo 'release scope must be web, backend, both or analytics-domain' >&2; exit 64 ;;
 esac
 
 INSTALL_HOST_ASSETS=false
@@ -42,6 +46,7 @@ fi
 IMAGE_ARCHIVE=${INCOMING_DIR}/journal-${RELEASE_SHA}.tar
 WEB_ARCHIVE=${INCOMING_DIR}/journal-web-${RELEASE_SHA}.tar
 HOST_ASSETS_ARCHIVE=${INCOMING_DIR}/journal-host-${RELEASE_SHA}.tar
+ANALYTICS_DOMAIN_ARCHIVE=${INCOMING_DIR}/journal-analytics-domain-${RELEASE_SHA}.tar
 IMAGE_REFERENCE=${IMAGE_REPOSITORY}:${RELEASE_SHA}
 RELEASE_ROOT=$(mktemp -d /var/lib/journal-deploy/release.XXXXXX)
 HOST_ASSETS_ROOT=${RELEASE_ROOT}/host
@@ -70,6 +75,21 @@ require_archive() {
     exit 77
   fi
 }
+
+if [[ ${DEPLOY_ANALYTICS_DOMAIN} == true ]]; then
+  require_archive "${ANALYTICS_DOMAIN_ARCHIVE}"
+  ANALYTICS_DOMAIN_ROOT=${RELEASE_ROOT}/domain
+  install -d "${ANALYTICS_DOMAIN_ROOT}"
+  tar -xf "${ANALYTICS_DOMAIN_ARCHIVE}" -C "${ANALYTICS_DOMAIN_ROOT}"
+  install -d -m 755 "${OPENRESTY_APP_DIR}/www/sites/stats.xmcloud.buzz/ssl"
+  install -m 644 "${ANALYTICS_DOMAIN_ROOT}/journal-stats-tls/origin.pem" "${OPENRESTY_APP_DIR}/www/sites/stats.xmcloud.buzz/ssl/origin.pem"
+  install -m 600 "${ANALYTICS_DOMAIN_ROOT}/journal-stats-tls/origin.key" "${OPENRESTY_APP_DIR}/www/sites/stats.xmcloud.buzz/ssl/origin.key"
+  install -m 644 "${ANALYTICS_DOMAIN_ROOT}/deploy/journal/stats.xmcloud.buzz.conf" "${OPENRESTY_APP_DIR}/conf/conf.d/stats.xmcloud.buzz.conf"
+  docker exec "${OPENRESTY_CONTAINER}" /usr/local/openresty/nginx/sbin/nginx -t
+  docker exec "${OPENRESTY_CONTAINER}" /usr/local/openresty/nginx/sbin/nginx -s reload
+  rm -- "${ANALYTICS_DOMAIN_ARCHIVE}"
+  exit 0
+fi
 
 activate_web() {
   ln -s "releases/${RELEASE_SHA}" "${WEB_LINK_TEMP}"

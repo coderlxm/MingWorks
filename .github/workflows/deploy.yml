@@ -373,7 +373,16 @@ jobs:
 
       - name: Package Journal backend image and host assets
         if: env.DEPLOY_BACKEND == 'true'
+        env:
+          JOURNAL_STATS_TLS_CERT: ${{ secrets.JOURNAL_STATS_TLS_CERT }}
+          JOURNAL_STATS_TLS_KEY: ${{ secrets.JOURNAL_STATS_TLS_KEY }}
         run: |
+          test -n "$JOURNAL_STATS_TLS_CERT"
+          test -n "$JOURNAL_STATS_TLS_KEY"
+          umask 077
+          install -d -m 700 "$RUNNER_TEMP/journal-stats-tls"
+          printf '%s\n' "$JOURNAL_STATS_TLS_CERT" > "$RUNNER_TEMP/journal-stats-tls/origin.pem"
+          printf '%s\n' "$JOURNAL_STATS_TLS_KEY" > "$RUNNER_TEMP/journal-stats-tls/origin.key"
           docker save "notinews-journal:$GITHUB_SHA" > "/tmp/journal-$GITHUB_SHA.tar"
           tar --create \
             --file "/tmp/journal-host-$GITHUB_SHA.tar" \
@@ -382,6 +391,10 @@ jobs:
             deploy/journal/compose.yaml \
             deploy/journal/journal-backup.service \
             deploy/journal/journal-backup.timer
+          tar --create \
+            --file "/tmp/journal-analytics-domain-$GITHUB_SHA.tar" \
+            deploy/journal/stats.xmcloud.buzz.conf \
+            -C "$RUNNER_TEMP" journal-stats-tls
 
       - name: Setup Journal SSH agent
         uses: webfactory/ssh-agent@v0.10.0
@@ -408,7 +421,8 @@ jobs:
           PORT="${JOURNAL_SERVER_PORT:-22}"
           tar -C /tmp -cf - \
             "journal-$GITHUB_SHA.tar" \
-            "journal-host-$GITHUB_SHA.tar" | \
+            "journal-host-$GITHUB_SHA.tar" \
+            "journal-analytics-domain-$GITHUB_SHA.tar" | \
             ssh -p "$PORT" "$JOURNAL_SERVER_USER@$JOURNAL_SERVER_HOST" \
               "tar -xf - -C /var/lib/journal-deploy/incoming"
 
@@ -424,6 +438,10 @@ jobs:
           fi
           ssh -p "$PORT" "$JOURNAL_SERVER_USER@$JOURNAL_SERVER_HOST" \
             "sudo -n /usr/local/sbin/journal-deploy-release '$GITHUB_SHA' $RELEASE_ARGS"
+          if [ "$DEPLOY_BACKEND" = "true" ]; then
+            ssh -p "$PORT" "$JOURNAL_SERVER_USER@$JOURNAL_SERVER_HOST" \
+              "sudo -n /usr/local/sbin/journal-deploy-release '$GITHUB_SHA' analytics-domain"
+          fi
 
       - name: Notify Journal deploy success to Telegram
         env:

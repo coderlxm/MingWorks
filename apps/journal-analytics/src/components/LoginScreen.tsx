@@ -39,8 +39,8 @@ export function LoginScreen({ onLogin, notice }: { onLogin: () => void; notice: 
           <button disabled={loading} className="btn-primary mt-6 w-full justify-center" type="submit">{loading ? <LoaderCircle className="animate-spin" size={16} aria-hidden="true" /> : <>进入统计看板 <ArrowRight size={16} aria-hidden="true" /></>}</button>
         </form>
       </div>
-      <p className="mt-6 text-center text-xs text-stone-500">使用 Journal 现有的管理员密码与登录会话。</p>
-      <a href="/" className="mx-auto mt-5 flex w-fit items-center gap-1 text-xs text-emerald-800">返回 Journal <ArrowRight size={13} aria-hidden="true" /></a>
+      <p className="mt-6 text-center text-xs text-stone-500">使用 Journal 现有的管理员密码。</p>
+      <a href="https://feeds.xmcloud.buzz/" className="mx-auto mt-5 flex w-fit items-center gap-1 text-xs text-emerald-800">返回 Journal <ArrowRight size={13} aria-hidden="true" /></a>
     </div>
   </main>;
 }
