@@ -448,21 +448,13 @@ function handleEntryClick(event: MouseEvent): void {
   grid-template-rows: auto 1fr auto;
   grid-template-columns: minmax(0, 1fr) minmax(0, 36%);
   gap: 1.15rem clamp(1.5rem, 3cqi, 3rem);
-  padding: clamp(1rem, 0.5rem + 2.2cqi, 2.2rem);
-  border: 1px solid var(--border-subtle);
-  border-radius: 1.25rem;
-  background: var(--surface-card);
-  transition: border-color 180ms ease, transform 180ms ease;
+  padding: 0 0 clamp(1.5rem, 1rem + 2cqi, 2.5rem);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .index-entry--lead::before,
 .index-entry--lead::after {
   content: none;
-}
-
-.index-entry--lead:hover {
-  border-color: var(--border-strong);
-  transform: translateY(-2px);
 }
 
 .index-entry--lead .index-entry__date {
@@ -501,6 +493,7 @@ function handleEntryClick(event: MouseEvent): void {
   min-height: 15rem;
   align-self: stretch;
   aspect-ratio: auto;
+  border-radius: 0;
 }
 
 .index-entry__plate {
@@ -563,7 +556,6 @@ function handleEntryClick(event: MouseEvent): void {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .index-entry--lead:hover,
   .index-entry:hover::after,
   .index-entry:hover .index-entry__visual .index-entry__image,
   .index-entry--lead:hover .index-entry__plate-glyph {
