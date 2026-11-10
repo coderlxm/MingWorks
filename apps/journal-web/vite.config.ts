@@ -2,7 +2,7 @@ import vue from '@vitejs/plugin-vue';
 import { fileURLToPath } from 'node:url';
 import { defineConfig, loadEnv } from 'vite';
 import vueSetupExtend from 'vite-plugin-vue-setup-extend';
-import { analyticsPlugins } from '../journal-analytics/vite.plugins';
+import { analyticsPlugins } from '../journal-analytics/vite.plugins.ts';
 
 export default defineConfig(({ mode }) => {
   const environment = loadEnv(mode, process.cwd(), 'JOURNAL_');
