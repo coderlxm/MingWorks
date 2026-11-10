@@ -1,14 +1,30 @@
 <script setup lang="ts">
-import { MasonryGrid } from '@egjs/grid';
-import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, onUpdated, shallowRef, useTemplateRef } from 'vue';
+import { computed, onActivated, onDeactivated, onMounted, onUpdated, shallowRef } from 'vue';
 import {
   isProtectedJournalEntry,
   type JournalEntry,
   type PublicJournalFeedItem,
 } from '../../types';
-import ProtectedEntryCard from '../journal/ProtectedEntryCard.vue';
-import ArticleCardContent from './ArticleCardContent.vue';
+import ArticleIndexEntry from './ArticleIndexEntry.vue';
+import ArticleIndexLocked from './ArticleIndexLocked.vue';
 import JournalArticleFeedPlaceholder from './JournalArticleFeedPlaceholder.vue';
+
+interface ArticleIndexItem {
+  key: string;
+  entry: PublicJournalFeedItem;
+  order: number;
+}
+
+interface ArticleIndexGroup {
+  key: string;
+  label: string;
+  pinned: boolean;
+  order: number;
+  items: ArticleIndexItem[];
+}
+
+const FEED_PAGE_SIZE = 20;
+const ENTRANCE_STAGGER_LIMIT = 10;
 
 const props = defineProps<{
   entries: readonly PublicJournalFeedItem[];
@@ -24,11 +40,14 @@ const emit = defineEmits<{
   openComments: [entry: JournalEntry];
 }>();
 
-const gridElement = useTemplateRef<HTMLDivElement>('grid');
-const laidOutEntryKeys = shallowRef<readonly string[]>([]);
+const yearFormatter = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'Asia/Shanghai',
+  year: 'numeric',
+});
 
-let masonry: MasonryGrid;
-let needsActivationLayout = false;
+// Replaying the entrance when a cached feed is shown again would read as a reload.
+const entering = shallowRef(true);
+
 let active = true;
 let previousEntries = props.entries;
 let previousLoading = props.loading;
@@ -37,208 +56,231 @@ function entryKey(entry: PublicJournalFeedItem): string {
   return isProtectedJournalEntry(entry) ? `protected:${entry.publicId}` : `entry:${entry.id}`;
 }
 
-function sameEntryAt(
-  entry: PublicJournalFeedItem,
-  entries: readonly PublicJournalFeedItem[],
-  index: number,
-): boolean {
-  const comparedEntry = entries[index];
-  return comparedEntry !== undefined && entryKey(entry) === entryKey(comparedEntry);
+const preparing = computed(() => props.loading && props.entries.length === 0);
+const leadEntry = computed<JournalEntry | null>(() => {
+  const first = props.entries[0];
+  return first !== undefined && !isProtectedJournalEntry(first) ? first : null;
+});
+const groups = computed<ArticleIndexGroup[]>(() => {
+  const result: ArticleIndexGroup[] = [];
+  let current: ArticleIndexGroup | undefined;
+
+  for (const [index, entry] of props.entries.entries()) {
+    if (entry === leadEntry.value) continue;
+
+    const pinned = !isProtectedJournalEntry(entry) && entry.pinned;
+    const label = pinned ? '置顶' : yearFormatter.format(new Date(entry.sourceCreatedAt));
+    const order = Math.min(index % FEED_PAGE_SIZE, ENTRANCE_STAGGER_LIMIT);
+
+    if (current === undefined || current.label !== label) {
+      current = { key: `${result.length}:${label}`, label, pinned, order, items: [] };
+      result.push(current);
+    }
+    current.items.push({ key: entryKey(entry), entry, order });
+  }
+  return result;
+});
+
+function reportLayout(): void {
+  if (preparing.value) return;
+  emit('layoutReady');
 }
 
-const entryKeys = computed(() => props.entries.map(entryKey));
-const hasCurrentLayout = computed(() =>
-  entryKeys.value.length === laidOutEntryKeys.value.length
-  && entryKeys.value.every((key, index) => key === laidOutEntryKeys.value[index]),
-);
-const appendedToCurrentLayout = computed(() =>
-  laidOutEntryKeys.value.length > 0
-  && entryKeys.value.length > laidOutEntryKeys.value.length
-  && laidOutEntryKeys.value.every((key, index) => key === entryKeys.value[index]),
-);
-const pendingEntryIds = computed<ReadonlySet<string>>(() =>
-  appendedToCurrentLayout.value
-    ? new Set(entryKeys.value.slice(laidOutEntryKeys.value.length))
-    : new Set(),
-);
-const preparing = computed(() =>
-  (props.loading && props.entries.length === 0)
-  || (props.entries.length > 0 && !hasCurrentLayout.value && !appendedToCurrentLayout.value),
-);
-
-onMounted(() => {
-  masonry = new MasonryGrid(gridElement.value!, {
-    align: 'start',
-    gap: 0,
-    useTransform: true,
-    useResizeObserver: true,
-    observeChildren: true,
-  });
-
-  masonry.on('renderComplete', () => {
-    if (!hasCurrentLayout.value) laidOutEntryKeys.value = entryKeys.value;
-    if (active) emit('layoutReady');
-  });
-
-  masonry.renderItems();
-  if (!props.loading && props.entries.length === 0) emit('layoutReady');
-});
+onMounted(reportLayout);
 
 onUpdated(() => {
   const entriesChanged = props.entries !== previousEntries;
   const loadingCompleted = previousLoading && !props.loading;
-  const hasSameEntrySequence =
-    props.entries.length === previousEntries.length
-    && props.entries.every((entry, index) => sameEntryAt(entry, previousEntries, index));
 
   previousEntries = props.entries;
   previousLoading = props.loading;
 
-  if (entriesChanged) {
-    masonry.syncElements({ direction: 'end' });
-    if (hasSameEntrySequence) masonry.updateItems(masonry.getItems(), { direction: 'end' });
-  }
-
-  if (active && !props.loading && props.entries.length === 0 && (entriesChanged || loadingCompleted)) {
-    emit('layoutReady');
-  }
+  if (active && (entriesChanged || (loadingCompleted && props.entries.length === 0))) reportLayout();
 });
 
 onDeactivated(() => {
   active = false;
-  needsActivationLayout = true;
+  entering.value = false;
 });
 
 onActivated(() => {
+  if (active) return;
   active = true;
-  if (!needsActivationLayout) return;
-  needsActivationLayout = false;
-  if (!props.loading && props.entries.length === 0) {
-    emit('layoutReady');
-    return;
-  }
-  masonry.renderItems({ useResize: true });
-});
-
-onBeforeUnmount(() => {
-  masonry.destroy();
+  reportLayout();
 });
 </script>
 
 <template>
-  <div class="article-feed" :class="{ 'article-feed--preparing': preparing }" :aria-busy="preparing">
-    <div v-if="preparing" class="article-feed__placeholder">
-      <JournalArticleFeedPlaceholder />
-    </div>
+  <div class="article-index" :aria-busy="preparing">
+    <div class="article-index__body" :class="{ 'article-index__body--entering': entering }">
+      <JournalArticleFeedPlaceholder v-if="preparing" />
 
-    <div
-      ref="grid"
-      class="article-feed__grid"
-      :class="{ 'article-feed__grid--ready': !preparing }"
-      :aria-hidden="preparing ? 'true' : undefined"
-      :inert="preparing"
-    >
-      <div
-        v-for="entry in entries"
-        :key="entryKey(entry)"
-        class="article-feed__item"
-        :class="{ 'article-feed__item--pending': pendingEntryIds.has(entryKey(entry)) }"
-        data-grid-skip="true"
-      >
-        <div class="article-feed__card">
-          <ProtectedEntryCard
-            v-if="isProtectedJournalEntry(entry)"
-            :entry="entry"
-            display="article"
-            @open="emit('openEntry', $event)"
-          />
-          <ArticleCardContent
-            v-else
-            :entry="entry"
-            show-year
-            :reaction-pending="props.reactionPendingPublicId === entry.publicId"
+      <template v-else>
+        <div v-if="leadEntry" class="article-index__lead">
+          <ArticleIndexEntry
+            :entry="leadEntry"
+            lead
+            :reaction-pending="props.reactionPendingPublicId === leadEntry.publicId"
             @open-entry="emit('openEntry', $event)"
             @select-tag="emit('selectTag', $event)"
             @toggle-reaction="emit('toggleReaction', $event)"
             @open-comments="emit('openComments', $event)"
           />
         </div>
-      </div>
+
+        <section v-for="group in groups" :key="group.key" class="article-index__group">
+          <h2
+            class="article-index__heading"
+            :class="{ 'article-index__heading--pinned': group.pinned }"
+            :style="{ '--index-order': group.order }"
+          >
+            <span class="article-index__heading-label">{{ group.label }}</span>
+          </h2>
+
+          <ol class="article-index__list">
+            <li
+              v-for="item in group.items"
+              :key="item.key"
+              class="article-index__item"
+              :style="{ '--index-order': item.order }"
+            >
+              <ArticleIndexLocked
+                v-if="isProtectedJournalEntry(item.entry)"
+                :entry="item.entry"
+                @open="emit('openEntry', $event)"
+              />
+              <ArticleIndexEntry
+                v-else
+                :entry="item.entry"
+                :show-year="group.pinned"
+                :reaction-pending="props.reactionPendingPublicId === item.entry.publicId"
+                @open-entry="emit('openEntry', $event)"
+                @select-tag="emit('selectTag', $event)"
+                @toggle-reaction="emit('toggleReaction', $event)"
+                @open-comments="emit('openComments', $event)"
+              />
+            </li>
+          </ol>
+        </section>
+      </template>
     </div>
   </div>
 </template>
 
 <style scoped>
-.article-feed {
-  display: grid;
+.article-index {
+  width: 100%;
+  max-width: 82rem;
   min-width: 0;
-  container-type: inline-size;
+  margin-inline: auto;
+  container: article-index / inline-size;
 }
 
-.article-feed--preparing {
-  min-height: clamp(18rem, 42vh, 30rem);
+.article-index__body {
+  --index-date-col: 5.5rem;
+  --index-gap: 2.5rem;
+  --index-heading-pad: 2.75rem;
 }
 
-.article-feed__placeholder,
-.article-feed__grid {
-  grid-area: 1 / 1;
+.article-index__group:first-child {
+  --index-heading-pad: 0.75rem;
 }
 
-.article-feed__placeholder {
-  z-index: 1;
-  pointer-events: none;
-}
-
-.article-feed__grid {
+.article-index__heading {
   position: relative;
-  min-width: 0;
-  margin-inline: calc(var(--waterfall-gap) / -2);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity var(--dur-content-enter) var(--ease-card);
+  display: grid;
+  grid-template-columns: var(--index-date-col) minmax(0, 1fr);
+  align-items: end;
+  column-gap: var(--index-gap);
+  margin: 0;
+  padding: var(--index-heading-pad) 0 0.8rem;
 }
 
-.article-feed__grid--ready {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-.article-feed__item {
+/* The rail of each year starts beside its heading and runs down through the rows. */
+.article-index__heading::before,
+.article-index__heading::after {
   position: absolute;
-  box-sizing: border-box;
-  width: 100%;
-  padding: 0 calc(var(--waterfall-gap) / 2) var(--waterfall-gap);
-  transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
+  left: calc(var(--index-date-col) + var(--index-gap) / 2);
+  bottom: 0;
+  content: '';
 }
 
-.article-feed__item--pending {
-  visibility: hidden;
+.article-index__heading::before {
+  top: var(--index-heading-pad);
+  width: 1px;
+  background: var(--border-subtle);
 }
 
-.article-feed__item:focus-within {
-  z-index: 1;
+.article-index__heading::after {
+  width: 2.6rem;
+  height: 3px;
+  background: var(--accent);
 }
 
-.article-feed__card {
-  width: 100%;
+.article-index__heading-label {
+  justify-self: end;
+  color: var(--text-primary);
+  font-family: var(--font-serif);
+  font-size: clamp(1.45rem, 1.1rem + 1.2cqi, 2rem);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 0.9;
+  white-space: nowrap;
 }
 
-@container (min-width: 600px) {
-  .article-feed__item {
-    width: 50%;
+.article-index__heading--pinned .article-index__heading-label {
+  font-size: 1.15rem;
+  letter-spacing: 0.08em;
+  line-height: 1.1;
+}
+
+.article-index__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.article-index__body--entering .article-index__lead,
+.article-index__body--entering .article-index__heading,
+.article-index__body--entering .article-index__item {
+  animation: article-index-rise 560ms var(--ease-card) both;
+  animation-delay: calc(var(--index-order, 0) * 45ms);
+}
+
+@keyframes article-index-rise {
+  from {
+    opacity: 0;
+    transform: translateY(0.9rem);
   }
 }
 
-@container (min-width: 1200px) {
-  .article-feed__item {
-    width: 33.333%;
+@container article-index (max-width: 599px) {
+  .article-index__body {
+    --index-date-col: 2.6rem;
+    --index-gap: 1.6rem;
+    --index-heading-pad: 2rem;
+  }
+
+  .article-index__heading {
+    padding-bottom: 0.65rem;
+  }
+
+  .article-index__heading::before {
+    content: none;
+  }
+
+  .article-index__heading-label {
+    grid-column: 1 / -1;
+    justify-self: start;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .article-feed__grid,
-  .article-feed__item {
-    transition: none;
+  .article-index__body--entering .article-index__lead,
+  .article-index__body--entering .article-index__heading,
+  .article-index__body--entering .article-index__item {
+    animation: none;
   }
 }
 </style>

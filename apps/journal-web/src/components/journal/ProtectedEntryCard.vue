@@ -2,12 +2,9 @@
 import { computed } from 'vue';
 import type { ProtectedJournalEntryPreview } from '../../types';
 
-const props = withDefaults(defineProps<{
+const props = defineProps<{
   entry: ProtectedJournalEntryPreview;
-  display?: 'waterfall' | 'article';
-}>(), {
-  display: 'waterfall',
-});
+}>();
 
 const emit = defineEmits<{
   open: [entry: ProtectedJournalEntryPreview];
@@ -35,10 +32,7 @@ const formattedDate = computed(() => dateFormatter.format(new Date(props.entry.s
 <template>
   <article
     class="protected-card"
-    :class="[
-      `protected-card--${display}`,
-      `protected-card--template-${templateNumber}`,
-    ]"
+    :class="`protected-card--template-${templateNumber}`"
   >
     <button
       class="protected-card__button"
@@ -106,10 +100,6 @@ const formattedDate = computed(() => dateFormatter.format(new Date(props.entry.s
   color: var(--protected-ink);
   isolation: isolate;
   place-items: center;
-}
-
-.protected-card--article .protected-card__cover {
-  aspect-ratio: 16 / 10;
 }
 
 .protected-card__cover::before,
