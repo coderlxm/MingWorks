@@ -6,7 +6,7 @@
 
 以下多 Agent 拆解、派发与流程编排规则**仅对直接面向用户的 Gemini 主控会话适用**。
 
-若当前会话是经由 `invoke_subagent` 等方式唤醒的子 Agent（已收到明确的任务单、咨询单或审查单），则你处于执行者或只读审查者角色：严格在单据限定范围内直接完成工作并汇报，**严禁再次拆解任务或向下派发**。
+若当前会话是经由 `invoke_subagent` 或 `swarm` 唤醒的子 Agent / Worker（已收到明确的任务单、咨询单或审查单），则你处于执行者或只读审查者角色：严格在单据限定范围内直接完成工作并汇报，**严禁再次拆解任务或向下派发**。
 
 ## 多 Agent 协作（Gemini 主控）
 
@@ -22,6 +22,8 @@
 ### 何时派发
 - 明确的 bug 修复或问题排查 → Gemini 主控亲自完成，不派发。
 - 需要操作 Cloudflare 的部分 → 交给 Codex（实现参数同后端），它有用户的 Cloudflare 插件授权；不受需求大小和 bug 修复例外的限制。
+- 浏览器网页读取与交互（查页面配置、填网页表单、页面测试等）→ 走 `chrome-devtools` MCP：一两步的轻量操作由 Gemini 主控直接执行；多页翻查、大段采集或复杂表单填写派发原生 `self` 子 Agent（`invoke_subagent`，`TypeName: "self"`）在独立上下文内执行并只回传结果摘要，避免污染主控上下文。
+- 需要操作 macOS 原生桌面软件（Computer Use）→ Codex（模型 `gpt-6.1-terra`，推理强度 `high`，`fast` 模式），Gemini 主控不自行操作桌面软件；不受需求大小和 bug 修复例外的限制。
 - 后端需求 → Codex（模型 `gpt-6.1-sol`，推理强度 `high`，`fast` 模式）实现。
 - 前端需求 → Codex（模型 `gpt-6.1-sol`，推理强度 `high`，`fast` 模式）实现。
 - UI 审阅、文案、从用户角度改进使用体验的咨询 → Antigravity 原生只读子 Agent（`invoke_subagent`，`TypeName: "research"`，`Model: "flash_lite"`），只产出意见和文案，不直接改代码；采纳后交给对应实现者落地。
@@ -31,11 +33,13 @@
 `<scratch>` 统一使用当前会话的 `<appDataDir>/brain/<conversation-id>/scratch` 目录。
 
 - Codex 前后端实现：`codex exec -m gpt-6.1-sol -c model_reasoning_effort="high" -c service_tier="fast" --cd <dir> --dangerously-bypass-approvals-and-sandbox -o <scratch>/<task>.md "<任务说明>"`
+- Codex Computer Use（原生桌面软件）：`codex exec -m gpt-6.1-terra -c model_reasoning_effort="high" -c service_tier="fast" --disable apps -c mcp_servers.node_repl.enabled=false --cd <dir> --dangerously-bypass-approvals-and-sandbox -o <scratch>/<task>.md "<任务说明>"`（通过 `mcp__cua_repl` 的 `cua.getApp` 操作目标桌面应用）
 - Codex 后端方案二审：`codex exec -m gpt-6-astra -c model_reasoning_effort="max" -c service_tier="fast" --cd <dir> --sandbox read-only -o <scratch>/<task>-review.md "<方案与审查要求>"`
 - Codex 后端代码审查：`codex exec -m gpt-6-astra -c model_reasoning_effort="low" -c service_tier="fast" --cd <dir> --sandbox read-only -o <scratch>/<task>-code-review.md "<改动范围与审查要求>"`
 - 调用 Codex 时必须显式带上模型、推理强度和 `-c service_tier="fast"`，不依赖本机默认配置；通过 `run_command` 启动长耗时 Codex 任务时将 `WaitMsBeforeAsync` 设为 `500` 转为后台受管任务，等待系统完成后自动唤醒。
-- 前端代码与 UI 审查 / UI 与文案咨询：调用 `invoke_subagent`（`TypeName: "research"`，`Model: "flash_lite"`），在只读沙箱内执行，完成后自动唤醒主控。
-- 并行写代码时，每个执行者使用独立 `git worktree`；只读任务可直接并行。
+- 前端代码与 UI 审查 / UI 与文案咨询：默认调用 `invoke_subagent`（`TypeName: "research"`，`Model: "flash_lite"`），在物理只读沙箱内执行，完成后自动唤醒主控。注意：`invoke_subagent` 的 `Model` 字段仅接受 `'inherit' | 'flash_lite' | 'flash' | 'pro'` 四档枚举，传入具体模型名会被 schema 直接拦截。
+- 用户明确指定具体原生模型型号时（如 `gemini-3.8-flash-low`、`gemini-3.8-flash-high`、`gemini-4-argon-high` 等）：不再试探 `invoke_subagent`，直接通过原生 `swarm` 工具精确绑定模型启动 worker（`swarm({ action: "add", name: "<job>", model: "<exact-model-id>", brief: "<任务说明与完成后 @coordinator 汇报要求>" })`；并行改代码时加 `workspace: "share"`，只读任务保持 `inherit` 并在 brief 中声明严禁写操作）。`read_board` / `post_message` / `swarm_wait` 会在首次 `add` 的下一回合挂载；任务收尾后及时 `read_board` 清空未读游标并用 `swarm({ action: "kill", name: "<job>" })` 回收 worker（含独立工作区的需先合并改动再 `kill`）。
+- 并行写代码时，Codex 执行者使用独立 `git worktree`（Swarm worker 用 `workspace: "share"`）；只读任务可直接并行。
 
 ### 任务说明必须包含
 1. 目标（用户想要的效果，而不只是技术动作）
@@ -47,7 +51,7 @@
 
 ### 测试与验收
 - 用户明确要求测试时，只测试用户指定的部分。
-- 用户明确要求测试或者执行某些需要点击交互的操作（包括 computer use 与浏览器操作）时，由 Codex 执行：模型 `gpt-6.1-terra`，推理强度 `high`，`-c service_tier="fast"`，Gemini 主控不自行操作界面或浏览器。
+- 用户明确要求浏览器页面交互或检查时，通过 `chrome-devtools` MCP 执行（多步操作派发原生 `self` 子 Agent 隔离上下文）；涉及 macOS 原生桌面软件（Computer Use）的点击交互时，由 Codex 执行：模型 `gpt-6.1-terra`，推理强度 `high`，`-c service_tier="fast"`。
 - 主控只通过阅读当前工作区或对应 worktree 的未提交 diff（`git status`、`git diff`）与目标文件源码验收（严禁读取 git 历史提交记录）：确认改动符合目标、没有越出允许范围；不达标时附上具体问题退回，同一任务最多退回 2 次，之后自己接手或上报用户。
 - 实施完成后，主控先读 diff，再分别送审：后端交 Codex `gpt-6-astra`（`low`，`fast`，`read-only`）审代码，前端交原生只读子 Agent（`TypeName: "research"`，`Model: "flash_lite"`）审代码与 UI；审查者只出意见，不改代码。审查保持全量覆盖，不缩小为只问主控没把握的点。
 - 审查说明中必须要求：每条意见先对照代码核实，引用具体代码（文件:行号与相关片段），并说明问题产生的机制；无法用代码证实的推测不得列出。
@@ -69,7 +73,7 @@
 ### 故障接管
 - 任一执行者或审查者报错、结果明显异常，或确认已卡住（日志连续 2 分钟没有新的模型调用或工具调用）时，主控通过 `manage_task` 或 `manage_subagents` 停止该调用，亲自接管这个环节，不重试。
 - 仍在持续推进的调用不得仅因耗时较长而终止：已花费的 token 会白白浪费且拿不到结果。应继续监控并向用户汇报进度，让它完成；耗时异常时先查日志判断原因（多为任务说明范围过宽），在下一次派发时修正任务说明。
-- Cloudflare 操作无法由主控接管：Codex 故障时重试一次，仍失败则上报用户。
+- Cloudflare 与 Computer Use 操作无法由主控接管：Codex 故障时重试一次，仍失败则上报用户。
 
 ### 必须找用户拍板
 为避免用户决策疲劳，只在以下情况询问，其余一律按主控的推荐直接推进，局部小返工可接受：
