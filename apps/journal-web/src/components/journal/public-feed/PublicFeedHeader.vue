@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { Calendar, Refresh } from '@element-plus/icons-vue';
+import { onActivated, onBeforeUnmount, onDeactivated, onMounted, shallowRef, useTemplateRef } from 'vue';
 import PublicChannelTagNavigation from '../PublicChannelTagNavigation.vue';
 
-defineProps<{
+const props = defineProps<{
+  layout: 'article' | 'waterfall';
   tags: readonly string[];
   activeTag: string;
   refreshing: boolean;
@@ -14,15 +16,53 @@ const emit = defineEmits<{
   openArchive: [];
   refresh: [];
 }>();
+
+const sentinel = useTemplateRef<HTMLElement>('sentinel');
+const stuck = shallowRef(false);
+let observer: IntersectionObserver | null = null;
+
+function disconnectObserver(): void {
+  observer?.disconnect();
+  observer = null;
+}
+
+function observeStickyHeader(): void {
+  disconnectObserver();
+  if (props.layout !== 'article') return;
+
+  const target = sentinel.value!;
+  observer = new IntersectionObserver(([entry]) => {
+    stuck.value = entry!.boundingClientRect.top < entry!.rootBounds!.top;
+  }, { root: target.closest<HTMLElement>('.app-scroll')! });
+  observer.observe(target);
+}
+
+onMounted(observeStickyHeader);
+onActivated(observeStickyHeader);
+onDeactivated(disconnectObserver);
+onBeforeUnmount(disconnectObserver);
 </script>
 
 <template>
-  <div class="feed__public-intro">
+  <div
+    v-if="layout === 'article'"
+    ref="sentinel"
+    class="feed__public-sentinel"
+    aria-hidden="true"
+  ></div>
+  <div
+    class="feed__public-intro"
+    :class="{
+      'feed__public-intro--article': layout === 'article',
+      'feed__public-intro--stuck': layout === 'article' && stuck,
+    }"
+  >
     <div class="feed__public-heading">
       <PublicChannelTagNavigation
         class="feed__public-tags"
         :tags="tags"
         :active-tag="activeTag"
+        :align="layout === 'article' ? 'start' : 'center'"
         @select="emit('select', $event)"
       />
       <div class="feed__public-actions">
@@ -52,6 +92,13 @@ const emit = defineEmits<{
 </template>
 
 <style scoped>
+.feed__public-sentinel {
+  grid-area: 1 / 1;
+  align-self: start;
+  height: 0;
+  pointer-events: none;
+}
+
 .feed__public-intro {
   position: sticky;
   z-index: 4;
@@ -61,6 +108,18 @@ const emit = defineEmits<{
   gap: 0.55rem;
   padding: 0.35rem 0;
   background: var(--surface-page);
+}
+
+.feed__public-intro--article {
+  grid-area: 1 / 1;
+  border-bottom: 1px solid transparent;
+  transition: border-color 180ms ease, background-color 180ms ease, backdrop-filter 180ms ease;
+}
+
+.feed__public-intro--stuck {
+  border-bottom-color: var(--border-subtle);
+  background: color-mix(in srgb, var(--surface-page) 92%, transparent);
+  backdrop-filter: blur(10px);
 }
 
 .feed__public-heading {
@@ -80,6 +139,18 @@ const emit = defineEmits<{
   padding-inline: var(--public-actions-space);
 }
 
+.feed__public-intro--article .feed__public-heading {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 82rem;
+  margin-inline: auto;
+  padding-inline: 0;
+}
+
+.feed__public-intro--article .feed__public-tags {
+  padding-inline: 0 var(--public-actions-space);
+}
+
 .feed__public-actions {
   position: absolute;
   top: 50%;
@@ -88,6 +159,10 @@ const emit = defineEmits<{
   align-items: center;
   gap: 0.45rem;
   transform: translateY(-50%);
+}
+
+.feed__public-intro--article .feed__public-actions {
+  right: 0;
 }
 
 .feed__public-action {
@@ -144,7 +219,8 @@ const emit = defineEmits<{
     gap: 0.35rem;
   }
 
-  .feed__public-tags {
+  .feed__public-tags,
+  .feed__public-intro--article .feed__public-tags {
     padding-inline: 0;
   }
 

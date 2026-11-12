@@ -2,14 +2,15 @@
 import { Flag, Unlock } from '@element-plus/icons-vue';
 import { computed } from 'vue';
 import type { JournalEntry } from '../../types';
+import { extractArticleSummary } from '../../utils/articleSummary';
 import { resolveJournalCardImageSource } from '../../utils/journalMedia';
 import EntryInteractionSummary from '../interaction/EntryInteractionSummary.vue';
 import JournalProgressiveImage from '../ui/JournalProgressiveImage.vue';
 import ArticleIndexDate from './ArticleIndexDate.vue';
 
 const CHARACTERS_PER_MINUTE = 400;
-const LEAD_SUMMARY_LENGTH = 240;
-const ROW_SUMMARY_LENGTH = 160;
+const LEAD_SUMMARY_LENGTH = 420;
+const ROW_SUMMARY_LENGTH = 320;
 
 const props = withDefaults(defineProps<{
   entry: JournalEntry;
@@ -33,15 +34,21 @@ const characterCountFormatter = new Intl.NumberFormat('zh-CN');
 
 const cover = computed(() => props.entry.assets.find(asset =>
   asset.sourceKind === 'web' && asset.role === 'cover') ?? null);
-const summary = computed(() => props.entry.contentText
-  .replace(/\s+/g, ' ')
-  .trim()
+const summary = computed(() => extractArticleSummary(props.entry)
   .slice(0, props.lead ? LEAD_SUMMARY_LENGTH : ROW_SUMMARY_LENGTH));
 const characterCount = computed(() => props.entry.contentText.replace(/\s+/g, '').length);
 const formattedCharacterCount = computed(() => characterCountFormatter.format(characterCount.value));
 const readingMinutes = computed(() =>
   Math.max(1, Math.round(characterCount.value / CHARACTERS_PER_MINUTE)));
 const titleInitial = computed(() => props.entry.title?.match(/[\p{L}\p{N}]/u)?.[0] ?? null);
+const titleInitialIsHan = computed(() => titleInitial.value !== null && /\p{Script=Han}/u.test(titleInitial.value));
+const interactionsIdle = computed(() => !(
+  props.lead
+  || props.entry.interactions.reactionCount > 0
+  || props.entry.interactions.commentCount > 0
+  || props.entry.interactions.viewerReacted
+  || props.reactionPending
+));
 
 function openEntry(): void {
   emit('openEntry', props.entry);
@@ -111,7 +118,10 @@ function handleEntryClick(event: MouseEvent): void {
         </button>
       </div>
 
-      <div class="index-entry__interactions">
+      <div
+        class="index-entry__interactions"
+        :class="{ 'index-entry__interactions--idle': interactionsIdle }"
+      >
         <EntryInteractionSummary
           :summary="entry.interactions"
           interactive
@@ -137,7 +147,11 @@ function handleEntryClick(event: MouseEvent): void {
         loading="lazy"
       />
       <span v-else class="index-entry__plate" aria-hidden="true">
-        <span v-if="titleInitial" class="index-entry__plate-glyph">{{ titleInitial }}</span>
+        <span
+          v-if="titleInitial"
+          class="index-entry__plate-glyph"
+          :class="{ 'index-entry__plate-glyph--cjk': titleInitialIsHan }"
+        >{{ titleInitial }}</span>
       </span>
     </figure>
   </article>
@@ -356,6 +370,18 @@ function handleEntryClick(event: MouseEvent): void {
   flex: none;
   align-items: center;
   margin-left: -0.35rem;
+  transition: opacity 180ms ease;
+}
+
+@media (hover: hover) {
+  .index-entry__interactions--idle {
+    opacity: 0;
+  }
+
+  .index-entry:hover .index-entry__interactions--idle,
+  .index-entry:focus-within .index-entry__interactions--idle {
+    opacity: 1;
+  }
 }
 
 .index-entry__visual {
@@ -448,8 +474,7 @@ function handleEntryClick(event: MouseEvent): void {
   grid-template-rows: auto 1fr auto;
   grid-template-columns: minmax(0, 1fr) minmax(0, 36%);
   gap: 1.15rem clamp(1.5rem, 3cqi, 3rem);
-  padding: 0 0 clamp(1.5rem, 1rem + 2cqi, 2.5rem);
-  border-bottom: 1px solid var(--border-subtle);
+  padding: 0 0 clamp(1.25rem, 0.9rem + 1.5cqi, 2rem);
 }
 
 .index-entry--lead::before,
@@ -528,6 +553,14 @@ function handleEntryClick(event: MouseEvent): void {
   font-weight: 800;
   line-height: 1;
   transition: transform 700ms var(--ease-card);
+}
+
+.index-entry__plate-glyph--cjk {
+  right: 7cqw;
+  bottom: -0.08em;
+  color: color-mix(in srgb, var(--text-primary) 84%, transparent);
+  font-size: min(76cqh, 50cqw);
+  font-weight: 700;
 }
 
 .index-entry--lead:hover .index-entry__plate-glyph {

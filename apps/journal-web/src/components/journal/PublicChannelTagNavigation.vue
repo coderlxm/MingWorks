@@ -4,6 +4,7 @@ import { computed, onActivated, onMounted, onUpdated, useTemplateRef } from 'vue
 const props = defineProps<{
   tags: readonly string[];
   activeTag: string;
+  align?: 'center' | 'start';
 }>();
 
 const emit = defineEmits<{
@@ -50,7 +51,13 @@ onActivated(keepActiveTagVisible);
 </script>
 
 <template>
-  <nav v-if="visible" ref="navigation" class="public-tag-navigation" aria-label="当前频道标签">
+  <nav
+    v-if="visible"
+    ref="navigation"
+    class="public-tag-navigation"
+    :class="{ 'public-tag-navigation--start': align === 'start' }"
+    aria-label="当前频道标签"
+  >
     <button
       class="public-tag-navigation__item"
       :class="{ 'public-tag-navigation__item--active': activeTag === '' }"
@@ -88,6 +95,10 @@ onActivated(keepActiveTagVisible);
 
 .public-tag-navigation::-webkit-scrollbar {
   display: none;
+}
+
+.public-tag-navigation--start {
+  justify-content: flex-start;
 }
 
 .public-tag-navigation__item {

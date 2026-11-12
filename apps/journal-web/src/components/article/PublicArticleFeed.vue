@@ -182,8 +182,8 @@ onActivated(() => {
   --index-heading-pad: 2.75rem;
 }
 
-.article-index__group:first-child {
-  --index-heading-pad: 0.75rem;
+.article-index__group:first-of-type {
+  --index-heading-pad: 2rem;
 }
 
 .article-index__heading {

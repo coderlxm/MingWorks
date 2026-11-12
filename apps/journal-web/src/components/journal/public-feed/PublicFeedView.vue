@@ -259,10 +259,12 @@ async function handleLayoutReady(): Promise<void> {
   <JournalPullRefresh
     v-model="refreshing"
     :disabled="refreshDisabled"
+    :allow-overflow="true"
     @refresh="refreshFeed"
   >
     <main class="feed feed--public">
       <PublicFeedHeader
+        :layout="publicLayout"
         :tags="publicChannelTags"
         :active-tag="initialTag"
         :refreshing="refreshing"
