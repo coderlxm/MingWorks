@@ -2,6 +2,7 @@ export type JournalVisibility = 'private' | 'protected' | 'public';
 export type JournalPublicationStatus = 'draft' | 'published';
 export type JournalChannel = 'life' | 'article' | 'interest';
 export type JournalPlainChannel = Exclude<JournalChannel, 'article'>;
+export type JournalHolidayId = 'new-year' | 'spring' | 'qingming' | 'labor' | 'dragon-boat' | 'mid-autumn' | 'national-day';
 export type AssetView = 'waterfall' | 'table';
 
 export type ChannelTags = Record<JournalChannel, string[]>;
@@ -210,6 +211,7 @@ export interface SiteContactItem {
 }
 
 export interface SiteProfile {
+  holiday: JournalHolidayId | null;
   bio: string;
   avatarUrl: string;
   weatherEnabled: boolean;

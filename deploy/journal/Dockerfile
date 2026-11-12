@@ -38,9 +38,12 @@ RUN chown node:node /app
 COPY --from=dependencies --chown=node:node /app/node_modules ./node_modules
 COPY --from=dependencies --chown=node:node /app/package.json ./package.json
 COPY --chown=node:node src/ai/models.ts ./src/ai/models.ts
+COPY --chown=node:node src/calendar ./src/calendar
 COPY --chown=node:node src/journal-server ./src/journal-server
 COPY --chown=node:node src/shared ./src/shared
+COPY --chown=node:node src/utils/time.ts ./src/utils/time.ts
 COPY --chown=node:node src/fetchers/qweatherCurrent.ts ./src/fetchers/qweatherCurrent.ts
+COPY --chown=node:node data/china-holiday-*.json ./data/
 
 USER node
 

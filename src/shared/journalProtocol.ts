@@ -777,10 +777,22 @@ export const journalResumeUnlockRequestSchema = z.object({
 });
 export type JournalResumeUnlockRequest = z.infer<typeof journalResumeUnlockRequestSchema>;
 
+export const journalHolidayIdSchema = z.enum([
+  'new-year',
+  'spring',
+  'qingming',
+  'labor',
+  'dragon-boat',
+  'mid-autumn',
+  'national-day',
+]);
+export type JournalHolidayId = z.infer<typeof journalHolidayIdSchema>;
+
 export const journalSiteProfileSchema = z.object({
   bio: journalSiteProfileBioSchema,
   avatarUrl: z.string().min(1),
   weatherEnabled: z.boolean(),
+  holiday: journalHolidayIdSchema.nullable(),
   channelTags: journalChannelTagsSchema,
   aboutIntro: journalSiteProfileAboutIntroSchema,
   contactItems: journalSiteContactItemsSchema,

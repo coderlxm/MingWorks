@@ -1,11 +1,13 @@
 <script setup lang="ts" name="AppHeader">
 import { computed, onMounted, onUnmounted, shallowRef, useTemplateRef, watch } from 'vue';
-import type { JournalEntry, SiteProfile } from '../../types';
+import { useRoute } from 'vue-router';
+import type { JournalEntry, JournalHolidayId, SiteProfile } from '../../types';
 import { showMessage } from '../../utils/message';
 import { useProfileStories } from '../../composables/useProfileStories';
 import PublicSearchBar from '../discovery/PublicSearchBar.vue';
 import ProfileStoryViewer from '../story/ProfileStoryViewer.vue';
 import ThemeModeControl from '../ui/ThemeModeControl.vue';
+import HolidayBannerBackdrop from './HolidayBannerBackdrop.vue';
 
 const props = defineProps<{
   profile: SiteProfile | null;
@@ -21,6 +23,25 @@ const props = defineProps<{
 const emit = defineEmits<{
   navigate: [path: string];
 }>();
+
+const route = useRoute();
+const holiday = computed<JournalHolidayId | null>(() => {
+  const preview = route.query.holiday;
+  switch (preview) {
+    case 'none':
+      return null;
+    case 'new-year':
+    case 'spring':
+    case 'qingming':
+    case 'labor':
+    case 'dragon-boat':
+    case 'mid-autumn':
+    case 'national-day':
+      return preview;
+    default:
+      return props.profile?.holiday ?? null;
+  }
+});
 
 const profileBio = useTemplateRef<HTMLParagraphElement>('profileBio');
 const profileBioOverflow = shallowRef(0);
@@ -99,8 +120,9 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="profile-bar">
-    <header class="profile" :class="{ 'profile--public': publicMode }">
+  <div class="profile-bar" :class="{ 'profile-bar--holiday': holiday }">
+    <HolidayBannerBackdrop v-if="holiday" :holiday="holiday" />
+    <header class="profile" :class="{ 'profile--public': publicMode, 'profile--holiday': holiday }">
       <div class="profile__identity">
         <button
           class="profile__home"
@@ -192,6 +214,11 @@ onUnmounted(() => {
   overflow: hidden;
   border-bottom: 1px solid var(--border-subtle);
   background: var(--surface-page);
+}
+
+.profile-bar--holiday {
+  position: relative;
+  isolation: isolate;
 }
 
 .profile {
@@ -367,6 +394,11 @@ onUnmounted(() => {
 .profile__nav-link--active {
   color: var(--text-primary);
   border-bottom-color: var(--accent);
+}
+
+.profile--holiday {
+  position: relative;
+  z-index: 1;
 }
 
 @keyframes profile-skeleton-pulse {

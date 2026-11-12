@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import sharp from 'sharp';
+import { getCurrentJournalHolidayId } from '../calendar/countdown.js';
 import type {
   JournalChannelTags,
   JournalSiteContactItem,
@@ -121,6 +122,7 @@ export class JournalSiteProfileService {
       bio: profile.bio,
       avatarUrl: `/api/site-profile/avatar?v=${profile.avatarRevision}`,
       weatherEnabled: profile.weatherEnabled,
+      holiday: getCurrentJournalHolidayId(),
       channelTags: profile.channelTags,
       aboutIntro: profile.aboutIntro,
       contactItems: profile.contactItems,

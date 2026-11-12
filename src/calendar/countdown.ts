@@ -1,5 +1,6 @@
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
+import type { JournalHolidayId } from '../shared/journalProtocol.js';
 import { bjDate, diffBjDays, isBjWeekend, shiftBjDate } from '../utils/time.js';
 
 interface HolidayCalendar {
@@ -24,6 +25,16 @@ const HOLIDAY_NAME_BY_START_DATE: Record<string, string> = {
   '2026-09-25': '中秋节',
   '2026-10-01': '国庆节'
 };
+
+const JOURNAL_HOLIDAY_ID_BY_NAME = new Map<string, JournalHolidayId>([
+  ['元旦', 'new-year'],
+  ['春节', 'spring'],
+  ['清明节', 'qingming'],
+  ['劳动节', 'labor'],
+  ['端午节', 'dragon-boat'],
+  ['中秋节', 'mid-autumn'],
+  ['国庆节', 'national-day'],
+]);
 
 const GTA6_DATE = '2026-11-19';
 
@@ -134,4 +145,11 @@ export function getCountdownInfo(): CountdownInfo {
     isHolidayToday: currentHoliday !== null,
     currentHolidayName: currentHoliday?.name ?? null,
   };
+}
+
+export function getCurrentJournalHolidayId(): JournalHolidayId | null {
+  const { currentHolidayName } = getCountdownInfo();
+  return currentHolidayName === null
+    ? null
+    : JOURNAL_HOLIDAY_ID_BY_NAME.get(currentHolidayName) ?? null;
 }
