@@ -11,6 +11,19 @@ import type {
 
 const maxFileSize = 8 * 1024 ** 3;
 const jobTimeout = 6 * 60 * 60 * 1000;
+const preferredFormatSelector = [
+  'bestvideo[vcodec^=avc1]+bestaudio[acodec^=mp4a]',
+  'bestvideo[vcodec^=h264]+bestaudio[acodec^=mp4a]',
+  'bestvideo[vcodec^=avc1]+bestaudio[acodec^=aac]',
+  'bestvideo[vcodec^=h264]+bestaudio[acodec^=aac]',
+  'bestvideo[vcodec^=hvc1]+bestaudio[acodec^=mp4a]',
+  'best[ext=mp4][vcodec^=avc1]',
+  'best[ext=mp4][vcodec^=h264]',
+  'best[ext=mp4][vcodec^=hvc1]',
+  'bestvideo[ext=webm]+bestaudio[ext=webm]',
+  'best[ext=webm]',
+  'bestvideo*+bestaudio/best',
+].join('/');
 
 interface VideoDownloadRunnerOptions {
   url: string;
@@ -57,9 +70,8 @@ export async function runLocalVideoDownload(
       '--no-playlist',
       '--match-filter', '!is_live',
       '--max-filesize', '8G',
-      '--format', 'bestvideo*+bestaudio/best',
-      '--merge-output-format', 'mp4',
-      '--remux-video', 'mp4',
+      '--format', preferredFormatSelector,
+      '--merge-output-format', 'mp4/webm',
       '--no-progress',
       '--no-warnings',
       '--js-runtimes', `node:${options.nodePath}`,
