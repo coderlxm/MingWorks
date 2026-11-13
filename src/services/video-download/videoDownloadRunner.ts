@@ -11,19 +11,26 @@ import type {
 
 const maxFileSize = 8 * 1024 ** 3;
 const jobTimeout = 6 * 60 * 60 * 1000;
-const preferredFormatSelector = [
-  'bestvideo[vcodec^=avc1]+bestaudio[acodec^=mp4a]',
-  'bestvideo[vcodec^=h264]+bestaudio[acodec^=mp4a]',
-  'bestvideo[vcodec^=avc1]+bestaudio[acodec^=aac]',
-  'bestvideo[vcodec^=h264]+bestaudio[acodec^=aac]',
-  'bestvideo[vcodec^=hvc1]+bestaudio[acodec^=mp4a]',
-  'best[ext=mp4][vcodec^=avc1]',
-  'best[ext=mp4][vcodec^=h264]',
-  'best[ext=mp4][vcodec^=hvc1]',
-  'bestvideo[ext=webm]+bestaudio[ext=webm]',
-  'best[ext=webm]',
-  'bestvideo*+bestaudio/best',
-].join('/');
+
+function buildPreferredFormatSelector(): string {
+  const tiers = ['[height>=2160]', '[height>=1440]', '[height>=1080]', '[height>=720]', ''];
+  const selectors = tiers.flatMap((tier) => [
+    `bestvideo${tier}[vcodec^=avc1]+bestaudio[acodec^=mp4a]`,
+    `bestvideo${tier}[vcodec^=h264]+bestaudio[acodec^=mp4a]`,
+    `bestvideo${tier}[vcodec^=avc1]+bestaudio[acodec^=aac]`,
+    `bestvideo${tier}[vcodec^=h264]+bestaudio[acodec^=aac]`,
+    `bestvideo${tier}[vcodec^=hvc1]+bestaudio[acodec^=mp4a]`,
+    `best${tier}[ext=mp4][vcodec^=avc1]`,
+    `best${tier}[ext=mp4][vcodec^=h264]`,
+    `best${tier}[ext=mp4][vcodec^=hvc1]`,
+    `bestvideo${tier}[ext=webm]+bestaudio[ext=webm]`,
+    `best${tier}[ext=webm]`,
+  ]);
+  selectors.push('bestvideo*+bestaudio/best');
+  return selectors.join('/');
+}
+
+const preferredFormatSelector = buildPreferredFormatSelector();
 
 interface VideoDownloadRunnerOptions {
   url: string;
