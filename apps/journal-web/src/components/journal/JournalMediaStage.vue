@@ -1,31 +1,45 @@
+<script lang="ts">
+let preferredMuted = true;
+let preferredVolume = 1;
+let lastAudibleVolume = 1;
+</script>
+
 <script setup lang="ts">
-import { computed, onBeforeUnmount, shallowRef, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, onUpdated, shallowRef, useTemplateRef } from 'vue';
 import type { CSSProperties } from 'vue';
 import type { JournalAsset } from '../../types';
+import { formatMediaDuration } from '../../utils/formatters';
 import { resolveJournalMediaType } from '../../utils/journalMedia';
 import { mountJournalVideo, releaseJournalVideo } from '../../utils/journalVideoPlayerPool';
 
-const props = defineProps<{
-  assets: readonly JournalAsset[];
-}>();
-
-const emit = defineEmits<{
-  aspectRatioChange: [aspectRatio: number | null];
-}>();
-
-type StageAsset = JournalAsset & {
-  mediaType: 'image' | 'video';
+const props = defineProps<{ assets: readonly JournalAsset[] }>();
+const emit = defineEmits<{ aspectRatioChange: [aspectRatio: number | null] }>();
+type StageAsset = JournalAsset & { mediaType: 'image' | 'video' };
+type SafariVideo = HTMLVideoElement & {
+  webkitEnterFullscreen?: () => void;
+  webkitExitFullscreen?: () => void;
+  webkitDisplayingFullscreen?: boolean;
 };
 
+const stage = useTemplateRef<HTMLElement>('stage');
+const viewport = useTemplateRef<HTMLElement>('viewport');
 const currentIndex = shallowRef(0);
 const videoReady = shallowRef(false);
 const videoPlaying = shallowRef(false);
 const videoMuted = shallowRef(true);
-const videoControlsActivated = shallowRef(false);
+const videoVolume = shallowRef(1);
 const videoCurrentTime = shallowRef(0);
 const videoDuration = shallowRef(0);
+const videoError = shallowRef<string | null>(null);
+const controlError = shallowRef<string | null>(null);
+const fullscreen = shallowRef(false);
+let currentMountedVideo: SafariVideo | null = null;
+let currentMountedUrl: string | null = null;
+let currentVideoHost: HTMLElement | null = null;
+let lastAspectRatio: number | null | undefined;
+let surfaceClickTimer: ReturnType<typeof setTimeout> | null = null;
 
-const stageAssets = computed<StageAsset[]>(() => props.assets.map((asset) => ({
+const stageAssets = computed<StageAsset[]>(() => props.assets.map(asset => ({
   ...asset,
   mediaType: resolveJournalMediaType(asset) === 'video' ? 'video' : 'image',
 })));
@@ -33,7 +47,7 @@ const currentAsset = computed(() => stageAssets.value[currentIndex.value]);
 const positionLabel = computed(() => `${currentIndex.value + 1} / ${stageAssets.value.length}`);
 const currentAdaptiveAspectRatio = computed(() => {
   const asset = currentAsset.value;
-  if (!asset || asset.mediaType !== 'image' || asset.kind === 'sticker' || !asset.width || !asset.height) return null;
+  if (!asset || asset.kind === 'sticker' || asset.kind === 'video_note' || !asset.width || !asset.height) return null;
   const ratio = asset.width / asset.height;
   return ratio >= 0.45 && ratio <= 2.2 ? ratio : null;
 });
@@ -41,177 +55,226 @@ const stageStyle = computed<CSSProperties>(() => currentAdaptiveAspectRatio.valu
   ? { '--media-stage-aspect-ratio': String(currentAdaptiveAspectRatio.value) }
   : {});
 const currentAssetFullBleed = computed(() => currentAdaptiveAspectRatio.value !== null);
+const displayDuration = computed(() => videoDuration.value > 0 ? videoDuration.value : (currentAsset.value?.duration ?? 0));
+const timelineLabel = computed(() => `${formatMediaDuration(videoCurrentTime.value)} / ${formatMediaDuration(displayDuration.value)}`);
 const videoProgressStyle = computed(() => ({
-  '--video-progress': `${videoDuration.value > 0 ? (videoCurrentTime.value / videoDuration.value) * 100 : 0}%`,
+  '--video-progress': `${displayDuration.value > 0 ? (videoCurrentTime.value / displayDuration.value) * 100 : 0}%`,
 }));
 
-watch(currentAdaptiveAspectRatio, (aspectRatio) => {
-  emit('aspectRatioChange', aspectRatio);
-}, { immediate: true });
-
-let currentMountedVideo: HTMLVideoElement | null = null;
-let currentMountedUrl: string | null = null;
-let currentVideoHost: HTMLElement | null = null;
-
-function handleVideoReady(): void {
-  videoReady.value = true;
+function notifyAspectRatio(): void {
+  const ratio = currentAdaptiveAspectRatio.value;
+  if (lastAspectRatio === ratio) return;
+  lastAspectRatio = ratio;
+  emit('aspectRatioChange', ratio);
 }
 
-function handleVideoPlay(): void {
-  videoPlaying.value = true;
-}
-
-function handleVideoPause(): void {
-  videoPlaying.value = false;
-}
-
-function handleVideoEnded(): void {
-  videoPlaying.value = false;
-  videoControlsActivated.value = true;
-}
-
-function handleVideoTimelineChange(event: Event): void {
-  const video = event.currentTarget as HTMLVideoElement;
+function handleVideoReady(): void { videoReady.value = true; }
+function handleVideoPlay(): void { videoPlaying.value = true; controlError.value = null; }
+function handleVideoPause(): void { videoPlaying.value = false; }
+function handleVideoTimelineChange(): void {
+  const video = currentMountedVideo!;
   videoCurrentTime.value = video.currentTime;
   videoDuration.value = Number.isFinite(video.duration) ? video.duration : 0;
+}
+function handleVolumeChange(): void {
+  const video = currentMountedVideo!;
+  videoMuted.value = video.muted;
+  videoVolume.value = video.volume;
+  preferredMuted = video.muted;
+  preferredVolume = video.volume;
+  if (video.volume > 0) lastAudibleVolume = video.volume;
+}
+function handleVideoError(): void {
+  const video = currentMountedVideo!;
+  videoPlaying.value = false;
+  videoReady.value = false;
+  const code = video.error?.code;
+  const reason = video.error?.message;
+  videoError.value = `视频加载失败${code ? `（错误 ${code}${reason ? `：${reason}` : ''}）` : ''}。`
+    + (currentAsset.value?.sourceKind === 'drive'
+      ? '请确认云盘原文件仍可访问且未被替换；如有版本冲突，请移除旧附件后重新绑定。'
+      : '请检查媒体文件是否可访问。');
+}
+function syncFullscreen(): void {
+  fullscreen.value = (viewport.value !== null && document.fullscreenElement === viewport.value)
+    || currentMountedVideo?.webkitDisplayingFullscreen === true;
+}
+function handleSafariFullscreen(event: Event): void {
+  fullscreen.value = event.type === 'webkitbeginfullscreen';
+}
+
+const videoEvents: Array<[string, EventListener]> = [
+  ['loadeddata', handleVideoReady],
+  ['canplay', handleVideoReady],
+  ['play', handleVideoPlay],
+  ['pause', handleVideoPause],
+  ['ended', handleVideoPause],
+  ['timeupdate', handleVideoTimelineChange],
+  ['durationchange', handleVideoTimelineChange],
+  ['loadedmetadata', handleVideoTimelineChange],
+  ['volumechange', handleVolumeChange],
+  ['error', handleVideoError],
+  ['webkitbeginfullscreen', handleSafariFullscreen],
+  ['webkitendfullscreen', handleSafariFullscreen],
+];
+
+function clearSurfaceClick(): void {
+  if (surfaceClickTimer !== null) clearTimeout(surfaceClickTimer);
+  surfaceClickTimer = null;
+}
+
+function playVideo(video: HTMLVideoElement): void {
+  controlError.value = null;
+  void video.play().catch((reason: unknown) => {
+    if (video !== currentMountedVideo) return;
+    videoPlaying.value = false;
+    controlError.value = `播放失败：${reason instanceof Error ? reason.message : String(reason)}`;
+  });
 }
 
 function handleVideoHostMount(container: HTMLElement | null): void {
   const asset = currentAsset.value;
   if (container === currentVideoHost && currentMountedUrl === asset?.url) return;
-
+  clearSurfaceClick();
   if (currentMountedVideo) {
-    currentMountedVideo.removeEventListener('loadeddata', handleVideoReady);
-    currentMountedVideo.removeEventListener('canplay', handleVideoReady);
-    currentMountedVideo.removeEventListener('play', handleVideoPlay);
-    currentMountedVideo.removeEventListener('pause', handleVideoPause);
-    currentMountedVideo.removeEventListener('ended', handleVideoEnded);
-    currentMountedVideo.removeEventListener('timeupdate', handleVideoTimelineChange);
-    currentMountedVideo.removeEventListener('durationchange', handleVideoTimelineChange);
-    currentMountedVideo.removeEventListener('loadedmetadata', handleVideoTimelineChange);
+    for (const [event, listener] of videoEvents) currentMountedVideo.removeEventListener(event, listener);
     currentMountedVideo.pause();
     currentMountedVideo.remove();
     currentMountedVideo = null;
   }
-  if (currentMountedUrl) {
-    releaseJournalVideo(currentMountedUrl);
-    currentMountedUrl = null;
-  }
-
+  if (currentMountedUrl) releaseJournalVideo(currentMountedUrl);
+  currentMountedUrl = null;
   currentVideoHost = container;
+  videoReady.value = false;
+  videoPlaying.value = false;
+  videoCurrentTime.value = 0;
+  videoDuration.value = 0;
+  videoError.value = null;
+  controlError.value = null;
+  syncFullscreen();
+  if (!container || !asset || asset.mediaType !== 'video') return;
 
-  if (!container || !asset || asset.mediaType !== 'video') {
-    videoReady.value = asset?.mediaType !== 'video';
-    videoPlaying.value = false;
-    videoMuted.value = true;
-    videoControlsActivated.value = false;
-    videoCurrentTime.value = 0;
-    videoDuration.value = 0;
-    return;
-  }
-
-  const video = mountJournalVideo(asset.url, container);
+  const video = mountJournalVideo(asset.url, container, { preload: asset.sourceKind === 'drive' ? 'metadata' : 'auto' });
   currentMountedVideo = video;
   currentMountedUrl = asset.url;
-
   video.controls = false;
   video.autoplay = true;
-  video.muted = true;
-  videoMuted.value = video.muted;
+  video.muted = preferredMuted;
+  video.volume = preferredVolume;
   video.playsInline = true;
-  if (asset.previewUrl && !video.poster) {
-    video.poster = asset.previewUrl;
-  }
-
-  if (video.readyState >= 2) {
-    videoReady.value = true;
-  } else {
-    videoReady.value = false;
-    video.addEventListener('loadeddata', handleVideoReady, { once: true });
-    video.addEventListener('canplay', handleVideoReady, { once: true });
-  }
-
+  video.tabIndex = -1;
+  video.poster = asset.previewUrl ?? '';
+  videoReady.value = video.readyState >= 2;
   videoPlaying.value = !video.paused && !video.ended;
-  videoCurrentTime.value = video.currentTime;
-  videoDuration.value = Number.isFinite(video.duration) ? video.duration : 0;
-  video.addEventListener('play', handleVideoPlay);
-  video.addEventListener('pause', handleVideoPause);
-  video.addEventListener('ended', handleVideoEnded);
-  video.addEventListener('timeupdate', handleVideoTimelineChange);
-  video.addEventListener('durationchange', handleVideoTimelineChange);
-  video.addEventListener('loadedmetadata', handleVideoTimelineChange);
-  void video.play();
+  handleVideoTimelineChange();
+  handleVolumeChange();
+  for (const [event, listener] of videoEvents) video.addEventListener(event, listener);
+  if (video.error) handleVideoError();
+  else playVideo(video);
 }
 
-const setVideoHostRef = (element: unknown): void => {
-  handleVideoHostMount(element as HTMLElement | null);
-};
-
+const setVideoHostRef = (element: unknown): void => handleVideoHostMount(element as HTMLElement | null);
 function toggleVideoPlayback(): void {
-  if (!currentMountedVideo || !videoReady.value) return;
-  if (currentMountedVideo.paused || currentMountedVideo.ended) {
-    void currentMountedVideo.play();
-    return;
-  }
-  videoControlsActivated.value = true;
-  currentMountedVideo.pause();
+  const video = currentMountedVideo;
+  if (!video || videoError.value) return;
+  if (video.paused || video.ended) playVideo(video);
+  else video.pause();
 }
-
 function toggleVideoMuted(): void {
-  if (!currentMountedVideo || !videoReady.value) return;
-  currentMountedVideo.muted = !currentMountedVideo.muted;
-  videoMuted.value = currentMountedVideo.muted;
-}
-
-function handleVideoSurfaceClick(): void {
-  if (!currentMountedVideo || !videoReady.value) return;
-  if (!videoControlsActivated.value && window.matchMedia('(hover: none) and (pointer: coarse)').matches) {
-    videoControlsActivated.value = true;
-    return;
+  if (!currentMountedVideo) return;
+  if (currentMountedVideo.muted || currentMountedVideo.volume === 0) {
+    if (currentMountedVideo.volume === 0) currentMountedVideo.volume = lastAudibleVolume;
+    currentMountedVideo.muted = false;
+  } else {
+    currentMountedVideo.muted = true;
   }
-  toggleVideoPlayback();
 }
-
+function setVolume(event: Event): void {
+  if (!currentMountedVideo) return;
+  const value = Number((event.currentTarget as HTMLInputElement).value);
+  currentMountedVideo.volume = value;
+  currentMountedVideo.muted = value === 0;
+}
+function handleVideoSurfaceClick(event: MouseEvent): void {
+  stage.value?.focus({ preventScroll: true });
+  if (event.detail > 1) return;
+  clearSurfaceClick();
+  surfaceClickTimer = setTimeout(() => {
+    surfaceClickTimer = null;
+    toggleVideoPlayback();
+  }, 220);
+}
 function seekVideo(event: Event): void {
   if (!currentMountedVideo) return;
-  const input = event.currentTarget as HTMLInputElement;
-  currentMountedVideo.currentTime = Number(input.value);
-  videoCurrentTime.value = currentMountedVideo.currentTime;
+  currentMountedVideo.currentTime = Number((event.currentTarget as HTMLInputElement).value);
+  handleVideoTimelineChange();
 }
-
+async function toggleFullscreen(): Promise<void> {
+  controlError.value = null;
+  try {
+    if (document.fullscreenElement === viewport.value) await document.exitFullscreen();
+    else if (currentMountedVideo?.webkitDisplayingFullscreen) currentMountedVideo.webkitExitFullscreen!();
+    else if (viewport.value?.requestFullscreen && document.fullscreenEnabled) await viewport.value.requestFullscreen();
+    else if (currentMountedVideo?.webkitEnterFullscreen) currentMountedVideo.webkitEnterFullscreen();
+    else throw new Error('当前浏览器不支持全屏播放。');
+  } catch (reason) {
+    controlError.value = `全屏切换失败：${reason instanceof Error ? reason.message : String(reason)}`;
+  }
+}
+function handleSurfaceDoubleClick(): void {
+  if (currentAsset.value?.mediaType !== 'video') return;
+  clearSurfaceClick();
+  void toggleFullscreen();
+}
 function goTo(index: number): void {
   if (index === currentIndex.value) return;
+  clearSurfaceClick();
   currentMountedVideo?.pause();
   currentIndex.value = index;
 }
-
-function previous(): void {
-  goTo(currentIndex.value - 1);
-}
-
-function next(): void {
-  goTo(currentIndex.value + 1);
-}
-
+function previous(): void { goTo(currentIndex.value - 1); }
+function next(): void { goTo(currentIndex.value + 1); }
 function handleKeyboard(event: KeyboardEvent): void {
-  if (event.target instanceof HTMLMediaElement || event.target instanceof HTMLInputElement) return;
-  if (event.key === 'ArrowLeft' && currentIndex.value > 0) {
+  if (event.altKey || event.ctrlKey || event.metaKey) return;
+  const target = event.target as HTMLElement;
+  if (target.closest('input, textarea, select, [contenteditable="true"]')) return;
+  if (event.code === 'Space' && currentAsset.value?.mediaType === 'video') {
+    if (target.closest('button')) return;
+    event.preventDefault();
+    if (!event.repeat) toggleVideoPlayback();
+    return;
+  }
+  if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+  if (stageAssets.value.length === 1 && currentMountedVideo) {
+    if (videoDuration.value <= 0 || videoError.value) return;
+    event.preventDefault();
+    currentMountedVideo.currentTime = Math.min(videoDuration.value, Math.max(0,
+      currentMountedVideo.currentTime + (event.key === 'ArrowLeft' ? -5 : 5)));
+    handleVideoTimelineChange();
+  } else if (event.key === 'ArrowLeft' && currentIndex.value > 0) {
     event.preventDefault();
     previous();
-  }
-  if (event.key === 'ArrowRight' && currentIndex.value < stageAssets.value.length - 1) {
+  } else if (event.key === 'ArrowRight' && currentIndex.value < stageAssets.value.length - 1) {
     event.preventDefault();
     next();
   }
 }
 
+onMounted(() => {
+  notifyAspectRatio();
+  document.addEventListener('fullscreenchange', syncFullscreen);
+});
+onUpdated(notifyAspectRatio);
 onBeforeUnmount(() => {
+  clearSurfaceClick();
+  document.removeEventListener('fullscreenchange', syncFullscreen);
   handleVideoHostMount(null);
 });
 </script>
 
 <template>
   <section
+    ref="stage"
     class="media-stage"
     :class="{ 'media-stage--adaptive-image': currentAssetFullBleed }"
     :style="stageStyle"
@@ -219,7 +282,7 @@ onBeforeUnmount(() => {
     tabindex="0"
     @keydown="handleKeyboard"
   >
-    <div v-if="currentAsset" class="media-stage__viewport">
+    <div v-if="currentAsset" ref="viewport" class="media-stage__viewport" @dblclick="handleSurfaceDoubleClick">
       <div
         :key="currentAsset.id"
         class="media-stage__item"
@@ -230,71 +293,55 @@ onBeforeUnmount(() => {
           'media-stage__item--contained': !currentAssetFullBleed,
         }"
       >
-        <img
-          v-if="currentAsset.mediaType === 'image'"
-          class="media-stage__media media-stage__image"
-          :src="currentAsset.url"
-          alt=""
-          draggable="false"
-        >
+        <img v-if="currentAsset.mediaType === 'image'" class="media-stage__media media-stage__image" :src="currentAsset.url" alt="" draggable="false">
         <div
           v-else
           :ref="setVideoHostRef"
           class="media-stage__media media-stage__video-host"
           :class="{ 'media-stage__video-host--ready': videoReady }"
-          :aria-busy="!videoReady"
+          :aria-busy="!videoReady && !videoError && !controlError"
           @click="handleVideoSurfaceClick"
         />
-        <button
-          v-if="currentAsset.mediaType === 'video'"
-          class="media-stage__playback-toggle"
-          :class="{ 'media-stage__playback-toggle--playing': videoPlaying }"
-          type="button"
-          :aria-label="videoPlaying ? '暂停视频' : '播放视频'"
-          :disabled="!videoReady"
-          @click.stop="toggleVideoPlayback"
-        >
-          <svg v-if="videoPlaying" class="media-stage__playback-icon" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M8 6v12M16 6v12" />
-          </svg>
-          <svg v-else class="media-stage__playback-icon media-stage__playback-icon--play" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="m9 6 9 6-9 6Z" />
-          </svg>
-        </button>
-        <button
-          v-if="currentAsset.mediaType === 'video'"
-          class="media-stage__mute-toggle"
-          type="button"
-          :aria-label="videoMuted ? '打开声音' : '静音'"
-          :aria-pressed="!videoMuted"
-          :disabled="!videoReady"
-          @click.stop="toggleVideoMuted"
-        >
-          <svg class="media-stage__mute-icon" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M4 9v6h4l5 4V5L8 9H4Z" />
-            <template v-if="videoMuted">
-              <path d="m17 9 4 4m0-4-4 4" />
-            </template>
-            <template v-else>
-              <path d="M16 9.5a4 4 0 0 1 0 5" />
-              <path d="M18.5 7a7 7 0 0 1 0 10" />
-            </template>
-          </svg>
-        </button>
-        <input
-          v-if="currentAsset.mediaType === 'video'"
-          class="media-stage__progress"
-          :class="{ 'media-stage__progress--visible': videoControlsActivated }"
-          type="range"
-          min="0"
-          :max="videoDuration"
-          step="0.1"
-          :value="videoCurrentTime"
-          :style="videoProgressStyle"
-          aria-label="视频进度"
-          :disabled="!videoReady || videoDuration <= 0"
-          @input="seekVideo"
-        >
+        <div v-if="currentAsset.mediaType === 'video'" class="media-stage__video-controls" @click.stop @dblclick.stop>
+          <input
+            class="media-stage__progress"
+            type="range"
+            min="0"
+            :max="displayDuration"
+            step="0.1"
+            :value="videoCurrentTime"
+            :style="videoProgressStyle"
+            aria-label="视频进度"
+            :disabled="videoDuration <= 0 || !!videoError"
+            @input="seekVideo"
+          >
+          <div class="media-stage__video-toolbar">
+            <button class="media-stage__control-button" type="button" :aria-label="videoPlaying ? '暂停视频' : '播放视频'" :disabled="!!videoError" @click="toggleVideoPlayback">
+              <svg class="media-stage__control-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path v-if="videoPlaying" d="M8 6v12M16 6v12" />
+                <path v-else d="m9 6 9 6-9 6Z" />
+              </svg>
+            </button>
+            <span class="media-stage__time">{{ timelineLabel }}</span>
+            <div class="media-stage__volume-group">
+              <button class="media-stage__control-button" type="button" :aria-label="videoMuted || videoVolume === 0 ? '打开声音' : '静音'" :aria-pressed="!videoMuted && videoVolume > 0" @click="toggleVideoMuted">
+                <svg class="media-stage__control-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M4 9v6h4l5 4V5L8 9H4Z" />
+                  <path v-if="videoMuted || videoVolume === 0" d="m17 9 4 4m0-4-4 4" />
+                  <path v-else d="M16 9.5a4 4 0 0 1 0 5m2.5-7.5a7 7 0 0 1 0 10" />
+                </svg>
+              </button>
+              <input class="media-stage__volume" type="range" min="0" max="1" step="0.05" :value="videoVolume" aria-label="视频音量" @input="setVolume">
+            </div>
+            <button class="media-stage__control-button" type="button" :aria-label="fullscreen ? '退出全屏' : '全屏播放'" :aria-pressed="fullscreen" @click="toggleFullscreen">
+              <svg class="media-stage__control-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path v-if="fullscreen" d="M4 9h5V4m6 0v5h5M4 15h5v5m6 0v-5h5" />
+                <path v-else d="M9 4H4v5m11-5h5v5M4 15v5h5m6 0h5v-5" />
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div v-if="videoError || controlError" class="media-stage__error" role="alert">{{ videoError || controlError }}</div>
       </div>
     </div>
 
@@ -419,121 +466,80 @@ onBeforeUnmount(() => {
   border-radius: inherit;
 }
 
-.media-stage__playback-toggle {
-  z-index: 2;
-  display: grid;
-  width: 46px;
-  height: 46px;
-  padding: 0;
-  border: 1px solid rgb(255 255 255 / 36%);
-  border-radius: 50%;
-  grid-area: 1 / 1;
-  background: rgb(20 20 20 / 58%);
-  color: #fff;
-  cursor: pointer;
-  opacity: 1;
-  place-items: center;
-  transition: opacity 220ms ease, transform 220ms ease;
-}
-
-.media-stage__mute-toggle {
+.media-stage__video-controls {
   position: absolute;
   z-index: 2;
-  top: 16px;
-  right: 16px;
+  right: 0;
+  bottom: 0;
+  left: 0;
   display: grid;
-  width: 42px;
-  height: 42px;
-  padding: 0;
-  border: 1px solid rgb(255 255 255 / 36%);
-  border-radius: 50%;
-  background: rgb(20 20 20 / 58%);
+  gap: 0.1rem;
+  padding: 0.4rem 0.75rem 0.5rem;
+  background: linear-gradient(transparent, rgb(0 0 0 / 75%));
   color: #fff;
+}
+
+.media-stage__video-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.media-stage__control-button {
+  display: grid;
+  flex: none;
+  width: 2rem;
+  height: 2rem;
+  padding: 0.3rem;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
   cursor: pointer;
   place-items: center;
-  transition: background 160ms ease, transform 160ms ease;
 }
 
-.media-stage__mute-toggle:hover:not(:disabled) {
-  background: rgb(20 20 20 / 76%);
-  transform: scale(1.04);
-}
-
-.media-stage__mute-toggle:focus-visible {
-  outline: 2px solid #fff;
-  outline-offset: 2px;
-}
-
-.media-stage__mute-toggle:disabled {
-  cursor: default;
-  opacity: 0.5;
-}
-
-.media-stage__mute-icon {
-  display: block;
-  width: 20px;
-  height: 20px;
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.8;
-}
-
-.media-stage__playback-toggle--playing,
-.media-stage__playback-toggle:disabled {
-  pointer-events: none;
-  opacity: 0;
-  transform: scale(0.9);
-}
-
-.media-stage__playback-icon {
-  display: block;
-  width: 22px;
-  height: 22px;
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 2;
-}
-
-.media-stage__playback-icon--play {
-  fill: currentColor;
-  stroke: none;
-}
+.media-stage__control-button:hover { background: rgb(255 255 255 / 16%); }
+.media-stage__control-button:focus-visible { outline: 2px solid #fff; outline-offset: -2px; }
+.media-stage__control-button:disabled { opacity: 0.45; cursor: not-allowed; }
+.media-stage__control-icon { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.media-stage__time { margin-right: auto; font-size: 0.72rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.media-stage__volume-group { display: flex; align-items: center; }
+.media-stage__volume { width: 0; min-width: 0; height: 2rem; margin: 0; padding: 0; opacity: 0; accent-color: #fff; }
+.media-stage__volume-group:hover .media-stage__volume,
+.media-stage__volume-group:focus-within .media-stage__volume { width: 4rem; opacity: 1; }
 
 .media-stage__progress {
-  z-index: 2;
-  width: calc(100% - 32px);
-  height: 44px;
-  align-self: end;
+  width: 100%;
+  min-width: 0;
+  height: 1.1rem;
   padding: 0;
-  margin: 0 16px;
+  margin: 0;
   -webkit-appearance: none;
   appearance: none;
   border: 0;
   border-radius: 0;
   background: transparent;
   cursor: pointer;
-  grid-area: 1 / 1;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 180ms ease;
   -webkit-tap-highlight-color: transparent;
-  touch-action: none;
 }
 
-.media-stage__progress--visible {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .media-stage__item:hover .media-stage__progress:not(:disabled) {
-    opacity: 1;
-    pointer-events: auto;
-  }
+.media-stage__error {
+  position: absolute;
+  z-index: 3;
+  top: 1rem;
+  right: 1rem;
+  left: 1rem;
+  max-height: calc(100% - 6rem);
+  overflow-y: auto;
+  padding: 0.75rem;
+  border: 1px solid rgb(255 255 255 / 24%);
+  border-radius: 6px;
+  background: rgb(20 20 20 / 88%);
+  color: #fff;
+  font-size: 0.8rem;
+  line-height: 1.6;
 }
 
 .media-stage__progress::-webkit-slider-runnable-track {
@@ -580,14 +586,15 @@ onBeforeUnmount(() => {
 }
 
 .media-stage__progress:disabled {
-  pointer-events: none;
-  opacity: 0;
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .media-stage__progress:focus,
 .media-stage__progress:focus-visible {
   border-color: transparent;
-  outline: none;
+  outline: 2px solid #fff;
+  outline-offset: 2px;
   box-shadow: none;
 }
 
@@ -770,14 +777,32 @@ onBeforeUnmount(() => {
   }
 }
 
+.media-stage__viewport:fullscreen {
+  width: 100vw;
+  height: 100dvh;
+  padding: 0;
+  background: #20201e;
+}
+
+.media-stage__viewport:fullscreen .media-stage__item {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  aspect-ratio: auto;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .media-stage__volume { width: 3rem; opacity: 1; }
+  .media-stage__video-controls { padding-right: 0.4rem; padding-left: 0.4rem; }
+}
+
 :global(html[data-theme='dark'] .media-stage) {
   background: #171715;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .media-stage__media,
-  .media-stage__playback-toggle,
-  .media-stage__mute-toggle,
+  .media-stage__control-button,
   .media-stage__progress {
     animation: none;
     transition: none;

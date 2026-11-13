@@ -9,8 +9,49 @@ export type ChannelTags = Record<JournalChannel, string[]>;
 
 export type JournalSourceKind = 'telegram' | 'web';
 export type JournalBodyFormat = 'plain' | 'rich';
-export type JournalAssetSourceKind = 'telegram' | 'web';
+export type JournalAssetSourceKind = 'telegram' | 'web' | 'drive';
 export type JournalAssetRole = 'attachment' | 'cover' | 'inline';
+
+export interface JournalDriveVideoFolder {
+  id: string;
+  name: string;
+}
+
+export interface JournalDriveVideoItem {
+  driveFileId: string;
+  name: string;
+  folderId: string;
+  folderName: string | null;
+  mimeType: 'video/mp4' | 'video/webm';
+  byteSize: number;
+  modifiedTime: string;
+  width: number | null;
+  height: number | null;
+  durationMillis: number | null;
+  md5Checksum: string;
+  linkedEntryCount: number;
+}
+
+export interface JournalDriveVideoCatalog {
+  folders: JournalDriveVideoFolder[];
+  videos: JournalDriveVideoItem[];
+  fetchedAt: string;
+}
+
+export interface JournalWebEntryUploadSessionAsset {
+  sourceKind: 'web' | 'drive';
+  kind: string;
+  originalName: string | null;
+  mimeType: string;
+  byteSize: number;
+  width: number;
+  height: number;
+  duration: number | null;
+}
+
+export type PendingPublisherMedia =
+  | { id: string; kind: 'local'; file: File }
+  | { id: string; kind: 'drive'; video: JournalDriveVideoItem };
 
 export interface JournalRichNode {
   type: string;

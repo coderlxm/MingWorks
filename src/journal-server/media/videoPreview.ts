@@ -32,8 +32,13 @@ export function isJournalVideoAsset(kind: string, mimeType: string | null): bool
 }
 
 export class JournalVideoPreviewService {
-  async generate(sourcePath: string, previewPath: string): Promise<void> {
-    const duration = await this.readDuration(sourcePath);
+  async generate(
+    sourcePath: string,
+    previewPath: string,
+    options: { duration?: number; signal?: AbortSignal } = {},
+  ): Promise<void> {
+    options.signal?.throwIfAborted();
+    const duration = options.duration ?? await this.readDuration(sourcePath, options.signal);
     const temporaryDir = `${previewPath}.${randomUUID()}.video-preview`;
     await fs.promises.mkdir(temporaryDir);
 
@@ -48,7 +53,7 @@ export class JournalVideoPreviewService {
           '-frames:v', '1',
           '-f', 'image2',
           candidatePath,
-        ], { maxBuffer: 1024 * 1024 });
+        ], { maxBuffer: 1024 * 1024, ...(options.signal ? { signal: options.signal } : {}) });
         const stats = await sharp(candidatePath).stats();
         const [red, green, blue] = stats.channels;
         if (!red || !green || !blue) {
@@ -82,19 +87,20 @@ export class JournalVideoPreviewService {
         .toColourspace('srgb')
         .webp({ quality: 82 })
         .toFile(temporaryPreviewPath);
+      options.signal?.throwIfAborted();
       await fs.promises.rename(temporaryPreviewPath, previewPath);
     } finally {
       await fs.promises.rm(temporaryDir, { recursive: true });
     }
   }
 
-  private async readDuration(sourcePath: string): Promise<number> {
+  private async readDuration(sourcePath: string, signal?: AbortSignal): Promise<number> {
     const result = await execFileAsync('ffprobe', [
       '-v', 'error',
       '-show_entries', 'format=duration',
       '-of', 'json',
       sourcePath,
-    ], { maxBuffer: 1024 * 1024 });
+    ], { maxBuffer: 1024 * 1024, ...(signal ? { signal } : {}) });
     const probe = durationProbeSchema.parse(JSON.parse(result.stdout));
     const duration = Number(probe.format.duration);
     if (!Number.isFinite(duration) || duration <= 0) {

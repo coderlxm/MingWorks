@@ -106,6 +106,8 @@ function preserveAssetRatio(asset: DisplayAsset): { aspectRatio: string } | unde
           :src="asset.url"
           :preview-src="asset.previewUrl!"
           fit="cover"
+          :preload-video="asset.sourceKind !== 'drive'"
+          :duration="asset.duration"
           @open="emit('open')"
         />
         <video
@@ -115,7 +117,7 @@ function preserveAssetRatio(asset: DisplayAsset): { aspectRatio: string } | unde
           :src="asset.url"
           :poster="asset.previewUrl!"
           controls
-          preload="metadata"
+          :preload="asset.sourceKind === 'drive' ? 'none' : 'metadata'"
         />
         <button
           v-if="hiddenVisualCount > 0 && index === renderedVisualAssets.length - 1"

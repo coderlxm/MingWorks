@@ -54,12 +54,17 @@ export class JournalWebEntryService {
     input: Omit<CreateWebEntryServiceInput, 'uploadId'>,
     upload: PreparedWebEntryUpload,
   ): Promise<JournalEntry> {
-    this.assertActionVisibility(input.action, input.visibility);
-    this.assertContent(input.contentText, upload.assets.length);
-    this.assertMediaCount(
-      upload.assets.length,
-      upload.assets.filter((asset) => asset.kind === 'video').length,
-    );
+    const accessPasswordHash = await this.prepareUpload(upload, () => {
+      if (upload.targetEntryId !== null) throw new Error('新建内容不能使用编辑上传会话。');
+      this.assertActionVisibility(input.action, input.visibility);
+      this.assertContent(input.contentText, upload.assets.length);
+      this.assertMediaCount(
+        upload.assets.length,
+        upload.assets.filter((asset) => asset.kind === 'video').length,
+      );
+      return input.action === 'draft' ? null
+        : this.hashForNewAccess(input.visibility as JournalVisibility, input.accessPassword);
+    });
 
     if (upload.assets.length > 0) {
       await this.storage.finalize(upload.storageSession);
@@ -75,9 +80,7 @@ export class JournalWebEntryService {
         publicationStatus: input.action === 'draft' ? 'draft' : 'published',
         channel: input.channel,
         visibility: input.action === 'draft' ? 'private' : input.visibility as JournalVisibility,
-        accessPasswordHash: input.action === 'draft'
-          ? null
-          : this.hashForNewAccess(input.visibility as JournalVisibility, input.accessPassword),
+        accessPasswordHash,
         sourceCreatedAt: input.sourceCreatedAt ?? upload.createdAt,
         assets: upload.assets,
       });
@@ -97,18 +100,25 @@ export class JournalWebEntryService {
     accessPassword?: string,
     sourceCreatedAt?: string,
   ): Promise<JournalEntry> {
-    const draft = this.getDraft(id);
-    const storedAssets = this.repository.listWebDraftAssets(id);
-    this.assertRemovedAssetIds(draft, storedAssets, input.removedAssetIds);
-    const removedIds = new Set(input.removedAssetIds);
-    const retainedAssets = draft.assets.filter((asset) => !removedIds.has(asset.id));
-    const newAssets = upload.assets;
-    this.assertContent(input.contentText, retainedAssets.length + newAssets.length);
-    this.assertMediaCount(
-      retainedAssets.length + newAssets.length,
-      retainedAssets.filter((asset) => asset.kind === 'video').length
-        + newAssets.filter((asset) => asset.kind === 'video').length,
-    );
+    const { storedAssets, removedIds, newAssets, accessPasswordHash } = await this.prepareUpload(upload, () => {
+      if (upload.targetEntryId !== id) throw new Error('编辑上传会话与目标内容不匹配。');
+      const draft = this.getDraft(id);
+      const storedAssets = this.repository.listWebDraftAssets(id);
+      this.assertRemovedAssetIds(draft, storedAssets, input.removedAssetIds);
+      const removedIds = new Set(input.removedAssetIds);
+      const retainedAssets = draft.assets.filter((asset) => !removedIds.has(asset.id));
+      const newAssets = upload.assets;
+      this.assertContent(input.contentText, retainedAssets.length + newAssets.length);
+      this.assertMediaCount(
+        retainedAssets.length + newAssets.length,
+        retainedAssets.filter((asset) => asset.kind === 'video').length
+          + newAssets.filter((asset) => asset.kind === 'video').length,
+      );
+
+      const accessPasswordHash = publishVisibility === null ? null
+        : this.hashForNewAccess(publishVisibility, accessPassword);
+      return { storedAssets, removedIds, newAssets, accessPasswordHash };
+    });
 
     if (newAssets.length > 0) {
       await this.storage.appendToFinal(upload.storageSession);
@@ -137,7 +147,7 @@ export class JournalWebEntryService {
             removedAssetIds: input.removedAssetIds,
             newAssets,
             visibility: publishVisibility,
-            accessPasswordHash: this.hashForNewAccess(publishVisibility, accessPassword),
+            accessPasswordHash,
             sourceCreatedAt: sourceCreatedAt ?? updatedAt,
           });
     } catch (error) {
@@ -167,18 +177,26 @@ export class JournalWebEntryService {
     input: Omit<UpdatePublishedWebEntryServiceInput, 'uploadId'>,
     upload: PreparedWebEntryUpload,
   ): Promise<JournalEntry> {
-    const entry = this.getPublishedWebEntry(id);
-    const storedAssets = this.repository.listPublishedWebEntryAssets(id);
-    this.assertRemovedAssetIds(entry, storedAssets, input.removedAssetIds);
-    const removedIds = new Set(input.removedAssetIds);
-    const retainedAssets = entry.assets.filter(asset => !removedIds.has(asset.id));
-    const newAssets = upload.assets;
-    this.assertContent(input.contentText, retainedAssets.length + newAssets.length);
-    this.assertMediaCount(
-      retainedAssets.length + newAssets.length,
-      retainedAssets.filter(asset => asset.kind === 'video').length
-        + newAssets.filter(asset => asset.kind === 'video').length,
-    );
+    const { storedAssets, removedIds, newAssets, accessPasswordHash } = await this.prepareUpload(upload, () => {
+      if (upload.targetEntryId !== id) throw new Error('编辑上传会话与目标内容不匹配。');
+      const entry = this.getPublishedWebEntry(id);
+      const storedAssets = this.repository.listPublishedWebEntryAssets(id);
+      this.assertRemovedAssetIds(entry, storedAssets, input.removedAssetIds);
+      const removedIds = new Set(input.removedAssetIds);
+      const retainedAssets = entry.assets.filter(asset => !removedIds.has(asset.id));
+      const newAssets = upload.assets;
+      this.assertContent(input.contentText, retainedAssets.length + newAssets.length);
+      this.assertMediaCount(
+        retainedAssets.length + newAssets.length,
+        retainedAssets.filter(asset => asset.kind === 'video').length
+          + newAssets.filter(asset => asset.kind === 'video').length,
+      );
+
+      const accessPasswordHash = this.hashForAccessUpdate(
+        entry.visibility, input.visibility, input.accessPassword,
+      );
+      return { storedAssets, removedIds, newAssets, accessPasswordHash };
+    });
 
     if (newAssets.length > 0) {
       await this.storage.appendToFinal(upload.storageSession);
@@ -193,11 +211,7 @@ export class JournalWebEntryService {
         tags: extractJournalTags(input.contentText),
         channel: input.channel,
         visibility: input.visibility,
-        accessPasswordHash: this.hashForAccessUpdate(
-          entry.visibility,
-          input.visibility,
-          input.accessPassword,
-        ),
+        accessPasswordHash,
         sourceCreatedAt: input.sourceCreatedAt,
         updatedAt: new Date().toISOString(),
         removedAssetIds: input.removedAssetIds,
@@ -223,6 +237,15 @@ export class JournalWebEntryService {
       }
     }
     return updated;
+  }
+
+  private async prepareUpload<T>(upload: PreparedWebEntryUpload, prepare: () => T): Promise<T> {
+    try {
+      return prepare();
+    } catch (error) {
+      await this.storage.discardTemporary(upload.storageSession);
+      throw error;
+    }
   }
 
   private getDraft(id: number): JournalEntry {

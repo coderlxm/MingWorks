@@ -1615,6 +1615,88 @@ const migrations: JournalMigration[] = [
       `);
     },
   },
+  {
+    version: 26,
+    disableForeignKeys: true,
+    up(database) {
+      const sequence = database.prepare(
+        "SELECT seq FROM sqlite_sequence WHERE name = 'journal_assets'",
+      ).get() as { seq: number } | undefined;
+      database.exec(`
+        CREATE TABLE journal_assets_v26 (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          entry_id INTEGER NOT NULL,
+          source_kind TEXT NOT NULL CHECK (source_kind IN ('telegram', 'web', 'drive')),
+          role TEXT NOT NULL DEFAULT 'attachment' CHECK (role IN ('attachment', 'cover', 'inline')),
+          kind TEXT NOT NULL,
+          telegram_file_id TEXT,
+          telegram_file_unique_id TEXT,
+          drive_file_id TEXT,
+          drive_md5_checksum TEXT,
+          original_name TEXT,
+          mime_type TEXT,
+          byte_size INTEGER,
+          relative_path TEXT UNIQUE,
+          preview_relative_path TEXT,
+          poster_relative_path TEXT,
+          width INTEGER,
+          height INTEGER,
+          duration INTEGER,
+          sort_order INTEGER NOT NULL DEFAULT 0,
+          CHECK (
+            (source_kind = 'telegram'
+              AND telegram_file_id IS NOT NULL AND telegram_file_unique_id IS NOT NULL
+              AND drive_file_id IS NULL AND drive_md5_checksum IS NULL
+              AND relative_path IS NOT NULL)
+            OR
+            (source_kind = 'web'
+              AND telegram_file_id IS NULL AND telegram_file_unique_id IS NULL
+              AND drive_file_id IS NULL AND drive_md5_checksum IS NULL
+              AND relative_path IS NOT NULL)
+            OR
+            (source_kind = 'drive' AND role = 'attachment' AND kind = 'video'
+              AND telegram_file_id IS NULL AND telegram_file_unique_id IS NULL
+              AND drive_file_id IS NOT NULL AND drive_md5_checksum IS NOT NULL
+              AND relative_path IS NULL AND preview_relative_path IS NOT NULL
+              AND poster_relative_path IS NULL
+              AND mime_type IS NOT NULL AND mime_type IN ('video/mp4', 'video/webm')
+              AND byte_size IS NOT NULL AND byte_size > 0)
+          ),
+          FOREIGN KEY(entry_id) REFERENCES journal_entries(id)
+        );
+        INSERT INTO journal_assets_v26 (
+          id, entry_id, source_kind, role, kind, telegram_file_id, telegram_file_unique_id,
+          original_name, mime_type, byte_size, relative_path, preview_relative_path,
+          poster_relative_path, width, height, duration, sort_order
+        )
+        SELECT id, entry_id, source_kind, role, kind, telegram_file_id, telegram_file_unique_id,
+          original_name, mime_type, byte_size, relative_path, preview_relative_path,
+          poster_relative_path, width, height, duration, sort_order
+        FROM journal_assets;
+        DROP TABLE journal_assets;
+        ALTER TABLE journal_assets_v26 RENAME TO journal_assets;
+
+        CREATE INDEX idx_journal_assets_entry ON journal_assets(entry_id, sort_order);
+        CREATE UNIQUE INDEX idx_journal_assets_one_cover ON journal_assets(entry_id)
+          WHERE role = 'cover';
+        CREATE UNIQUE INDEX idx_journal_assets_preview_relative_path
+          ON journal_assets(preview_relative_path) WHERE preview_relative_path IS NOT NULL;
+        CREATE UNIQUE INDEX idx_journal_assets_poster_relative_path
+          ON journal_assets(poster_relative_path) WHERE poster_relative_path IS NOT NULL;
+        CREATE INDEX idx_journal_assets_drive_file_id ON journal_assets(drive_file_id)
+          WHERE drive_file_id IS NOT NULL;
+      `);
+      if (sequence !== undefined) {
+        database.prepare("DELETE FROM sqlite_sequence WHERE name = 'journal_assets'").run();
+        database.prepare('INSERT INTO sqlite_sequence (name, seq) VALUES (?, ?)')
+          .run('journal_assets', sequence.seq);
+      }
+      const foreignKeyViolations = database.pragma('foreign_key_check') as unknown[];
+      if (foreignKeyViolations.length !== 0) {
+        throw new Error('Drive video asset migration would break existing foreign key relationships.');
+      }
+    },
+  },
 ];
 
 

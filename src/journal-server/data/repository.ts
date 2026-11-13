@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import path from 'node:path';
 import type Database from 'better-sqlite3';
 import { z } from 'zod';
 import type {
@@ -87,7 +88,7 @@ interface AssetRow {
   width: number | null;
   height: number | null;
   duration: number | null;
-  relative_path: string;
+  relative_path: string | null;
   preview_relative_path: string | null;
   poster_relative_path: string | null;
 }
@@ -126,6 +127,24 @@ export interface WebEntryAssetInput {
   sortOrder?: number;
 }
 
+export type WebPlainAttachmentInput =
+  | (WebEntryAssetInput & { sourceKind: 'web' })
+  | {
+      sourceKind: 'drive';
+      driveFileId: string;
+      driveMd5Checksum: string;
+      relativePath: null;
+      previewRelativePath: string;
+      posterRelativePath: null;
+      kind: 'video';
+      mimeType: 'video/mp4' | 'video/webm';
+      originalName: string;
+      byteSize: number;
+      width: number;
+      height: number;
+      duration: number;
+    };
+
 export interface CreateWebEntryInput {
   publicId: string;
   title: string | null;
@@ -136,7 +155,7 @@ export interface CreateWebEntryInput {
   visibility: JournalVisibility;
   accessPasswordHash: string | null;
   sourceCreatedAt: string;
-  assets: WebEntryAssetInput[];
+  assets: WebPlainAttachmentInput[];
 }
 
 export interface UpdateWebDraftInput {
@@ -146,7 +165,7 @@ export interface UpdateWebDraftInput {
   channel: JournalPlainChannel;
   updatedAt: string;
   removedAssetIds: number[];
-  newAssets: WebEntryAssetInput[];
+  newAssets: WebPlainAttachmentInput[];
 }
 
 export interface PublishWebDraftInput extends UpdateWebDraftInput {
@@ -163,7 +182,7 @@ export interface UpdatePublishedWebEntryInput extends UpdateWebDraftInput {
 
 export interface WebDraftAssetRecord {
   id: number;
-  relativePath: string;
+  relativePath: string | null;
   previewRelativePath: string;
   posterRelativePath: string | null;
 }
@@ -604,11 +623,11 @@ export class JournalRepository {
     return (this.database.prepare("SELECT * FROM journal_entries WHERE source_kind = 'web' AND body_format = 'rich' AND publication_status = 'draft' ORDER BY updated_at DESC").all() as EntryRow[]).map(row => this.toEntry(row));
   }
 
-  findImageForCopy(assetId: number, sourceEntryIds: number[]): AssetRow | null {
+  findImageForCopy(assetId: number, sourceEntryIds: number[]): (AssetRow & { relative_path: string }) | null {
     if (!sourceEntryIds.length) return null;
     const row = this.database.prepare(`SELECT a.* FROM journal_assets a JOIN journal_entries e ON e.id = a.entry_id
-      WHERE a.id = ? AND e.publication_status = 'published' AND a.kind IN ('photo', 'animation')
-      AND e.id IN (${sourceEntryIds.map(() => '?').join(',')})`).get(assetId, ...sourceEntryIds) as AssetRow | undefined;
+      WHERE a.id = ? AND e.publication_status = 'published' AND a.kind IN ('photo', 'animation') AND a.relative_path IS NOT NULL
+      AND e.id IN (${sourceEntryIds.map(() => '?').join(',')})`).get(assetId, ...sourceEntryIds) as (AssetRow & { relative_path: string }) | undefined;
     return row ?? null;
   }
 
@@ -806,6 +825,24 @@ export class JournalRepository {
     return this.getById(id);
   }
 
+  getExistingAssetRelativeDir(entryId: number): string | undefined {
+    const row = this.database.prepare(`
+      SELECT COALESCE(relative_path, preview_relative_path) AS effective_path
+      FROM journal_assets WHERE entry_id = ? ORDER BY sort_order, id LIMIT 1
+    `).get(entryId) as { effective_path: string } | undefined;
+    return row === undefined ? undefined : path.posix.dirname(row.effective_path);
+  }
+
+  countDriveVideoLinks(fileIds: string[]): Map<string, number> {
+    if (fileIds.length === 0) return new Map();
+    const rows = this.database.prepare(`
+      SELECT drive_file_id, COUNT(DISTINCT entry_id) AS cnt
+      FROM journal_assets WHERE drive_file_id IN (SELECT value FROM json_each(?))
+      GROUP BY drive_file_id
+    `).all(JSON.stringify(fileIds)) as Array<{ drive_file_id: string; cnt: number }>;
+    return new Map(rows.map(row => [row.drive_file_id, row.cnt]));
+  }
+
   listWebDraftAssets(id: number): WebDraftAssetRecord[] {
     const rows = this.database.prepare(`
       SELECT a.id, a.relative_path, a.preview_relative_path, a.poster_relative_path
@@ -815,12 +852,12 @@ export class JournalRepository {
         AND e.source_kind = 'web'
         AND e.body_format = 'plain'
         AND e.publication_status = 'draft'
-        AND a.source_kind = 'web'
+        AND a.source_kind IN ('web', 'drive')
         AND a.role = 'attachment'
       ORDER BY a.sort_order, a.id
     `).all(id) as Array<{
       id: number;
-      relative_path: string;
+      relative_path: string | null;
       preview_relative_path: string;
       poster_relative_path: string | null;
     }>;
@@ -839,11 +876,11 @@ export class JournalRepository {
       JOIN journal_entries e ON e.id = a.entry_id
       WHERE e.id = ? AND e.source_kind = 'web' AND e.body_format = 'plain'
         AND e.publication_status = 'published'
-        AND a.source_kind = 'web' AND a.role = 'attachment'
+        AND a.source_kind IN ('web', 'drive') AND a.role = 'attachment'
       ORDER BY a.sort_order, a.id
     `).all(id) as Array<{
       id: number;
-      relative_path: string;
+      relative_path: string | null;
       preview_relative_path: string;
       poster_relative_path: string | null;
     }>;
@@ -1615,7 +1652,7 @@ export class JournalRepository {
   getAssetAccess(assetId: number): JournalAssetAccess | null {
     const row = this.database.prepare(`
       SELECT
-        a.id, a.kind, a.relative_path, a.preview_relative_path, a.poster_relative_path,
+        a.id, a.source_kind, a.drive_file_id, a.drive_md5_checksum, a.kind, a.relative_path, a.preview_relative_path, a.poster_relative_path,
         a.original_name, a.mime_type, a.byte_size,
         representative.visibility,
         representative.public_id,
@@ -1636,8 +1673,11 @@ export class JournalRepository {
       WHERE a.id = ?
     `).get(assetId) as {
       id: number;
+      source_kind: JournalAssetSourceKind;
+      drive_file_id: string | null;
+      drive_md5_checksum: string | null;
       kind: string;
-      relative_path: string;
+      relative_path: string | null;
       preview_relative_path: string | null;
       poster_relative_path: string | null;
       original_name: string | null;
@@ -1649,6 +1689,9 @@ export class JournalRepository {
     } | undefined;
     return row ? {
       id: row.id,
+      sourceKind: row.source_kind,
+      driveFileId: row.drive_file_id,
+      driveMd5Checksum: row.drive_md5_checksum,
       kind: row.kind,
       relativePath: row.relative_path,
       previewRelativePath: row.preview_relative_path,
@@ -1671,6 +1714,7 @@ export class JournalRepository {
           kind = 'photo'
           OR (kind IN ('sticker', 'animation') AND mime_type LIKE 'image/%')
         )
+        AND relative_path IS NOT NULL
       ORDER BY id
     `).all() as Array<{ id: number; relative_path: string }>;
     return rows.map((row) => ({ id: row.id, relativePath: row.relative_path }));
@@ -1701,6 +1745,7 @@ export class JournalRepository {
       WHERE poster_relative_path IS NULL
         AND kind = 'animation'
         AND mime_type LIKE 'image/%'
+        AND relative_path IS NOT NULL
       ORDER BY id
     `).all() as Array<{ id: number; relative_path: string }>;
     return rows.map((row) => ({ id: row.id, relativePath: row.relative_path }));
@@ -1730,6 +1775,7 @@ export class JournalRepository {
           )
           OR (kind = 'sticker' AND mime_type LIKE 'video/%')
         )
+        AND relative_path IS NOT NULL
       ORDER BY id
     `).all() as Array<{ id: number; relative_path: string }>;
     return rows.map((row) => ({ id: row.id, relativePath: row.relative_path }));
@@ -2396,7 +2442,7 @@ export class JournalRepository {
     id: number,
     publicationStatus: JournalPublicationStatus,
     removedAssetIds: number[],
-    newAssets: WebEntryAssetInput[],
+    newAssets: WebPlainAttachmentInput[],
   ): Array<{ kind: string }> {
     if (removedAssetIds.length > 0) {
       const placeholders = removedAssetIds.map(() => '?').join(', ');
@@ -2404,7 +2450,7 @@ export class JournalRepository {
         DELETE FROM journal_assets
         WHERE id IN (${placeholders})
           AND entry_id = ?
-          AND source_kind = 'web'
+          AND source_kind IN ('web', 'drive')
           AND role = 'attachment'
           AND EXISTS (
             SELECT 1
@@ -2425,7 +2471,7 @@ export class JournalRepository {
       FROM journal_assets a
       JOIN journal_entries e ON e.id = a.entry_id
       WHERE a.entry_id = ?
-        AND a.source_kind = 'web'
+        AND a.source_kind IN ('web', 'drive')
         AND a.role = 'attachment'
         AND e.source_kind = 'web'
         AND e.body_format = 'plain'
@@ -2447,19 +2493,20 @@ export class JournalRepository {
 
   private insertWebAttachments(
     entryId: number,
-    assets: WebEntryAssetInput[],
+    assets: WebPlainAttachmentInput[],
     startingSortOrder: number,
   ): void {
     const insertAsset = this.database.prepare(`
       INSERT INTO journal_assets (
         entry_id, source_kind, role, kind, telegram_file_id, telegram_file_unique_id,
         original_name, mime_type, byte_size, relative_path, preview_relative_path,
-        poster_relative_path, width, height, duration, sort_order
-      ) VALUES (?, 'web', 'attachment', ?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        poster_relative_path, width, height, duration, sort_order, drive_file_id, drive_md5_checksum
+      ) VALUES (?, ?, 'attachment', ?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     assets.forEach((asset, index) => {
       insertAsset.run(
         entryId,
+        asset.sourceKind,
         asset.kind,
         asset.originalName,
         asset.mimeType,
@@ -2470,7 +2517,9 @@ export class JournalRepository {
         asset.width,
         asset.height,
         asset.duration ?? null,
-        asset.sortOrder ?? startingSortOrder + index,
+        asset.sourceKind === 'web' ? asset.sortOrder ?? startingSortOrder + index : startingSortOrder + index,
+        asset.sourceKind === 'drive' ? asset.driveFileId : null,
+        asset.sourceKind === 'drive' ? asset.driveMd5Checksum : null,
       );
     });
   }
@@ -2486,11 +2535,11 @@ export class JournalRepository {
     const entryIds = entries.map((entry) => entry.id);
     const placeholders = entryIds.map(() => '?').join(', ');
     const assets = this.database.prepare(`
-      SELECT entry_id, relative_path
+      SELECT entry_id, COALESCE(relative_path, preview_relative_path) AS effective_path
       FROM journal_assets
       WHERE entry_id IN (${placeholders})
       ORDER BY entry_id, sort_order, id
-    `).all(...entryIds) as Array<{ entry_id: number; relative_path: string }>;
+    `).all(...entryIds) as Array<{ entry_id: number; effective_path: string }>;
 
     return {
       entries: entries.map((entry) => ({
@@ -2498,7 +2547,7 @@ export class JournalRepository {
         publicId: entry.public_id,
         assetRelativePaths: assets
           .filter((asset) => asset.entry_id === entry.id)
-          .map((asset) => asset.relative_path),
+          .map((asset) => asset.effective_path),
       })),
       assetCount: assets.length,
     };

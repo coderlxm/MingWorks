@@ -117,7 +117,11 @@ export function parseAppRoute(
     return { name: 'article-new', key: 'article-new' };
   }
   if (route.name === 'entry-new') {
-    return { name: 'entry-new', key: 'entry-new' };
+    const channel = route.query.channel;
+    if (channel !== undefined && channel !== 'life' && channel !== 'interest') {
+      return { name: 'not-found', key: route.fullPath };
+    }
+    return { name: 'entry-new', key: `entry-new:${channel ?? 'life'}` };
   }
   if (route.name === 'entry-edit') {
     const entryId = Number(route.params.entryId);

@@ -24,7 +24,7 @@ export type JournalChannel = z.infer<typeof journalChannelSchema>;
 export const journalPlainChannelSchema = z.enum(['life', 'interest']);
 export type JournalPlainChannel = z.infer<typeof journalPlainChannelSchema>;
 
-export const journalAssetSourceKindSchema = z.enum(['telegram', 'web']);
+export const journalAssetSourceKindSchema = z.enum(['telegram', 'web', 'drive']);
 export type JournalAssetSourceKind = z.infer<typeof journalAssetSourceKindSchema>;
 
 export const journalAssetRoleSchema = z.enum(['attachment', 'cover', 'inline']);
@@ -101,6 +101,54 @@ export const journalAssetSchema = z.object({
   duration: z.number().int().nonnegative().nullable(),
 });
 export type JournalAsset = z.infer<typeof journalAssetSchema>;
+
+export const journalDriveVideoFolderSchema = z.object({
+  id: z.string().regex(/^[A-Za-z0-9_-]+$/),
+  name: z.string().min(1),
+});
+export type JournalDriveVideoFolder = z.infer<typeof journalDriveVideoFolderSchema>;
+
+export const journalDriveVideoItemSchema = z.object({
+  driveFileId: z.string().regex(/^[A-Za-z0-9_-]+$/),
+  name: z.string().min(1),
+  folderId: z.string().regex(/^[A-Za-z0-9_-]+$/),
+  folderName: z.string().nullable(),
+  mimeType: z.enum(['video/mp4', 'video/webm']),
+  byteSize: z.number().int().positive(),
+  modifiedTime: z.string().datetime(),
+  width: z.number().nullable(),
+  height: z.number().nullable(),
+  durationMillis: z.number().nullable(),
+  md5Checksum: z.string().min(1),
+  linkedEntryCount: z.number().int().nonnegative(),
+});
+export type JournalDriveVideoItem = z.infer<typeof journalDriveVideoItemSchema>;
+
+export const journalDriveVideoCatalogSchema = z.object({
+  folders: z.array(journalDriveVideoFolderSchema),
+  videos: z.array(journalDriveVideoItemSchema),
+  fetchedAt: z.string().datetime(),
+});
+export type JournalDriveVideoCatalog = z.infer<typeof journalDriveVideoCatalogSchema>;
+
+export const journalBindDriveVideoRequestSchema = z.object({
+  driveFileId: z.string().regex(/^[A-Za-z0-9_-]+$/),
+}).strict();
+export type JournalBindDriveVideoRequest = z.infer<typeof journalBindDriveVideoRequestSchema>;
+
+export const journalWebEntryUploadSessionAssetSchema = z.object({
+  sourceKind: z.enum(['web', 'drive']),
+  kind: z.string().min(1),
+  originalName: z.string().nullable(),
+  mimeType: z.string(),
+  byteSize: z.number().int().positive(),
+  width: z.number().int().positive(),
+  height: z.number().int().positive(),
+  duration: z.number().nonnegative().nullable(),
+});
+export type JournalWebEntryUploadSessionAsset = z.infer<
+  typeof journalWebEntryUploadSessionAssetSchema
+>;
 
 export const journalInteractionSummarySchema = z.object({
   reactionCount: z.number().int().nonnegative(),

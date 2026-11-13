@@ -3,8 +3,9 @@ import { useDropZone, useEventListener, useFileDialog } from '@vueuse/core';
 import { InfoFilled } from '@element-plus/icons-vue';
 import { ElTooltip } from 'element-plus';
 import 'element-plus/es/components/tooltip/style/css';
-import { computed, useTemplateRef } from 'vue';
-import type { JournalAsset } from '../../types';
+import { computed, shallowRef, useTemplateRef } from 'vue';
+import type { JournalAsset, JournalDriveVideoItem, PendingPublisherMedia } from '../../types';
+import DriveVideoPickerDialog from './DriveVideoPickerDialog.vue';
 import { resolveJournalMediaType } from '../../utils/journalMedia';
 import { showMessage } from '../../utils/message';
 
@@ -13,7 +14,8 @@ const props = defineProps<{
   disabled: boolean;
 }>();
 
-const files = defineModel<File[]>({ required: true });
+const files = defineModel<PendingPublisherMedia[]>({ required: true });
+const drivePickerOpen = shallowRef(false);
 const dropZone = useTemplateRef<HTMLButtonElement>('dropZone');
 const acceptedMimeTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'video/mp4', 'video/quicktime'];
 const acceptedTypes = new Set(acceptedMimeTypes);
@@ -22,9 +24,8 @@ const maximumVideoCount = 5;
 const maximumFileSize = 20 * 1024 * 1024;
 const maximumVideoSize = 500 * 1024 * 1024;
 const imageCount = computed(() => props.existingAssets.length + files.value.length);
-const videoCount = computed(() => [...props.existingAssets, ...files.value].filter(item => item instanceof File
-  ? item.type.startsWith('video/')
-  : resolveJournalMediaType(item) === 'video').length);
+const videoCount = computed(() => props.existingAssets.filter(asset => resolveJournalMediaType(asset) === 'video').length
+  + files.value.filter(item => item.kind === 'drive' || item.file.type.startsWith('video/')).length);
 const imageLimitReached = computed(() => imageCount.value >= maximumMediaCount);
 const pickerDisabled = computed(() => props.disabled || imageLimitReached.value);
 
@@ -56,6 +57,7 @@ function showSelectionError(message: string): void {
 }
 
 function addImages(selected: File[]): void {
+  if (props.disabled) return;
   if (selected.length === 0) return;
 
   if (imageCount.value + selected.length > maximumMediaCount) {
@@ -76,8 +78,30 @@ function addImages(selected: File[]): void {
     showSelectionError('每条内容最多选择 5 段视频。');
     return;
   }
+  const localBytes = files.value.reduce((sum, item) => sum + (item.kind === 'local' ? item.file.size : 0), 0);
+  if (localBytes + selected.reduce((sum, file) => sum + file.size, 0) > maximumVideoSize) {
+    showSelectionError('本次本地上传合计不能超过 500 MiB；云盘视频不占用该额度。');
+    return;
+  }
 
-  files.value = [...files.value, ...selected];
+  files.value = [...files.value, ...selected.map(file => ({ id: crypto.randomUUID(), kind: 'local' as const, file }))];
+}
+
+function addDriveVideos(videos: JournalDriveVideoItem[]): void {
+  if (props.disabled) return;
+  if (imageCount.value + videos.length > maximumMediaCount || videoCount.value + videos.length > maximumVideoCount) {
+    showSelectionError('每条内容最多 10 项媒体，其中视频最多 5 段。');
+    return;
+  }
+  const pendingIds = new Set(files.value.filter(item => item.kind === 'drive').map(item => item.video.driveFileId));
+  for (const video of videos) {
+    if (pendingIds.has(video.driveFileId)) {
+      showSelectionError(`${video.name} 已在待发队列中。`);
+      return;
+    }
+    pendingIds.add(video.driveFileId);
+  }
+  files.value = [...files.value, ...videos.map(video => ({ id: crypto.randomUUID(), kind: 'drive' as const, video }))];
 }
 
 function handlePaste(event: ClipboardEvent): void {
@@ -139,6 +163,22 @@ function selectImages(): void {
         </ElTooltip>
       </div>
 
+    <button
+      class="image-picker__drive-button"
+      type="button"
+      :disabled="pickerDisabled || videoCount >= maximumVideoCount"
+      @click="drivePickerOpen = true"
+    >从谷歌云盘选择视频</button>
+
+    <DriveVideoPickerDialog
+      v-if="drivePickerOpen"
+      v-model="drivePickerOpen"
+      :pending-media="files"
+      :existing-assets="props.existingAssets"
+      :disabled="props.disabled"
+      @confirm="addDriveVideos"
+    />
+
     <div class="image-picker__strip">
       <button
         ref="dropZone"
@@ -185,6 +225,23 @@ function selectImages(): void {
   display: flex;
   align-items: center;
   gap: 0.35rem;
+}
+
+.image-picker__drive-button {
+  justify-self: start;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-card);
+  background: var(--surface-muted);
+  color: var(--text-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8rem;
+}
+
+.image-picker__drive-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .image-picker__label {

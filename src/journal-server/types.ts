@@ -1,4 +1,4 @@
-import type { JournalChannel, JournalVisibility } from '../shared/journalProtocol.js';
+import type { JournalAssetSourceKind, JournalChannel, JournalVisibility } from '../shared/journalProtocol.js';
 
 export interface JournalServerConfig {
   telegramToken: string;
@@ -15,6 +15,7 @@ export interface JournalServerConfig {
   photoDriveClientSecret: string;
   photoDriveRefreshToken: string;
   photoDriveRootFolderId: string;
+  videoDriveRootFolderId: string;
   port: number;
   host: string;
   dataDir: string;
@@ -89,8 +90,11 @@ export interface JournalPageFilters {
 
 export interface JournalAssetAccess {
   id: number;
+  sourceKind: JournalAssetSourceKind;
+  driveFileId: string | null;
+  driveMd5Checksum: string | null;
   kind: string;
-  relativePath: string;
+  relativePath: string | null;
   previewRelativePath: string | null;
   posterRelativePath: string | null;
   originalName: string | null;

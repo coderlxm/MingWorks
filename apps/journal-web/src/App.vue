@@ -287,6 +287,7 @@ onUnmounted(() => {
         class="app-compose"
         :to="{
           name: composeArticle ? 'article-new' : 'entry-new',
+          query: !composeArticle && publicFeedRoute?.channel === 'interest' ? { channel: 'interest' } : {},
           state: { journalReturnPath: currentRoute.fullPath },
         }"
         :aria-label="composeArticle ? '写文章' : '发布内容'"

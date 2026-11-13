@@ -5,15 +5,20 @@ interface JournalVideoPoolEntry {
 
 const pool = new Map<string, JournalVideoPoolEntry>();
 
-export function acquireJournalVideo(src: string): HTMLVideoElement {
+interface JournalVideoOptions {
+  preload?: 'auto' | 'metadata' | 'none';
+}
+
+export function acquireJournalVideo(src: string, options?: JournalVideoOptions): HTMLVideoElement {
   const existing = pool.get(src);
   if (existing) {
     existing.refCount += 1;
+    if (options?.preload) existing.video.preload = options.preload;
     return existing.video;
   }
 
   const video = document.createElement('video');
-  video.preload = 'auto';
+  video.preload = options?.preload ?? 'auto';
   video.muted = true;
   video.playsInline = true;
   video.src = src;
@@ -27,8 +32,8 @@ export function acquireJournalVideo(src: string): HTMLVideoElement {
   return video;
 }
 
-export function mountJournalVideo(src: string, target: HTMLElement): HTMLVideoElement {
-  const video = acquireJournalVideo(src);
+export function mountJournalVideo(src: string, target: HTMLElement, options?: JournalVideoOptions): HTMLVideoElement {
+  const video = acquireJournalVideo(src, options);
   if (video.parentElement !== target) {
     target.appendChild(video);
   }

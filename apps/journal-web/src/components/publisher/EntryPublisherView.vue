@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, shallowRef, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, shallowRef } from 'vue';
 import { vLoading } from 'element-plus';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import AiSuggestionButton from '../ui/AiSuggestionButton.vue';
 import JournalLoading from '../ui/JournalLoading.vue';
 import { useEntryPublisher } from '../../composables/useEntryPublisher';
@@ -9,7 +9,7 @@ import { useEntryMediaSubmit } from '../../composables/useEntryMediaSubmit';
 import { useTagSuggestions } from '../../composables/useTagSuggestions';
 import { useTopicSuggestion } from '../../composables/useTopicSuggestion';
 import { plainJournalChannels } from '../../journalChannels';
-import type { JournalAsset, JournalPlainChannel, JournalVisibility } from '../../types';
+import type { JournalAsset, JournalPlainChannel, JournalVisibility, PendingPublisherMedia } from '../../types';
 import { showMessage } from '../../utils/message';
 import { copyEntryAccessLink } from '../../utils/accessLink';
 import { appendJournalTags } from '../../utils/journalTags';
@@ -33,23 +33,24 @@ const props = withDefaults(defineProps<{
 });
 
 const router = useRouter();
+const route = useRoute();
 const publisher = useEntryPublisher();
 const tagSuggestions = useTagSuggestions();
 const topicSuggestion = useTopicSuggestion();
 const title = shallowRef('');
 const contentText = shallowRef('');
-const channel = shallowRef<JournalPlainChannel>('life');
+const channel = shallowRef<JournalPlainChannel>(props.entryId === undefined && route.query.channel === 'interest' ? 'interest' : 'life');
 const visibility = shallowRef<JournalVisibility>('public');
 const accessPassword = shallowRef('');
-const newMedia = shallowRef<File[]>([]);
+const newMedia = shallowRef<PendingPublisherMedia[]>([]);
 const removedAssetIds = shallowRef<ReadonlySet<number>>(new Set());
 const specifyTime = shallowRef(false);
 const specifiedTime = shallowRef('');
-const initializedEntryId = shallowRef<number | null>(null);
 const assetChanged = shallowRef(false);
 const stalledPublishProbe = shallowRef(previousPublishProbe());
 const mediaSubmit = useEntryMediaSubmit();
 let terminalErrorMessage: ReturnType<typeof showMessage> | null = null;
+let disposed = false;
 
 const isEditing = computed(() => props.entryId !== undefined);
 const isPublished = computed(() => publisher.entry.value?.publicationStatus === 'published');
@@ -93,15 +94,14 @@ const canSavePublished = computed(() =>
   && accessSettingsValid.value
   && !busy.value,
 );
-const routeError = computed(() => publisher.error.value);
 const tagSuggestionInputAvailable = computed(() =>
   title.value.trim().length > 0 || contentText.value.trim().length > 0,
 );
 const topicSuggestionInputAvailable = computed(() => contentText.value.trim().length > 0);
 
-watch(() => publisher.entry.value, (entry) => {
-  if (!entry || initializedEntryId.value === entry.id) return;
-  initializedEntryId.value = entry.id;
+function initializeEntry(): void {
+  const entry = publisher.entry.value;
+  if (!entry) return;
   title.value = entry.title ?? '';
   contentText.value = entry.contentText;
   channel.value = entry.channel as JournalPlainChannel;
@@ -111,9 +111,11 @@ watch(() => publisher.entry.value, (entry) => {
   specifiedTime.value = entry.sourceCreatedAt;
   newMedia.value = [];
   removedAssetIds.value = new Set();
-});
+}
 
-watch(routeError, (error) => {
+function showPublisherError(): void {
+  if (disposed) return;
+  const error = publisher.error.value;
   if (!error) {
     terminalErrorMessage?.close();
     terminalErrorMessage = null;
@@ -125,18 +127,27 @@ watch(routeError, (error) => {
     return;
   }
   showMessage({ message: error, type: 'error' });
-});
+}
 
-watch(() => mediaSubmit.error.value, (error) => {
-  if (error) showMessage({ message: error, type: 'error' });
-});
+async function prepareMedia(): Promise<string | null> {
+  const uploadId = await mediaSubmit.submit(newMedia.value, publisher.entry.value?.id);
+  if (disposed) return null;
+  if (mediaSubmit.error.value) showMessage({ message: mediaSubmit.error.value, type: 'error' });
+  return uploadId;
+}
 
 onMounted(async () => {
   if (props.entryId === undefined) return;
   await publisher.load(props.entryId);
+  if (disposed) return;
+  initializeEntry();
+  showPublisherError();
 });
 
-onBeforeUnmount(() => terminalErrorMessage?.close());
+onBeforeUnmount(() => {
+  disposed = true;
+  terminalErrorMessage?.close();
+});
 
 function removeExisting(assetId: number): void {
   if (!mediaEditable.value) return;
@@ -188,11 +199,11 @@ function formatProbeTime(timestamp: number): string {
 }
 
 async function saveDraft(): Promise<void> {
-  const uploadId = await mediaSubmit.submit(newMedia.value, publisher.entry.value?.id);
+  const uploadId = await prepareMedia();
   if (!uploadId) return;
   const saved = await publisher.saveDraft({ ...buildInput(), uploadId });
-  if (!saved) return;
-  initializedEntryId.value = saved.id;
+  showPublisherError();
+  if (!saved || disposed) return;
   assetChanged.value = true;
   title.value = saved.title ?? '';
   contentText.value = saved.contentText;
@@ -209,13 +220,14 @@ async function saveDraft(): Promise<void> {
 
 async function publish(): Promise<void> {
   beginPublishProbe();
-  const uploadId = await mediaSubmit.submit(newMedia.value, publisher.entry.value?.id);
+  const uploadId = await prepareMedia();
   if (!uploadId) {
     clearPublishProbe();
     return;
   }
   const published = await publisher.publish({ ...buildInput(), uploadId });
-  if (!published) {
+  showPublisherError();
+  if (!published || disposed) {
     clearPublishProbe();
     return;
   }
@@ -232,7 +244,7 @@ async function publish(): Promise<void> {
 
 async function savePublished(): Promise<void> {
   const uploadId = publisher.entry.value?.sourceKind === 'web'
-    ? await mediaSubmit.submit(newMedia.value, publisher.entry.value.id)
+    ? await prepareMedia()
     : '';
   if (publisher.entry.value?.sourceKind === 'web' && !uploadId) return;
   const saved = await publisher.updatePublished({
@@ -240,7 +252,8 @@ async function savePublished(): Promise<void> {
     uploadId,
     sourceCreatedAt: specifiedTime.value,
   });
-  if (!saved) return;
+  showPublisherError();
+  if (!saved || disposed) return;
   assetChanged.value = true;
   title.value = saved.title ?? '';
   newMedia.value = [];
@@ -386,6 +399,11 @@ async function generateTopic(): Promise<void> {
           </div>
 
           <aside class="publisher-view__sidebar">
+            <div v-if="mediaSubmit.busy.value" class="publisher-view__upload" role="status">
+              <span>{{ mediaSubmit.stageText.value }}</span>
+              <progress :value="mediaSubmit.progress.value" max="100" aria-label="媒体提交进度" />
+              <span>{{ mediaSubmit.progress.value }}%</span>
+            </div>
             <div class="publisher-view__settings">
               <EntryChannelField v-model="channel" :disabled="busy" />
 
@@ -458,6 +476,18 @@ async function generateTopic(): Promise<void> {
   align-items: baseline;
   gap: 0.75rem;
   margin-bottom: 1rem;
+}
+
+.publisher-view__upload {
+  display: grid;
+  gap: 0.5rem;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.publisher-view__upload progress {
+  width: 100%;
+  accent-color: var(--accent-strong);
 }
 
 .publisher-view__heading .text-button {

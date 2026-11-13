@@ -1,6 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import {
+  journalBindDriveVideoRequestSchema,
+  journalWebEntryUploadSessionAssetSchema,
   journalContentUpdateRequestSchema,
   journalLoginRequestSchema,
   journalPinnedUpdateRequestSchema,
@@ -14,6 +16,7 @@ import {
 import { hashAccessPassword, type JournalAuth } from '../auth.js';
 import type { JournalDeletionService } from '../entries/deletion.js';
 import type { JournalRepository } from '../data/repository.js';
+import type { JournalVideoLibraryService } from '../drive/videoLibraryService.js';
 import type { JournalWebEntryService } from '../entries/webEntryService.js';
 import type { JournalWebEntryUploadService } from '../entries/webEntryUploadService.js';
 
@@ -78,6 +81,7 @@ export async function registerPrivateEntryRoutes(
   deletionService: JournalDeletionService,
   webEntryService: JournalWebEntryService,
   webEntryUploads: JournalWebEntryUploadService,
+  videoLibrary: JournalVideoLibraryService,
 ): Promise<void> {
   server.get('/api/auth/session', async (request) => ({
     authenticated: auth.isAdmin(request),
@@ -125,6 +129,26 @@ export async function registerPrivateEntryRoutes(
     });
   });
 
+  server.get('/api/me/drive-videos', { preHandler: auth.requireAdmin }, async (request) => {
+    const query = z.object({ refresh: z.literal('1').optional() }).parse(request.query);
+    return videoLibrary.list(query.refresh === '1');
+  });
+
+  server.post('/api/me/entry-uploads/:uploadId/drive-assets', {
+    preHandler: auth.requireAdmin,
+    bodyLimit: 1024,
+  }, async (request) => {
+    const { uploadId } = uploadParamsSchema.parse(request.params);
+    try {
+      const { driveFileId } = journalBindDriveVideoRequestSchema.parse(request.body);
+      const asset = await webEntryUploads.bindDriveVideo(uploadId, driveFileId);
+      return { ok: true, asset: journalWebEntryUploadSessionAssetSchema.parse(asset) };
+    } catch (error) {
+      await webEntryUploads.discard(uploadId);
+      throw error;
+    }
+  });
+
   server.post('/api/me/entries', { preHandler: auth.requireAdmin }, async (request) => {
     const fields = journalWebEntryCreateFieldsSchema.parse(request.body);
     const { uploadId } = uploadParamsSchema.parse(request.body);
@@ -149,12 +173,12 @@ export async function registerPrivateEntryRoutes(
   }, async (request) => {
     const { uploadId, assetUploadId } = assetUploadParamsSchema.parse(request.params);
     try {
-      await webEntryUploads.process(uploadId, assetUploadId);
+      const asset = await webEntryUploads.process(uploadId, assetUploadId);
+      return { ok: true, asset: journalWebEntryUploadSessionAssetSchema.parse(asset) };
     } catch (error) {
       await webEntryUploads.discard(uploadId);
       throw error;
     }
-    return { ok: true };
   });
 
   server.delete('/api/me/entry-uploads/:uploadId', { preHandler: auth.requireAdmin }, async (request) => {

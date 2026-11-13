@@ -4,13 +4,15 @@ import { randomUUID } from 'node:crypto';
 import { FileStore } from '@tus/file-store';
 import { Server as TusServer, type Upload } from '@tus/server';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import type { JournalRepository, WebEntryAssetInput } from '../data/repository.js';
+import type { JournalRepository, WebEntryAssetInput, WebPlainAttachmentInput } from '../data/repository.js';
 import type { EntryStorageSession, JournalStorage } from '../media/storage.js';
 import type {
   JournalImageDimensions,
   JournalImagePreviewService,
 } from '../media/imagePreview.js';
 import { assertWebImageUpload, webImageKind } from '../media/webImage.js';
+import type { JournalDriveVideoIngestService } from '../drive/driveVideoIngestService.js';
+import { JournalDriveVideoError } from '../drive/videoDriveClient.js';
 import type { JournalVideoNormalizationService } from '../media/videoNormalization.js';
 
 const uploadPath = '/api/me/entry-file-uploads';
@@ -32,8 +34,9 @@ export interface PreparedWebEntryUpload {
   token: string;
   publicId: string;
   createdAt: string;
+  targetEntryId: number | null;
   storageSession: EntryStorageSession;
-  assets: WebEntryAssetInput[];
+  assets: WebPlainAttachmentInput[];
   sourceBytes: number;
   videoCount: number;
 }
@@ -49,7 +52,7 @@ interface TusError {
 }
 
 function invalidUpload(message: string): Error {
-  return new Error(message);
+  return new JournalDriveVideoError(message);
 }
 
 function asTusError(error: unknown): TusError {
@@ -64,12 +67,19 @@ export class JournalWebEntryUploadService {
   private readonly server: TusServer;
   private readonly uploads = new Map<string, PreparedWebEntryUpload>();
   private readonly pending = new Map<string, PendingUpload>();
+  private readonly pendingLocalProcessing = new Map<string, Promise<unknown>>();
+  private readonly pendingDriveBindings = new Map<string, {
+    entryUploadId: string;
+    abortController: AbortController;
+    promise: Promise<WebPlainAttachmentInput>;
+  }>();
 
   constructor(
     private readonly repository: JournalRepository,
     private readonly storage: JournalStorage,
     private readonly previews: JournalImagePreviewService,
     private readonly videos: JournalVideoNormalizationService,
+    private readonly driveVideos: JournalDriveVideoIngestService,
   ) {
     this.files = new FileStore({ directory: storage.contributionUploadDirectory() });
     this.server = new TusServer({
@@ -97,12 +107,7 @@ export class JournalWebEntryUploadService {
             throw invalidUpload('普通内容素材缺少上传信息。');
           }
           const session = this.requireUpload(entryUploadId, request);
-          const pendingCount = [...this.pending.values()]
-            .filter((item) => item.entryUploadId === entryUploadId)
-            .length;
-          if (session.assets.length + pendingCount >= maxAssets) {
-            throw invalidUpload('每条内容最多选择 10 项媒体。');
-          }
+          this.assertAvailableSlot(session, mimeType.startsWith('video/'));
           this.pending.set(upload.id, {
             entryUploadId,
             sourceName,
@@ -148,7 +153,12 @@ export class JournalWebEntryUploadService {
       token: randomUUID(),
       publicId,
       createdAt,
-      storageSession: await this.storage.begin(publicId, createdAt),
+      targetEntryId: input.entryId ?? null,
+      storageSession: await this.storage.begin(
+        publicId,
+        createdAt,
+        input.entryId === undefined ? undefined : this.repository.getExistingAssetRelativeDir(input.entryId),
+      ),
       assets: [],
       sourceBytes: 0,
       videoCount: 0,
@@ -172,33 +182,73 @@ export class JournalWebEntryUploadService {
     server.all(`${uploadPath}/*`, handleTus);
   }
 
-  async process(uploadId: string, assetUploadId: string): Promise<WebEntryAssetInput> {
+  async process(uploadId: string, assetUploadId: string): Promise<WebPlainAttachmentInput> {
     const pending = this.pending.get(assetUploadId);
     const upload = this.uploads.get(uploadId);
-    if (!pending || !pending.complete || !upload || pending.entryUploadId !== uploadId) {
+    if (
+      !pending || !pending.complete || !upload || pending.entryUploadId !== uploadId
+      || this.pendingLocalProcessing.has(assetUploadId)
+    ) {
       throw invalidUpload('普通内容媒体上传会话无效。');
     }
     if (upload.sourceBytes + pending.byteSize > maxTotalBytes) {
       throw invalidUpload('全部媒体不能超过 500 MiB。');
     }
     const sourcePath = path.join(this.storage.contributionUploadDirectory(), assetUploadId);
-    try {
+    const promise = Promise.resolve().then(async () => {
       const asset = pending.mimeType.startsWith('video/')
         ? await this.processVideo(sourcePath, pending, upload)
         : await this.processImage(sourcePath, pending, upload);
-      upload.assets.push({ ...asset, duration: asset.duration ?? null });
+      if (this.uploads.get(uploadId) !== upload) {
+        for (const relativePath of [asset.relativePath, asset.previewRelativePath, asset.posterRelativePath]) {
+          if (relativePath === null) continue;
+          await fs.promises.rm(path.join(upload.storageSession.tempDir, path.posix.basename(relativePath)));
+        }
+        throw invalidUpload('普通内容媒体上传会话无效。');
+      }
+      const attachment: WebPlainAttachmentInput = { ...asset, sourceKind: 'web', duration: asset.duration ?? null };
+      upload.assets.push(attachment);
       upload.sourceBytes += pending.byteSize;
       if (asset.kind === 'video') upload.videoCount += 1;
+      return attachment;
+    }).finally(async () => {
+      try {
+        await this.files.remove(assetUploadId);
+      } finally {
+        this.pending.delete(assetUploadId);
+        this.pendingLocalProcessing.delete(assetUploadId);
+      }
+    });
+    this.pendingLocalProcessing.set(assetUploadId, promise);
+    return promise;
+  }
+
+  bindDriveVideo(uploadId: string, fileId: string): Promise<WebPlainAttachmentInput> {
+    const upload = this.uploads.get(uploadId);
+    if (!upload) throw invalidUpload('普通内容媒体上传会话无效。');
+    this.assertAvailableSlot(upload, true);
+    const bindingId = randomUUID();
+    const abortController = new AbortController();
+    // Schedule I/O only after the reservation has been registered synchronously.
+    const promise = Promise.resolve().then(async () => {
+      const asset = await this.driveVideos.ingest(fileId, upload.storageSession, abortController.signal);
+      abortController.signal.throwIfAborted();
+      upload.assets.push(asset);
+      upload.videoCount += 1;
       return asset;
-    } finally {
-      this.pending.delete(assetUploadId);
-      await this.files.remove(assetUploadId);
-    }
+    }).finally(() => {
+      this.pendingDriveBindings.delete(bindingId);
+    });
+    this.pendingDriveBindings.set(bindingId, { entryUploadId: uploadId, abortController, promise });
+    return promise;
   }
 
   take(uploadId: string): PreparedWebEntryUpload {
     const upload = this.uploads.get(uploadId);
-    if (!upload || this.pendingFor(uploadId).length > 0) {
+    if (
+      !upload || this.pendingFor(uploadId).length > 0
+      || this.pendingDriveFor(uploadId).length > 0 || this.pendingLocalFor(uploadId).length > 0
+    ) {
       throw invalidUpload('普通内容媒体上传会话尚未完成。');
     }
     this.uploads.delete(uploadId);
@@ -209,6 +259,12 @@ export class JournalWebEntryUploadService {
     const upload = this.uploads.get(uploadId);
     if (!upload) return;
     this.uploads.delete(uploadId);
+    const bindings = this.pendingDriveFor(uploadId);
+    for (const binding of bindings) binding.abortController.abort();
+    await Promise.allSettled([
+      ...bindings.map(binding => binding.promise),
+      ...this.pendingLocalFor(uploadId),
+    ]);
     for (const [assetUploadId, pending] of this.pending) {
       if (pending.entryUploadId !== uploadId) continue;
       this.pending.delete(assetUploadId);
@@ -239,14 +295,15 @@ export class JournalWebEntryUploadService {
     try {
       dimensions = await this.previews.generate(target.absolutePath, target.previewAbsolutePath);
     } catch (error) {
-      await this.storage.deleteAsset(target.relativePath);
+      await fs.promises.rm(target.absolutePath);
       throw error;
     }
     if (kind === 'animation') {
       try {
         await this.previews.generatePoster(target.absolutePath, target.posterAbsolutePath);
       } catch (error) {
-        await this.storage.deleteAssetFiles(target.relativePath, target.previewRelativePath, null);
+        await fs.promises.rm(target.absolutePath);
+        await fs.promises.rm(target.previewAbsolutePath);
         throw error;
       }
     }
@@ -275,6 +332,28 @@ export class JournalWebEntryUploadService {
       sourceName: pending.sourceName,
       byteSize: pending.byteSize,
     }, upload.storageSession);
+  }
+
+  private assertAvailableSlot(upload: PreparedWebEntryUpload, video: boolean): void {
+    const pending = this.pendingFor(upload.id);
+    const driveCount = this.pendingDriveFor(upload.id).length;
+    if (upload.assets.length + pending.length + driveCount >= maxAssets) {
+      throw invalidUpload('每条内容最多选择 10 项媒体。');
+    }
+    if (video && upload.videoCount + pending.filter(item => item.mimeType.startsWith('video/')).length
+      + driveCount >= maxVideos) {
+      throw invalidUpload('每条内容最多选择 5 段视频。');
+    }
+  }
+
+  private pendingLocalFor(uploadId: string): Promise<unknown>[] {
+    return [...this.pendingLocalProcessing]
+      .filter(([assetUploadId]) => this.pending.get(assetUploadId)?.entryUploadId === uploadId)
+      .map(([, promise]) => promise);
+  }
+
+  private pendingDriveFor(uploadId: string) {
+    return [...this.pendingDriveBindings.values()].filter(binding => binding.entryUploadId === uploadId);
   }
 
   private pendingFor(uploadId: string): PendingUpload[] {

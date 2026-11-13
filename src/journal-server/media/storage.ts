@@ -40,11 +40,11 @@ export class JournalStorage {
     return this.contributionUploadsDir;
   }
 
-  async begin(publicId: string, sourceCreatedAt: string): Promise<EntryStorageSession> {
+  async begin(publicId: string, sourceCreatedAt: string, existingRelativeDir?: string): Promise<EntryStorageSession> {
     const sourceDate = new Date(sourceCreatedAt);
     const year = String(sourceDate.getUTCFullYear());
     const month = String(sourceDate.getUTCMonth() + 1).padStart(2, '0');
-    const relativeDir = path.posix.join('assets', year, month, publicId);
+    const relativeDir = existingRelativeDir ?? path.posix.join('assets', year, month, publicId);
     const tempDir = path.join(this.temporaryDir, randomUUID());
     await fs.promises.mkdir(tempDir, { recursive: true });
     return {
@@ -72,6 +72,17 @@ export class JournalStorage {
       previewRelativePath: this.previewRelativePath(relativePath),
       posterAbsolutePath: `${absolutePath}.poster.webp`,
       posterRelativePath: this.posterRelativePath(relativePath),
+    };
+  }
+
+  previewOnlyTarget(session: EntryStorageSession): {
+    previewAbsolutePath: string;
+    previewRelativePath: string;
+  } {
+    const filename = `${randomUUID()}.preview.webp`;
+    return {
+      previewAbsolutePath: path.join(session.tempDir, filename),
+      previewRelativePath: path.posix.join(session.relativeDir, filename),
     };
   }
 
@@ -217,7 +228,7 @@ export class JournalStorage {
   }
 
   async deleteAssetFiles(
-    relativePath: string,
+    relativePath: string | null,
     previewRelativePath: string,
     posterRelativePath: string | null,
   ): Promise<void> {
@@ -225,7 +236,9 @@ export class JournalStorage {
     if (posterRelativePath !== null) {
       await fs.promises.rm(this.absoluteAssetPath(posterRelativePath));
     }
-    await fs.promises.rm(this.absoluteAssetPath(relativePath));
+    if (relativePath !== null) {
+      await fs.promises.rm(this.absoluteAssetPath(relativePath));
+    }
   }
 
   async deleteContributionDirectory(

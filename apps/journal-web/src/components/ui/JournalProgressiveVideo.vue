@@ -1,13 +1,17 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, shallowRef, useTemplateRef } from 'vue';
+import { computed, onBeforeUnmount, onMounted, shallowRef, useTemplateRef } from 'vue';
 import { acquireJournalVideo, releaseJournalVideo } from '../../utils/journalVideoPlayerPool';
+import { formatMediaDuration } from '../../utils/formatters';
 
 const props = withDefaults(defineProps<{
   src: string;
   previewSrc: string;
   fit?: 'cover' | 'contain';
+  preloadVideo?: boolean;
+  duration?: number | null;
 }>(), {
   fit: 'cover',
+  preloadVideo: true,
 });
 
 const emit = defineEmits<{
@@ -16,16 +20,18 @@ const emit = defineEmits<{
 
 const state = shallowRef<'loading' | 'ready' | 'error'>('loading');
 const root = useTemplateRef<HTMLElement>('root');
-let observer: IntersectionObserver;
+const durationLabel = computed(() => formatMediaDuration(props.duration));
+let observer: IntersectionObserver | null = null;
 let acquired = false;
 
 onMounted(() => {
+  if (!props.preloadVideo) return;
   observer = new IntersectionObserver(([entry]) => {
     if (!entry.isIntersecting) return;
 
     acquireJournalVideo(props.src);
     acquired = true;
-    observer.disconnect();
+    observer?.disconnect();
   }, {
     rootMargin: '240px 0px',
     threshold: 0,
@@ -34,7 +40,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
-  observer.disconnect();
+  observer?.disconnect();
   if (acquired) {
     releaseJournalVideo(props.src);
     acquired = false;
@@ -74,6 +80,7 @@ function exposePreviewError(): void {
         @error="exposePreviewError"
       >
       <span class="progressive-video__play" aria-hidden="true" />
+      <span v-if="durationLabel" class="progressive-video__duration">{{ durationLabel }}</span>
     </button>
   </span>
 </template>
@@ -148,6 +155,21 @@ function exposePreviewError(): void {
   border-left: 0.36rem solid #fff;
   content: '';
   transform: translateX(0.04rem);
+}
+
+.progressive-video__duration {
+  position: absolute;
+  z-index: 3;
+  right: 0.6rem;
+  bottom: 0.6rem;
+  padding: 0.2rem 0.4rem;
+  border-radius: 5px;
+  background: rgb(0 0 0 / 48%);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 18%);
+  color: #fff;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  backdrop-filter: blur(4px);
 }
 
 @keyframes progressive-video-cover-reveal {

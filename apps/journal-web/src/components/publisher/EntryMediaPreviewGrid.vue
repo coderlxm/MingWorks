@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { onBeforeUnmount } from 'vue';
-import type { JournalAsset } from '../../types';
+import { onBeforeUnmount, onUpdated } from 'vue';
+import type { JournalAsset, PendingPublisherMedia } from '../../types';
+import { formatMediaDuration } from '../../utils/formatters';
 import {
   isJournalAnimatedImage,
   resolveJournalMediaType,
@@ -15,7 +16,7 @@ const emit = defineEmits<{
   removeExisting: [assetId: number];
 }>();
 
-const files = defineModel<File[]>({ required: true });
+const files = defineModel<PendingPublisherMedia[]>({ required: true });
 const previewUrls = new Map<File, string>();
 
 function previewUrl(file: File): string {
@@ -26,13 +27,22 @@ function previewUrl(file: File): string {
   return url;
 }
 
-function removeLocal(file: File): void {
-  const url = previewUrls.get(file);
-  if (url) URL.revokeObjectURL(url);
-  previewUrls.delete(file);
-  files.value = files.value.filter(candidate => candidate !== file);
+function cleanupPreviews(): void {
+  const localFiles = new Set(files.value.filter(item => item.kind === 'local').map(item => item.file));
+  for (const [file, url] of previewUrls) {
+    if (localFiles.has(file)) continue;
+    URL.revokeObjectURL(url);
+    previewUrls.delete(file);
+  }
 }
 
+function removePending(id: string): void {
+  if (props.disabled) return;
+  files.value = files.value.filter(item => item.id !== id);
+  cleanupPreviews();
+}
+
+onUpdated(cleanupPreviews);
 onBeforeUnmount(() => {
   previewUrls.forEach(url => URL.revokeObjectURL(url));
 });
@@ -41,8 +51,13 @@ onBeforeUnmount(() => {
 <template>
   <div class="media-preview-grid">
     <figure v-for="asset in props.existingAssets" :key="`asset-${asset.id}`" class="media-preview-grid__item">
+      <img
+        v-if="asset.sourceKind === 'drive'"
+        :src="asset.previewUrl!"
+        :alt="asset.originalName ?? '云盘视频'"
+      >
       <video
-        v-if="resolveJournalMediaType(asset) === 'video'"
+        v-else-if="resolveJournalMediaType(asset) === 'video'"
         :src="asset.url"
         :poster="asset.previewUrl ?? undefined"
         muted
@@ -53,6 +68,7 @@ onBeforeUnmount(() => {
         :src="isJournalAnimatedImage(asset) ? asset.url : (asset.previewUrl ?? asset.url)"
         :alt="asset.originalName ?? '草稿图片'"
       >
+      <span v-if="resolveJournalMediaType(asset) === 'video'" class="media-preview-grid__badge">▶ {{ formatMediaDuration(asset.duration) }}</span>
       <button
         class="media-preview-grid__remove"
         type="button"
@@ -64,15 +80,23 @@ onBeforeUnmount(() => {
       </button>
     </figure>
 
-    <figure v-for="file in files" :key="previewUrl(file)" class="media-preview-grid__item">
-      <video v-if="file.type.startsWith('video/')" :src="previewUrl(file)" muted preload="metadata"></video>
-      <img v-else :src="previewUrl(file)" :alt="file.name">
+    <figure v-for="item in files" :key="item.id" class="media-preview-grid__item" :class="{ 'media-preview-grid__item--drive': item.kind === 'drive' }">
+      <div v-if="item.kind === 'drive'" class="media-preview-grid__drive" :title="item.video.name">
+        <span aria-hidden="true">▶</span>
+        <strong>{{ item.video.name }}</strong>
+        <small v-if="item.video.width && item.video.height">{{ item.video.width }} × {{ item.video.height }}</small>
+        <small>{{ formatMediaDuration(item.video.durationMillis === null ? null : item.video.durationMillis / 1000) }}</small>
+      </div>
+      <template v-else>
+        <video v-if="item.file.type.startsWith('video/')" :src="previewUrl(item.file)" muted preload="metadata"></video>
+        <img v-else :src="previewUrl(item.file)" :alt="item.file.name">
+      </template>
       <button
         class="media-preview-grid__remove"
         type="button"
         :disabled="props.disabled"
-        :aria-label="`移除 ${file.name}`"
-        @click="removeLocal(file)"
+        :aria-label="`移除 ${item.kind === 'drive' ? item.video.name : item.file.name}`"
+        @click="removePending(item.id)"
       >
         ×
       </button>
@@ -123,6 +147,34 @@ onBeforeUnmount(() => {
   font-size: 0.95rem;
   line-height: 1;
 }
+
+.media-preview-grid__badge {
+  position: absolute;
+  right: 0.25rem;
+  bottom: 0.25rem;
+  padding: 0.15rem 0.3rem;
+  border-radius: 4px;
+  background: rgb(0 0 0 / 55%);
+  color: #fff;
+  font-size: 0.65rem;
+  backdrop-filter: blur(4px);
+}
+
+.media-preview-grid__item--drive { width: 8rem; }
+.media-preview-grid__drive {
+  display: grid;
+  height: 100%;
+  align-content: center;
+  gap: 0.15rem;
+  padding: 0.5rem 1.7rem 0.5rem 0.6rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-media);
+  background: var(--surface-muted);
+  color: var(--text-primary);
+  font-size: 0.7rem;
+}
+.media-preview-grid__drive strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.media-preview-grid__drive small { color: var(--text-muted); font-size: 0.65rem; }
 
 .media-preview-grid__remove:disabled {
   cursor: wait;

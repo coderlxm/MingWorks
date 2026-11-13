@@ -30,6 +30,9 @@ import { JournalCommentNotificationService } from './interactions/interactionNot
 import { JournalInteractionService } from './interactions/interactionService.js';
 import { JournalKnowledgeAgentService } from './knowledge/knowledgeAgentService.js';
 import { JournalKnowledgeRepository } from './knowledge/knowledgeRepository.js';
+import { JournalVideoDriveClient } from './drive/videoDriveClient.js';
+import { JournalVideoLibraryService } from './drive/videoLibraryService.js';
+import { JournalDriveVideoIngestService } from './drive/driveVideoIngestService.js';
 import { JournalPhotoDriveClient } from './photos/photoDriveClient.js';
 import { JournalPhotoLibraryService } from './photos/photoLibraryService.js';
 import {
@@ -108,6 +111,13 @@ export async function createJournalServer(config: JournalServerConfig): Promise<
   await storage.initializeContributionStorage();
   const previews = new JournalImagePreviewService();
   const videoPreviews = new JournalVideoPreviewService();
+  const videoDrive = new JournalVideoDriveClient({
+    clientId: config.photoDriveClientId,
+    clientSecret: config.photoDriveClientSecret,
+    refreshToken: config.photoDriveRefreshToken,
+  });
+  const videoLibrary = new JournalVideoLibraryService(videoDrive, repository, config.videoDriveRootFolderId);
+  const driveVideoIngest = new JournalDriveVideoIngestService(videoDrive, videoLibrary, storage, videoPreviews);
   const videoNormalization = new JournalVideoNormalizationService(storage, videoPreviews);
   const articleService = new JournalArticleService(repository, storage, previews);
   const knowledgeRepository = new JournalKnowledgeRepository(database);
@@ -124,6 +134,7 @@ export async function createJournalServer(config: JournalServerConfig): Promise<
     storage,
     previews,
     videoNormalization,
+    driveVideoIngest,
   );
   const deletionService = new JournalDeletionService(repository, storage);
   const downloader = new TelegramFileDownloader(config.telegramToken);
@@ -237,6 +248,7 @@ export async function createJournalServer(config: JournalServerConfig): Promise<
     deletionService,
     webEntryService,
     webEntryUploads,
+    videoLibrary,
   );
   await registerTagSuggestionRoutes(server, auth, aiSuggestions, siteProfileService);
   await registerTopicSuggestionRoutes(server, auth, aiSuggestions);
@@ -244,7 +256,7 @@ export async function createJournalServer(config: JournalServerConfig): Promise<
   await registerArticleRoutes(server, auth, articleService);
   await registerAutomationArticleRoutes(server, auth, articleService, config.publicBaseUrl);
   await registerKnowledgeRoutes(server, auth, knowledgeAgentService);
-  await registerMediaRoutes(server, auth, repository, config.dataDir);
+  await registerMediaRoutes(server, auth, repository, config.dataDir, videoDrive);
   await registerPhotoRoutes(server, photoLibrary);
   await registerPrivateContributionRoutes(server, {
     auth,
@@ -256,7 +268,7 @@ export async function createJournalServer(config: JournalServerConfig): Promise<
   await registerSiteProfileRoutes(server, auth, siteProfileService);
   await registerResumeRoutes(server, { auth, resumeService });
   await registerWeatherRoutes(server, weatherService);
-  await registerFeedRoutes(server, repository, siteProfileService, config.publicBaseUrl);
+  await registerFeedRoutes(server, repository, siteProfileService, config.publicBaseUrl, storage);
   await registerGameRoutes(server, {
     auth,
     repository: gameRepository,

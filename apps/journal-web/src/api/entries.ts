@@ -1,6 +1,8 @@
 import type {
   FeedFilters,
   JournalDeletionResult,
+  JournalDriveVideoCatalog,
+  JournalWebEntryUploadSessionAsset,
   JournalEntry,
   JournalFeed,
   JournalPage,
@@ -129,6 +131,25 @@ export function createEntryUpload(entryId?: number): Promise<{ uploadId: string;
   return requestMutationWithTimeout<{ uploadId: string; token: string }>(
     '/api/me/entry-uploads',
     jsonRequest('POST', entryId === undefined ? {} : { entryId }),
+  );
+}
+
+export function fetchDriveVideoCatalog(options?: { refresh?: boolean }): Promise<JournalDriveVideoCatalog> {
+  return requestJson<JournalDriveVideoCatalog>(`/api/me/drive-videos${options?.refresh ? '?refresh=1' : ''}`);
+}
+
+export function bindEntryUploadDriveVideo(
+  uploadId: string,
+  driveFileId: string,
+  signal?: AbortSignal,
+): Promise<{ ok: true; asset: JournalWebEntryUploadSessionAsset }> {
+  const timeout = AbortSignal.timeout(35_000);
+  return requestJson<{ ok: true; asset: JournalWebEntryUploadSessionAsset }>(
+    `/api/me/entry-uploads/${encodeURIComponent(uploadId)}/drive-assets`,
+    {
+      ...jsonRequest('POST', { driveFileId }),
+      signal: AbortSignal.any(signal ? [signal, timeout] : [timeout]),
+    },
   );
 }
 
