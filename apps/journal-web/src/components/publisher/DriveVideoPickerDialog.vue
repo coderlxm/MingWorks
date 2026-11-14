@@ -41,17 +41,25 @@ const videos = computed(() => {
 });
 const hasExistingDriveAssets = computed(() => props.existingAssets.some(asset => asset.sourceKind === 'drive'));
 
+let requestSequence = 0;
+
 async function loadCatalog(refresh = false): Promise<void> {
+  const currentRequest = ++requestSequence;
   loading.value = true;
   error.value = null;
   selected.value = [];
   catalog.value = null;
   try {
-    catalog.value = await fetchDriveVideoCatalog({ refresh });
+    const result = await fetchDriveVideoCatalog({ refresh });
+    if (currentRequest !== requestSequence) return;
+    catalog.value = result;
   } catch (reason) {
+    if (currentRequest !== requestSequence) return;
     error.value = reason instanceof Error ? reason.message : String(reason);
   } finally {
-    loading.value = false;
+    if (currentRequest === requestSequence) {
+      loading.value = false;
+    }
   }
 }
 
@@ -59,6 +67,11 @@ function openDialog(): void {
   folder.value = 'all';
   keyword.value = '';
   void loadCatalog();
+}
+
+function closeDialog(): void {
+  requestSequence += 1;
+  loading.value = false;
 }
 
 function isSelected(video: JournalDriveVideoItem): boolean {
@@ -99,6 +112,7 @@ function confirmSelection(): void {
     append-to-body
     :close-on-click-modal="false"
     @open="openDialog"
+    @close="closeDialog"
   >
     <div class="drive-video-picker__body">
       <div class="drive-video-picker__toolbar">

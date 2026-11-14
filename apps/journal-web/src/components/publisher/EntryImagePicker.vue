@@ -171,7 +171,6 @@ function selectImages(): void {
     >从谷歌云盘选择视频</button>
 
     <DriveVideoPickerDialog
-      v-if="drivePickerOpen"
       v-model="drivePickerOpen"
       :pending-media="files"
       :existing-assets="props.existingAssets"
