@@ -95,7 +95,7 @@ function confirmSelection(): void {
     class="drive-video-picker"
     title="从谷歌云盘选择视频"
     width="min(52rem, calc(100vw - 2rem))"
-    top="6vh"
+    align-center
     append-to-body
     :close-on-click-modal="false"
     @open="openDialog"
