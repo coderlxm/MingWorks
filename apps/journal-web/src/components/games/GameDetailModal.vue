@@ -261,13 +261,45 @@ onUnmounted(() => {
   position: fixed;
   inset: 0;
   z-index: 1000;
+  color-scheme: dark;
   background: rgba(4, 6, 10, 0.85);
   backdrop-filter: blur(16px);
   display: flex;
   justify-content: center;
   align-items: flex-start;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: clamp(1rem, 3vw, 3rem) 1rem;
+}
+
+.game-modal-overlay::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.game-modal-overlay::-webkit-scrollbar-track {
+  background: transparent;
+  margin-block: 8px;
+}
+
+.game-modal-overlay::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.22);
+  border-radius: 999px;
+}
+
+.game-modal-overlay::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.4);
+}
+
+.game-modal-overlay::-webkit-scrollbar-thumb:active {
+  background: rgba(96, 165, 250, 0.55);
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  .game-modal-overlay {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.28) transparent;
+  }
 }
 
 .game-modal {

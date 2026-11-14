@@ -290,6 +290,7 @@ onUnmounted(() => {
   position: fixed;
   inset: 0;
   z-index: 1050;
+  color-scheme: dark;
   background: rgba(4, 6, 10, 0.8);
   backdrop-filter: blur(12px);
   display: flex;
@@ -301,20 +302,21 @@ onUnmounted(() => {
 .add-modal {
   width: min(720px, 100%);
   max-height: 90vh;
+  display: flex;
+  flex-direction: column;
   background: #0f131c;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 16px;
-  overflow-y: auto;
+  overflow: hidden;
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8);
-  padding: 1.75rem;
 }
 
 .add-modal__header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 1.5rem;
-  padding-bottom: 0.75rem;
+  flex-shrink: 0;
+  padding: 1.4rem 1.75rem 1rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
@@ -325,17 +327,76 @@ onUnmounted(() => {
 }
 
 .close-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
   background: transparent;
   border: none;
   color: rgba(255, 255, 255, 0.5);
   font-size: 1.25rem;
+  line-height: 1;
   cursor: pointer;
+  transition: color 0.2s ease, background-color 0.2s ease;
+}
+
+.close-btn:hover:not(:disabled) {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .add-form {
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 1.25rem 1.75rem 1.75rem;
+}
+
+.add-form::-webkit-scrollbar,
+.form-group textarea::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.add-form::-webkit-scrollbar-track,
+.form-group textarea::-webkit-scrollbar-track {
+  background: transparent;
+  margin-block: 8px;
+}
+
+.add-form::-webkit-scrollbar-thumb,
+.form-group textarea::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.22);
+  border-radius: 999px;
+}
+
+.add-form::-webkit-scrollbar-thumb:hover,
+.form-group textarea::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.4);
+}
+
+.add-form::-webkit-scrollbar-thumb:active,
+.form-group textarea::-webkit-scrollbar-thumb:active {
+  background: rgba(96, 165, 250, 0.55);
+}
+
+.add-form::-webkit-scrollbar-corner,
+.form-group textarea::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  .add-form,
+  .form-group textarea {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.28) transparent;
+  }
 }
 
 .form-row {

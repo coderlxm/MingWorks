@@ -221,6 +221,7 @@ onBeforeUnmount(() => {
   --game-border: rgba(255, 255, 255, 0.08);
   --game-edge: clamp(1rem, 2.5vw, 3rem);
 
+  color-scheme: dark;
   width: 100%;
   min-height: 100%;
   background: var(--game-canvas);
