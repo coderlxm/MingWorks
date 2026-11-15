@@ -3,6 +3,7 @@
     "alias": "bwgdc01",
     "name": "Bot 备份",
     "host": "144.34.224.170",
+    "port": 22543,
     "serviceUnit": "notinews-backup.service",
     "timerUnit": "notinews-backup.timer"
   },
@@ -10,6 +11,7 @@
     "alias": "rndc02",
     "name": "Journal 备份",
     "host": "23.254.214.138",
+    "port": 22543,
     "serviceUnit": "journal-backup.service",
     "timerUnit": "journal-backup.timer"
   }

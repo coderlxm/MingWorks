@@ -8,6 +8,7 @@ export interface ServerHealthTarget {
   alias: string;
   name: string;
   host: string;
+  port: number;
   role: string;
   provider?: string;
   note?: string;
@@ -96,6 +97,7 @@ async function probeServer(target: ServerHealthTarget): Promise<ServerHealthResu
         '-o', 'ServerAliveInterval=3',
         '-o', 'ServerAliveCountMax=1',
         '-o', 'LogLevel=ERROR',
+        '-p', String(target.port),
         '-l', 'root',
         target.host,
         REMOTE_COMMAND

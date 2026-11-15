@@ -9,6 +9,7 @@ export interface BackupHealthTarget {
   alias: string;
   name: string;
   host: string;
+  port: number;
   serviceUnit: string;
   timerUnit: string;
 }
@@ -104,6 +105,7 @@ export async function collectBackupSystemdStatus(target: BackupHealthTarget): Pr
       '-o', 'ServerAliveInterval=3',
       '-o', 'ServerAliveCountMax=1',
       '-o', 'LogLevel=ERROR',
+      '-p', String(target.port),
       '-l', 'root',
       target.host,
       buildRemoteCheckCommand(target),
