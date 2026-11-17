@@ -4,6 +4,7 @@ packages:
   - 'apps/reminder-dashboard'
   - 'apps/server-dashboard'
   - 'apps/journal-analytics'
+  - 'apps/bless-card'
 
 engineStrict: true
 
