@@ -219,7 +219,14 @@ export async function createJournalServer(config: JournalServerConfig): Promise<
     return { status: 'ok' };
   });
 
-  await registerInternalRoutes(server, { auth, deletionService, ingestService, repository });
+  await registerInternalRoutes(server, {
+    auth,
+    deletionService,
+    ingestService,
+    repository,
+    telegramToken: config.telegramToken,
+    allowedChatId: config.allowedChatId,
+  });
   registerAnalyticsRoutes(server, {
     auth,
     repository: analyticsRepository,

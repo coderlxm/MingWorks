@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { Telegraf } from 'telegraf';
 import { z } from 'zod';
 import {
   journalIngestRequestSchema,
@@ -16,17 +17,66 @@ const internalVisibilityRequestSchema = z.object({
   visibility: z.enum(['private', 'public']),
 });
 
+const internalAlertRequestSchema = z.strictObject({
+  source: z.string().trim().min(1).max(64).optional(),
+  event: z.string().trim().min(1).max(64).optional(),
+  title: z.string().trim().min(1).max(200),
+  body: z.string().trim().min(1).max(3000).optional(),
+  lines: z.array(z.string().max(500)).min(1).max(40).optional(),
+});
+
+type InternalAlertInput = z.infer<typeof internalAlertRequestSchema>;
+
+function escapeHtml(text: string): string {
+  return text
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function formatInternalAlertHtml(input: InternalAlertInput): string {
+  const sections: string[] = [`<b>${escapeHtml(input.title)}</b>`];
+  const meta: string[] = [];
+  if (input.source !== undefined) meta.push(`来源：<code>${escapeHtml(input.source)}</code>`);
+  if (input.event !== undefined) meta.push(`事件：<code>${escapeHtml(input.event)}</code>`);
+  if (meta.length > 0) sections.push(meta.join(' · '));
+  if (input.body !== undefined) sections.push('', escapeHtml(input.body));
+  if (input.lines !== undefined) sections.push('', ...input.lines.map((line) => escapeHtml(line)));
+  return sections.join('\n');
+}
+
 interface InternalRoutesOptions {
   auth: JournalAuth;
   deletionService: JournalDeletionService;
   ingestService: JournalIngestService;
   repository: JournalRepository;
+  telegramToken: string;
+  allowedChatId: string;
 }
 
 export async function registerInternalRoutes(
   server: FastifyInstance,
   options: InternalRoutesOptions,
 ): Promise<void> {
+  const alertBot = new Telegraf(options.telegramToken);
+
+  server.post('/api/internal/alerts', {
+    preHandler: options.auth.requireInternal,
+  }, async (request, reply) => {
+    const input = internalAlertRequestSchema.parse(request.body);
+    const message = formatInternalAlertHtml(input);
+    if (message.length > 4096) {
+      return reply.code(400).send({ error: 'Formatted alert exceeds Telegram 4096 character limit.' });
+    }
+    const sent = await alertBot.telegram.sendMessage(options.allowedChatId, message, {
+      parse_mode: 'HTML',
+      link_preview_options: { is_disabled: true },
+    });
+    return { ok: true, messageId: sent.message_id };
+  });
+
   server.post('/api/internal/telegram-entries', {
     preHandler: options.auth.requireInternal,
   }, async (request) => {
