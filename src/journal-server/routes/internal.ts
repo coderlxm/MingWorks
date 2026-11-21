@@ -47,6 +47,14 @@ function formatInternalAlertHtml(input: InternalAlertInput): string {
   return sections.join('\n');
 }
 
+function sanitizeTelegramError(error: unknown, token: string): Error {
+  const raw = error instanceof Error ? error.message : String(error);
+  const sanitized = raw
+    .replaceAll(token, '[REDACTED]')
+    .replaceAll(/\/bot[^/\s]+/g, '/bot[REDACTED]');
+  return new Error(sanitized);
+}
+
 interface InternalRoutesOptions {
   auth: JournalAuth;
   deletionService: JournalDeletionService;
@@ -67,14 +75,19 @@ export async function registerInternalRoutes(
   }, async (request, reply) => {
     const input = internalAlertRequestSchema.parse(request.body);
     const message = formatInternalAlertHtml(input);
+    // Serialized HTML length is always >= rendered text length, keeping a safe margin under Telegram's 4096-char limit.
     if (message.length > 4096) {
       return reply.code(400).send({ error: 'Formatted alert exceeds Telegram 4096 character limit.' });
     }
-    const sent = await alertBot.telegram.sendMessage(options.allowedChatId, message, {
-      parse_mode: 'HTML',
-      link_preview_options: { is_disabled: true },
-    });
-    return { ok: true, messageId: sent.message_id };
+    try {
+      const sent = await alertBot.telegram.sendMessage(options.allowedChatId, message, {
+        parse_mode: 'HTML',
+        link_preview_options: { is_disabled: true },
+      });
+      return { ok: true, messageId: sent.message_id };
+    } catch (error) {
+      throw sanitizeTelegramError(error, options.telegramToken);
+    }
   });
 
   server.post('/api/internal/telegram-entries', {
