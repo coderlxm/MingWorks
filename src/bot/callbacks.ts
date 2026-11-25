@@ -144,8 +144,13 @@ export function parseStartggInterestCallbackData(
 }
 
 export type MasturbationCallback =
+  | { type: 'now' }
   | { type: 'add'; referenceDate: string | null }
-  | { type: 'stats' }
+  | { type: 'stats'; settleDate: string | null }
+  | { type: 'settle_zero'; dateKey: string }
+  | { type: 'settle_inc'; dateKey: string }
+  | { type: 'settle_dec'; dateKey: string }
+  | { type: 'settle_view'; dateKey: string }
   | { type: 'undo'; recordId: number };
 
 export function parseMasturbationCallbackData(data: string | undefined): MasturbationCallback | null {
@@ -153,11 +158,22 @@ export function parseMasturbationCallbackData(data: string | undefined): Masturb
   const parts = data.split(':');
   if (parts[0] !== 'masturbation') return null;
   const action = parts[1];
+  if (parts.length === 2 && action === 'now') return { type: 'now' };
   if (parts.length === 2 && action === 'add') return { type: 'add', referenceDate: null };
   if (parts.length === 3 && action === 'add' && /^\d{4}-\d{2}-\d{2}$/.test(parts[2]!)) {
     return { type: 'add', referenceDate: parts[2]! };
   }
-  if (parts.length === 2 && action === 'stats') return { type: 'stats' };
+  if (parts.length === 2 && action === 'stats') return { type: 'stats', settleDate: null };
+  if (parts.length === 3 && action === 'stats' && /^\d{4}-\d{2}-\d{2}$/.test(parts[2]!)) {
+    return { type: 'stats', settleDate: parts[2]! };
+  }
+  if (
+    parts.length === 3
+    && (action === 'settle_zero' || action === 'settle_inc' || action === 'settle_dec' || action === 'settle_view')
+    && /^\d{4}-\d{2}-\d{2}$/.test(parts[2]!)
+  ) {
+    return { type: action, dateKey: parts[2]! };
+  }
   if (action === 'undo') {
     if (parts.length !== 3) return null;
     const recordId = Number(parts[2]);

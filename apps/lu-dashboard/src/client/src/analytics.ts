@@ -3,6 +3,7 @@ import timezone from 'dayjs/plugin/timezone'
 import utc from 'dayjs/plugin/utc'
 import type {
   CalendarPoint,
+  CurrentInterval,
   DashboardAnalytics,
   DashboardIntervals,
   DashboardRange,
@@ -15,7 +16,6 @@ dayjs.extend(utc)
 dayjs.extend(timezone)
 
 const TIMEZONE = 'Asia/Shanghai'
-const DAY_MS = 86_400_000
 const PERIODS = ['凌晨', '上午', '下午', '晚上'] as const
 
 function timeOf(record: MasturbationRecord) {
@@ -34,9 +34,15 @@ function fillDays(start: dayjs.Dayjs, length: number, counts: Map<string, number
 }
 
 function intervals(records: MasturbationRecord[]): number[] {
-  return records.slice(1).map((record, index) => (
-    timeOf(record).valueOf() - timeOf(records[index]).valueOf()
-  ) / 60_000)
+  const result: number[] = []
+  for (let index = 1; index < records.length; index++) {
+    const prev = records[index - 1]
+    const curr = records[index]
+    if (!prev.isAuto && !curr.isAuto) {
+      result.push((timeOf(curr).valueOf() - timeOf(prev).valueOf()) / 60_000)
+    }
+  }
+  return result
 }
 
 function median(values: number[]) {
@@ -97,6 +103,7 @@ export function buildAnalytics(
   )).flat()
 
   for (const record of rangeRecords) {
+    if (record.isAuto) continue
     const time = timeOf(record)
     const weekday = time.day() === 0 ? 7 : time.day()
     const index = (weekday - 1) * PERIODS.length + periodIndex(time.hour())
@@ -107,8 +114,14 @@ export function buildAnalytics(
 
   return {
     current: {
-      minutes: lastRecord ? now.diff(timeOf(lastRecord), 'millisecond') / 60_000 : null,
+      minutes: lastRecord && !lastRecord.isAuto
+        ? now.diff(timeOf(lastRecord), 'millisecond') / 60_000
+        : null,
+      daysSinceLast: lastRecord
+        ? today.diff(timeOf(lastRecord).startOf('day'), 'day')
+        : null,
       lastOccurredAt: lastRecord?.occurredAt ?? null,
+      lastIsAuto: lastRecord?.isAuto ?? false,
     },
     summary: {
       totalCount: sortedRecords.length,
@@ -134,4 +147,13 @@ export function formatDuration(minutes: number | null) {
   if (days > 0) return `${days} 天 ${hours} 小时`
   if (hours > 0) return `${hours} 小时 ${remainder} 分钟`
   return `${remainder} 分钟`
+}
+
+export function formatCurrentInterval(current: CurrentInterval) {
+  if (!current.lastOccurredAt) return '无记录'
+  if (current.lastIsAuto) {
+    const days = current.daysSinceLast ?? 0
+    return days <= 0 ? '今天' : `${days} 天`
+  }
+  return formatDuration(current.minutes)
 }

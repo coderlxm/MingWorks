@@ -513,6 +513,18 @@ const MIGRATIONS: DbMigration[] = [
       `);
     },
   },
+  {
+    version: 27,
+    up(db) {
+      if (!tableHasColumn(db, 'masturbation_records', 'is_auto')) {
+        db.exec(`
+          ALTER TABLE masturbation_records
+          ADD COLUMN is_auto INTEGER NOT NULL DEFAULT 0
+          CHECK (is_auto IN (0, 1));
+        `);
+      }
+    },
+  },
 ];
 
 export function runDbMigrations(db: Database.Database): void {

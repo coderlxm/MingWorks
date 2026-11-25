@@ -325,7 +325,8 @@ export function getDb(): Database.Database {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         occurred_at TEXT NOT NULL,
         created_at TEXT NOT NULL,
-        note TEXT
+        note TEXT,
+        is_auto INTEGER NOT NULL DEFAULT 0 CHECK (is_auto IN (0, 1))
       );
 
       CREATE INDEX IF NOT EXISTS idx_masturbation_records_occurred_at

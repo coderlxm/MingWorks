@@ -325,9 +325,9 @@ function fixedRules(date: string): FixedLifeRule[] {
   const rows: Array<[string, string, string, string, string | null, boolean]> = [
     ['sleep', '休息提醒', '每天 00:10，仅发送提示', '00:10', null, true],
     ['wakeup', '起床提醒', '每天 08:30，仅发送提示', '08:30', null, true],
+    ['lu', 'Lu 昨日结算', '每天 08:35，前一日无记录时默认记 1 次并推送卡片；可一键改为未撸', '08:35', null, true],
     ['coffee', '咖啡提醒', '中国工作日 08:58，仅发送提示', '08:58', null, workday],
     ['photo', '拍照提醒', '中国工作日 12:55–14:00 随机提示', '12:55', '14:00', workday],
-    ['lu', 'Lu 记录提示', '每天 22:00，当天无记录时提示；可忽略', '22:00', null, true],
   ];
   return rows.map(([id, title, rule, start, end, applies]) => ({ id, title, rule, nextAt: applies && !end ? atLifeTime(date, start).toISOString() : null, windowStart: applies ? atLifeTime(date, start).toISOString() : null, windowEnd: applies && end ? atLifeTime(date, end).toISOString() : null }));
 }

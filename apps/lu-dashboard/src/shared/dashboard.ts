@@ -20,6 +20,7 @@ export interface WeekdayTimePoint {
 export interface MasturbationRecord {
   id: number
   occurredAt: string
+  isAuto: boolean
 }
 
 export interface DashboardResponse {
@@ -44,7 +45,9 @@ export interface DashboardIntervals {
 
 export interface CurrentInterval {
   minutes: number | null
+  daysSinceLast: number | null
   lastOccurredAt: string | null
+  lastIsAuto: boolean
 }
 
 export interface DashboardAnalytics {

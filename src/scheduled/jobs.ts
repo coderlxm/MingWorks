@@ -2,15 +2,16 @@ import schedule from 'node-schedule';
 import type { Telegraf } from 'telegraf';
 import { config } from '../config/index.js';
 import { runMode } from './runMode.js';
-import { bjDate, getChinaDayOfWeek } from '../utils/time.js';
+import { getChinaDayOfWeek, shiftBjDate } from '../utils/time.js';
 import { isChinaWorkday, isChinaWorkdayStrict } from '../calendar/chinaWorkday.js';
 import { runStartggWatchNow } from '../services/startgg/startggPresetSync.js';
 import { runStartggWatchOnce } from '../services/startgg/index.js';
 import { runSteamPriceWatchOnce } from '../services/steam/steamPriceTracker.js';
+import { createAutoRecordForDate, findRecordsByDate } from '../services/life/masturbationRepository.js';
 import { buildSummary } from '../services/life/masturbationTracker.js';
 import {
-  buildMasturbationStatusButtons,
-  formatMasturbationReminderCard,
+  buildMasturbationSettleButtons,
+  formatMasturbationSettleCard,
 } from '../formatters/masturbationFormatter.js';
 import {
   isStartggPollingPersistedEnabled,
@@ -284,13 +285,21 @@ export function registerFixedJobs(bot: Telegraf): void {
     await runSteamPriceWatchOnce(bot);
   });
 
-  // masturbation: 22:00, only when no record exists for today
-  schedule.scheduleJob({ hour: 22, minute: 0, tz: 'Asia/Shanghai' }, async () => {
-    if (buildSummary().todayCount > 0) return;
-    await bot.telegram.sendMessage(config.tgChatId, formatMasturbationReminderCard(), {
-      parse_mode: 'HTML',
-      ...buildMasturbationStatusButtons(bjDate()),
-    });
+  // masturbation: 08:35, settle yesterday with 1 auto record when yesterday had no records
+  schedule.scheduleJob({ hour: 8, minute: 35, tz: 'Asia/Shanghai' }, async () => {
+    const now = new Date();
+    const yesterdayKey = shiftBjDate(now, -1);
+    if (findRecordsByDate(yesterdayKey).length > 0) return;
+    createAutoRecordForDate(yesterdayKey);
+    const summary = buildSummary(now);
+    await bot.telegram.sendMessage(
+      config.tgChatId,
+      formatMasturbationSettleCard(yesterdayKey, 1, summary, true, now),
+      {
+        parse_mode: 'HTML',
+        ...buildMasturbationSettleButtons(yesterdayKey, 1, now),
+      },
+    );
   });
 
   console.log('Fixed jobs registered.');

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { MasturbationRecord } from '../../../shared/dashboard'
 import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
@@ -9,16 +10,21 @@ const props = defineProps<{ records: MasturbationRecord[] }>()
 dayjs.extend(utc)
 dayjs.extend(timezone)
 
-function parseTimeInfo(value: string) {
-  const time = dayjs(value).tz('Asia/Shanghai')
+function parseTimeInfo(record: MasturbationRecord) {
+  const time = dayjs(record.occurredAt).tz('Asia/Shanghai')
   const today = dayjs().tz('Asia/Shanghai').startOf('day')
   const isToday = time.isSame(today, 'day')
   const isYesterday = time.isSame(today.subtract(1, 'day'), 'day')
 
   const label = isToday ? '今天' : isYesterday ? '昨天' : time.format('MM-DD')
-  const clock = time.format('HH:mm:ss')
-  return { label, clock, isToday }
+  const clock = record.isAuto ? '默认记录' : time.format('HH:mm:ss')
+  return { label, clock, isToday, isAuto: record.isAuto }
 }
+
+const formattedRecords = computed(() => props.records.map((record) => ({
+  id: record.id,
+  ...parseTimeInfo(record),
+})))
 </script>
 
 <template>
@@ -37,16 +43,23 @@ function parseTimeInfo(value: string) {
           </tr>
         </thead>
         <tbody>
-          <tr v-for="record in records" :key="record.id">
+          <tr v-for="record in formattedRecords" :key="record.id">
             <td>
-              <span class="time-tag" :class="{ today: parseTimeInfo(record.occurredAt).isToday }">
-                {{ parseTimeInfo(record.occurredAt).label }}
+              <span class="time-tag" :class="{ today: record.isToday }">
+                {{ record.label }}
               </span>
             </td>
-            <td class="mono-number">{{ parseTimeInfo(record.occurredAt).clock }}</td>
+            <td :class="record.isAuto ? 'auto-record-note' : 'mono-number'">{{ record.clock }}</td>
           </tr>
         </tbody>
       </table>
     </div>
   </section>
 </template>
+
+<style scoped>
+.auto-record-note {
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+</style>

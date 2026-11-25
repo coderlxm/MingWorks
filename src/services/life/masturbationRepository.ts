@@ -1,25 +1,32 @@
 import { getDb } from '../../reminders/db.js';
+import { bj } from '../../utils/time.js';
 
 export interface MasturbationRecord {
   id: number;
   occurred_at: string;
   created_at: string;
   note: string | null;
+  is_auto: 0 | 1;
 }
 
-export function createRecord(occurredAt: Date, note?: string): MasturbationRecord {
+export function createRecord(
+  occurredAt: Date,
+  note?: string,
+  isAuto: 0 | 1 = 0,
+): MasturbationRecord {
   const occurredAtIso = occurredAt.toISOString();
   const createdAt = new Date().toISOString();
   const noteValue = note?.trim() || null;
   const { lastInsertRowid } = getDb().prepare(`
-    INSERT INTO masturbation_records (occurred_at, created_at, note)
-    VALUES (?, ?, ?)
-  `).run(occurredAtIso, createdAt, noteValue);
+    INSERT INTO masturbation_records (occurred_at, created_at, note, is_auto)
+    VALUES (?, ?, ?, ?)
+  `).run(occurredAtIso, createdAt, noteValue, isAuto);
   return {
     id: Number(lastInsertRowid),
     occurred_at: occurredAtIso,
     created_at: createdAt,
     note: noteValue,
+    is_auto: isAuto,
   };
 }
 
@@ -101,4 +108,40 @@ export function findRecordsInRange(rangeStartUtc: string, rangeEndUtc: string): 
     WHERE occurred_at >= ? AND occurred_at < ?
     ORDER BY occurred_at ASC, id ASC
   `).all(rangeStartUtc, rangeEndUtc) as MasturbationRecord[];
+}
+
+export function findRecordsByDate(dateKey: string): MasturbationRecord[] {
+  const dayStart = bj(dateKey).startOf('day');
+  const dayEnd = dayStart.add(1, 'day');
+  return findRecordsInRange(dayStart.toISOString(), dayEnd.toISOString());
+}
+
+export function createAutoRecordForDate(dateKey: string): MasturbationRecord {
+  const occurredAt = new Date(`${dateKey}T12:00:00+08:00`);
+  return createRecord(occurredAt, undefined, 1);
+}
+
+export function deleteRecordsByDate(dateKey: string): number {
+  const dayStart = bj(dateKey).startOf('day');
+  const dayEnd = dayStart.add(1, 'day');
+  const { changes } = getDb().prepare(`
+    DELETE FROM masturbation_records
+    WHERE occurred_at >= ? AND occurred_at < ?
+  `).run(dayStart.toISOString(), dayEnd.toISOString());
+  return changes;
+}
+
+export function deleteLatestRecordByDate(dateKey: string): MasturbationRecord | undefined {
+  const dayStart = bj(dateKey).startOf('day');
+  const dayEnd = dayStart.add(1, 'day');
+  const latest = getDb().prepare(`
+    SELECT * FROM masturbation_records
+    WHERE occurred_at >= ? AND occurred_at < ?
+    ORDER BY occurred_at DESC, id DESC
+    LIMIT 1
+  `).get(dayStart.toISOString(), dayEnd.toISOString()) as MasturbationRecord | undefined;
+  if (latest) {
+    getDb().prepare('DELETE FROM masturbation_records WHERE id = ?').run(latest.id);
+  }
+  return latest;
 }

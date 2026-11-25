@@ -4,15 +4,20 @@ import dayjs from 'dayjs'
 import timezone from 'dayjs/plugin/timezone'
 import utc from 'dayjs/plugin/utc'
 import type { CurrentInterval } from '../../../shared/dashboard'
-import { formatDuration } from '../analytics'
+import { formatCurrentInterval } from '../analytics'
 
 dayjs.extend(utc)
 dayjs.extend(timezone)
 
 const props = defineProps<{ current: CurrentInterval }>()
-const lastTime = computed(() => props.current.lastOccurredAt
-  ? dayjs(props.current.lastOccurredAt).tz('Asia/Shanghai').format('MM 月 DD 日 HH:mm')
-  : null)
+const lastTime = computed(() => {
+  if (!props.current.lastOccurredAt) return null
+  const time = dayjs(props.current.lastOccurredAt).tz('Asia/Shanghai')
+  return props.current.lastIsAuto
+    ? `${time.format('MM 月 DD 日')} · 默认`
+    : time.format('MM 月 DD 日 HH:mm')
+})
+const currentLabel = computed(() => formatCurrentInterval(props.current))
 </script>
 
 <template>
@@ -25,7 +30,7 @@ const lastTime = computed(() => props.current.lastOccurredAt
       <span v-if="lastTime" class="panel-badge">{{ lastTime }}</span>
     </div>
     <div class="current-value mono-number">
-      {{ current.minutes === null ? '无记录' : formatDuration(current.minutes) }}
+      {{ currentLabel }}
     </div>
   </section>
 </template>

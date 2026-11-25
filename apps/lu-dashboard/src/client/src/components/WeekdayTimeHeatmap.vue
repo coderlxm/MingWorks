@@ -100,7 +100,7 @@ const option = computed<EChartsCoreOption>(() => {
   <section class="panel chart-panel">
     <div class="panel-header">
       <h2>时间分布 PERIOD & WEEKDAY</h2>
-      <span class="panel-badge">PATTERN</span>
+      <span class="panel-badge">EXACT TIME</span>
     </div>
     <div class="chart-panel-body">
       <EChart :key="theme" :option="option" :theme="theme" style="width: 100%; height: 100%; min-height: 200px" />

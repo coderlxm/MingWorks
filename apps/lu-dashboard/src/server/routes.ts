@@ -11,6 +11,7 @@ const dashboardResponseSchema = z.object({
   records: z.array(z.object({
     id: z.number().int(),
     occurredAt: z.string(),
+    isAuto: z.boolean(),
   })),
 })
 

@@ -122,6 +122,7 @@ import { buildSummary } from '../services/life/masturbationTracker.js';
 import { parseMasturbationInput } from '../services/life/masturbationParser.js';
 import {
   formatMasturbationStatusCard,
+  formatMasturbationSettleCard,
   formatMasturbationConfirmCard,
   formatMasturbationUndoCard,
   formatMasturbationUndoCommand,
@@ -129,6 +130,7 @@ import {
   formatMasturbationCapturePromptCard,
   formatMasturbationCaptureCancelledCard,
   buildMasturbationStatusButtons,
+  buildMasturbationSettleButtons,
   buildMasturbationConfirmButtons,
   buildMasturbationStatsButtons,
 } from '../formatters/masturbationFormatter.js';
@@ -1340,6 +1342,18 @@ export function registerInteractiveHandlers(bot: Telegraf): void {
     if (masturbationAction) {
       await ctx.answerCbQuery();
 
+      if (masturbationAction.type === 'now') {
+        const chatId = String(ctx.chat!.id);
+        masturbationRepo.deleteCaptureSession(chatId);
+        const record = masturbationRepo.createRecord(new Date());
+        const summary = buildSummary();
+        await ctx.editMessageText(
+          formatMasturbationConfirmCard(record, summary.todayCount),
+          { parse_mode: 'HTML', ...buildMasturbationConfirmButtons(record.id) },
+        );
+        return;
+      }
+
       if (masturbationAction.type === 'add') {
         const chatId = String(ctx.chat!.id);
         const promptMessageId = ctx.callbackQuery.message && 'message_id' in ctx.callbackQuery.message
@@ -1360,8 +1374,35 @@ export function registerInteractiveHandlers(bot: Telegraf): void {
         const summary = buildSummary();
         await ctx.editMessageText(formatMasturbationStatsCard(summary), {
           parse_mode: 'HTML',
-          ...buildMasturbationStatsButtons(),
+          ...buildMasturbationStatsButtons(masturbationAction.settleDate ?? undefined),
         });
+        return;
+      }
+
+      if (
+        masturbationAction.type === 'settle_zero'
+        || masturbationAction.type === 'settle_inc'
+        || masturbationAction.type === 'settle_dec'
+        || masturbationAction.type === 'settle_view'
+      ) {
+        const { dateKey } = masturbationAction;
+        if (masturbationAction.type === 'settle_zero') {
+          masturbationRepo.deleteRecordsByDate(dateKey);
+        } else if (masturbationAction.type === 'settle_inc') {
+          masturbationRepo.createAutoRecordForDate(dateKey);
+        } else if (masturbationAction.type === 'settle_dec') {
+          masturbationRepo.deleteLatestRecordByDate(dateKey);
+        }
+        const now = new Date();
+        const dayCount = masturbationRepo.findRecordsByDate(dateKey).length;
+        const summary = buildSummary(now);
+        await ctx.editMessageText(
+          formatMasturbationSettleCard(dateKey, dayCount, summary, false, now),
+          {
+            parse_mode: 'HTML',
+            ...buildMasturbationSettleButtons(dateKey, dayCount, now),
+          },
+        );
         return;
       }
 

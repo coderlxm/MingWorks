@@ -11,10 +11,18 @@ function formatLatestDisplay(latest: MasturbationRecord | undefined, now: Date):
   const occurredAt = bj(latest.occurred_at);
   const today = bj(now);
   const occurredDate = occurredAt.format('YYYY-MM-DD');
+  const isToday = occurredDate === today.format('YYYY-MM-DD');
+  const isYesterday = occurredDate === today.subtract(1, 'day').format('YYYY-MM-DD');
+
+  if (latest.is_auto === 1) {
+    const dayText = isToday ? '今天' : isYesterday ? '昨天' : occurredAt.format('MM-DD');
+    return `${dayText} · 默认记录`;
+  }
+
   let timeText: string;
-  if (occurredDate === today.format('YYYY-MM-DD')) {
+  if (isToday) {
     timeText = `今天 ${occurredAt.format('HH:mm')}`;
-  } else if (occurredDate === today.subtract(1, 'day').format('YYYY-MM-DD')) {
+  } else if (isYesterday) {
     timeText = `昨天 ${occurredAt.format('HH:mm')}`;
   } else {
     timeText = occurredAt.format('MM-DD HH:mm');
@@ -32,13 +40,89 @@ export function formatMasturbationStatusCard(summary: MasturbationSummary, now: 
   ].join('\n');
 }
 
-export function formatMasturbationReminderCard(): string {
+function formatSettleDateLabel(dateKey: string, now: Date): string {
+  const target = bj(dateKey);
+  const yesterdayKey = bj(now).subtract(1, 'day').format('YYYY-MM-DD');
+  const mmdd = target.format('MM-DD');
+  return dateKey === yesterdayKey ? `昨日（${mmdd}）` : mmdd;
+}
+
+export function formatMasturbationSettleCard(
+  dateKey: string,
+  dayCount: number,
+  summary: MasturbationSummary,
+  isInitialAuto = false,
+  now: Date = new Date(),
+): string {
+  const label = formatSettleDateLabel(dateKey, now);
+  if (dayCount === 0) {
+    return [
+      `🚫 撸了吗 · ${label}未撸`,
+      '',
+      `${label}：0 次`,
+      `最近 7 天：${summary.sevenDayCount} 次 / ${summary.sevenDayActiveDays} 天`,
+    ].join('\n');
+  }
+  if (dayCount === 1) {
+    const title = isInitialAuto
+      ? `📝 撸了吗 · ${label}已默认记 1 次`
+      : `✅ 撸了吗 · ${label}已记 1 次`;
+    const lines = [
+      title,
+      '',
+      `${label}：1 次（默认记录）`,
+      `最近 7 天：${summary.sevenDayCount} 次 / ${summary.sevenDayActiveDays} 天`,
+    ];
+    if (isInitialAuto) {
+      lines.push('', '没撸点「昨天没撸」撤回，多撸点「再记一次」，其余无需操作。');
+    }
+    return lines.join('\n');
+  }
   return [
-    '📝 撸了吗',
+    `✅ 撸了吗 · ${label}已记 ${dayCount} 次`,
     '',
-    '今天还没有记录。',
-    '如果只是忘了，点下方“记一次”，填写实际时间和备注；不需要记录可忽略。',
+    `${label}：${dayCount} 次`,
+    `最近 7 天：${summary.sevenDayCount} 次 / ${summary.sevenDayActiveDays} 天`,
   ].join('\n');
+}
+
+export function buildMasturbationSettleButtons(
+  dateKey: string,
+  dayCount: number,
+  now: Date = new Date(),
+): { reply_markup: InlineKeyboardMarkup } {
+  const isYesterday = dateKey === bj(now).subtract(1, 'day').format('YYYY-MM-DD');
+  const zeroLabel = isYesterday ? '🚫 昨天没撸' : '🚫 当日没撸';
+  if (dayCount === 0) {
+    return {
+      reply_markup: {
+        inline_keyboard: [[
+          { text: '↩️ 恢复记 1 次', callback_data: `masturbation:settle_inc:${dateKey}` },
+          { text: '📊 统计', callback_data: `masturbation:stats:${dateKey}` },
+        ]],
+      },
+    };
+  }
+  if (dayCount === 1) {
+    return {
+      reply_markup: {
+        inline_keyboard: [[
+          { text: zeroLabel, callback_data: `masturbation:settle_zero:${dateKey}` },
+          { text: '➕ 再记一次', callback_data: `masturbation:settle_inc:${dateKey}` },
+          { text: '📊 统计', callback_data: `masturbation:stats:${dateKey}` },
+        ]],
+      },
+    };
+  }
+  return {
+    reply_markup: {
+      inline_keyboard: [[
+        { text: '➖ 减 1 次', callback_data: `masturbation:settle_dec:${dateKey}` },
+        { text: '➕ 再记一次', callback_data: `masturbation:settle_inc:${dateKey}` },
+        { text: '📊 统计', callback_data: `masturbation:stats:${dateKey}` },
+      ]],
+    },
+  };
 }
 
 export function formatMasturbationCapturePromptCard(): string {
@@ -78,9 +162,12 @@ export function formatMasturbationUndoCard(todayCount: number): string {
 }
 
 export function formatMasturbationUndoCommand(record: MasturbationRecord): string {
+  const timeDisplay = record.is_auto === 1
+    ? `${bjFormat(record.occurred_at, 'YYYY-MM-DD')}（默认记录）`
+    : bjFormat(record.occurred_at);
   return [
     '↩️ 已撤销最新一次记录',
-    `发生时间：${bjFormat(record.occurred_at)}`,
+    `归属时间：${timeDisplay}`,
   ].join('\n');
 }
 
@@ -106,16 +193,21 @@ export function formatMasturbationStatsCard(summary: MasturbationSummary, now: D
   return lines.join('\n');
 }
 
-export function buildMasturbationStatusButtons(referenceDate?: string): { reply_markup: InlineKeyboardMarkup } {
+export function buildMasturbationStatusButtons(referenceDate?: string | undefined): { reply_markup: InlineKeyboardMarkup } {
   const addCallbackData = referenceDate
     ? `masturbation:add:${referenceDate}`
     : 'masturbation:add';
   return {
     reply_markup: {
-      inline_keyboard: [[
-        { text: '记一次', callback_data: addCallbackData },
-        { text: '查看统计', callback_data: 'masturbation:stats' },
-      ]],
+      inline_keyboard: [
+        [
+          { text: '✅ 记一次（现在）', callback_data: 'masturbation:now' },
+          { text: '✏️ 填时间/备注', callback_data: addCallbackData },
+        ],
+        [
+          { text: '📊 查看统计', callback_data: 'masturbation:stats' },
+        ],
+      ],
     },
   };
 }
@@ -124,19 +216,24 @@ export function buildMasturbationConfirmButtons(recordId: number): { reply_marku
   return {
     reply_markup: {
       inline_keyboard: [[
-        { text: '撤销本次', callback_data: `masturbation:undo:${recordId}` },
-        { text: '查看统计', callback_data: 'masturbation:stats' },
+        { text: '↩️ 撤销本次', callback_data: `masturbation:undo:${recordId}` },
+        { text: '📊 查看统计', callback_data: 'masturbation:stats' },
       ]],
     },
   };
 }
 
-export function buildMasturbationStatsButtons(): { reply_markup: InlineKeyboardMarkup } {
+export function buildMasturbationStatsButtons(returnSettleDate?: string | undefined): { reply_markup: InlineKeyboardMarkup } {
+  const rows: Array<Array<{ text: string; callback_data: string }>> = [[
+    { text: '✅ 记一次（现在）', callback_data: 'masturbation:now' },
+    { text: '✏️ 填时间/备注', callback_data: 'masturbation:add' },
+  ]];
+  if (returnSettleDate) {
+    rows.push([{ text: '⬅️ 返回结算卡片', callback_data: `masturbation:settle_view:${returnSettleDate}` }]);
+  }
   return {
     reply_markup: {
-      inline_keyboard: [[
-        { text: '记一次', callback_data: 'masturbation:add' },
-      ]],
+      inline_keyboard: rows,
     },
   };
 }

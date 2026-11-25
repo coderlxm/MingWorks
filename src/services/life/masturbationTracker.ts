@@ -61,6 +61,12 @@ export function buildSummary(now: Date = new Date()): MasturbationSummary {
 }
 
 export function formatSinceLatest(latest: MasturbationRecord, now: Date = new Date()): string {
+  if (latest.is_auto === 1) {
+    const dayDiff = bj(now).startOf('day').diff(bj(latest.occurred_at).startOf('day'), 'day');
+    if (dayDiff <= 0) return '今天（默认记录）';
+    if (dayDiff === 1) return '1 天（昨日默认记录）';
+    return `${dayDiff} 天`;
+  }
   const from = bj(latest.occurred_at);
   const to = bj(now);
   const totalMinutes = to.diff(from, 'minute');
