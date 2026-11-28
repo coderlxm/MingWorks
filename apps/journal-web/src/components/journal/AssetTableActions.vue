@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import { Edit, View } from '@element-plus/icons-vue';
-import { computed, shallowRef } from 'vue';
+import { shallowRef } from 'vue';
 import type { JournalEntry } from '../../types';
 import CardActionMenu from './CardActionMenu.vue';
 import AccessSettingsDialog from './AccessSettingsDialog.vue';
-import DeleteEntryDialog from './DeleteEntryDialog.vue';
 import type { AccessSettingsInput } from './accessSettings';
 
 const props = defineProps<{
@@ -13,10 +12,6 @@ const props = defineProps<{
 }>();
 
 const accessSettingsOpen = shallowRef(false);
-const deleteConfirmOpen = shallowRef(false);
-
-const deleteSubject = computed(() => (props.entry.bodyFormat === 'rich' ? '这篇文章' : '这条记录'));
-const deletePreviewText = computed(() => props.entry.title?.trim() || props.entry.contentText.trim());
 
 const emit = defineEmits<{
   edit: [entry: JournalEntry];
@@ -27,13 +22,9 @@ const emit = defineEmits<{
   deleteEntry: [entry: JournalEntry];
 }>();
 
-function requestDelete(): void {
-  deleteConfirmOpen.value = true;
-}
-
-function confirmDelete(): void {
-  deleteConfirmOpen.value = false;
-  emit('deleteEntry', props.entry);
+function requestDelete(entry: JournalEntry): void {
+  const subject = entry.bodyFormat === 'rich' ? '这篇文章' : '这条记录';
+  if (window.confirm(`永久删除${subject}？此操作无法撤销。`)) emit('deleteEntry', entry);
 }
 
 function saveAccessSettings(settings: AccessSettingsInput): void {
@@ -74,7 +65,7 @@ function saveAccessSettings(settings: AccessSettingsInput): void {
       @edit-published-time="emit('editPublishedTime', entry)"
       @set-pinned="emit('setPinned', entry, $event)"
       @request-access-settings="accessSettingsOpen = true"
-      @request-delete="requestDelete"
+      @request-delete="requestDelete(entry)"
     />
     <AccessSettingsDialog
       v-if="accessSettingsOpen"
@@ -82,14 +73,6 @@ function saveAccessSettings(settings: AccessSettingsInput): void {
       :busy="busy"
       @close="accessSettingsOpen = false"
       @save="saveAccessSettings"
-    />
-    <DeleteEntryDialog
-      v-if="deleteConfirmOpen"
-      :subject="deleteSubject"
-      :asset-count="entry.assets.length"
-      :preview-text="deletePreviewText"
-      @close="deleteConfirmOpen = false"
-      @confirm="confirmDelete"
     />
   </div>
 </template>
