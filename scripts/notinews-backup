@@ -19,7 +19,7 @@ install -d -m 700 "${BACKUP_WORK_DIR}"
 STAGING_ROOT=$(mktemp -d "${BACKUP_WORK_DIR}/staging.XXXXXX")
 BUNDLE_ROOT=${STAGING_ROOT}/notinews-backup-v1
 PAYLOAD_ROOT=${BUNDLE_ROOT}/payload
-RCLONE_ARGS=(--retries 1 --low-level-retries 1)
+RCLONE_ARGS=(--bind 0.0.0.0 --retries 1 --low-level-retries 1)
 BOT_STOPPED=false
 
 cleanup() {
